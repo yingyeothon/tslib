@@ -1,0 +1,35 @@
+{
+  "name": "yyt-tslib",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "pnpm -r typecheck",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.2",
+    "@eslint/js": "^9.34.0",
+    "@testcontainers/redis": "^11.5.1",
+    "@types/node": "^24.3.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "aws-sdk-client-mock": "^4.1.0",
+    "eslint": "^9.34.0",
+    "globals": "^17.11.0",
+    "prettier": "^3.6.2",
+    "testcontainers": "^11.5.1",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.40.0",
+    "undici": "^7.13.0",
+    "vitest": "^3.2.4"
+  }
+}

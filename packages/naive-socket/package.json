@@ -1,0 +1,47 @@
+{
+  "name": "@yingyeothon/naive-socket",
+  "version": "0.0.0",
+  "description": "Zero-dependency TCP socket client with request queueing, auto-reconnect, and pluggable response matching.",
+  "keywords": [
+    "yyt",
+    "yingyeothon"
+  ],
+  "license": "MIT",
+  "author": "yingyeothon",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup --config ../../tsup.config.base.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yingyeothon/yyt-tslib.git",
+    "directory": "packages/naive-socket"
+  },
+  "homepage": "https://github.com/yingyeothon/yyt-tslib/tree/main/packages/naive-socket#readme"
+}

@@ -1,0 +1,62 @@
+{
+  "name": "@yingyeothon/lambda-gamebase",
+  "version": "0.0.0",
+  "description": "Serverless WebSocket game framework on AWS Lambda: actor-based game loop, connection handling, and broadcasting.",
+  "keywords": [
+    "yyt",
+    "yingyeothon"
+  ],
+  "license": "MIT",
+  "author": "yingyeothon",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup --config ../../tsup.config.base.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@yingyeothon/actor-system": "workspace:^",
+    "@yingyeothon/actor-system-redis-support": "workspace:^",
+    "@yingyeothon/logger": "workspace:^",
+    "@yingyeothon/naive-redis": "workspace:^"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.879.0",
+    "@aws-sdk/client-lambda": "^3.879.0"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.879.0",
+    "@aws-sdk/client-lambda": "^3.879.0",
+    "@types/aws-lambda": "^8.10.152"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yingyeothon/yyt-tslib.git",
+    "directory": "packages/lambda-gamebase"
+  },
+  "homepage": "https://github.com/yingyeothon/yyt-tslib/tree/main/packages/lambda-gamebase#readme"
+}

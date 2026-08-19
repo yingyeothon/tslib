@@ -1,0 +1,58 @@
+{
+  "name": "@yingyeothon/actor-system-aws-lambda-support",
+  "version": "0.0.0",
+  "description": "AWS Lambda handler and shift-invoker glue for @yingyeothon/actor-system.",
+  "keywords": [
+    "yyt",
+    "yingyeothon"
+  ],
+  "license": "MIT",
+  "author": "yingyeothon",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup --config ../../tsup.config.base.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@yingyeothon/actor-system": "workspace:^",
+    "@yingyeothon/logger": "workspace:^"
+  },
+  "peerDependencies": {
+    "@aws-sdk/client-lambda": "^3.879.0"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-lambda": "^3.879.0",
+    "@types/aws-lambda": "^8.10.152"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yingyeothon/yyt-tslib.git",
+    "directory": "packages/actor-system-aws-lambda-support"
+  },
+  "homepage": "https://github.com/yingyeothon/yyt-tslib/tree/main/packages/actor-system-aws-lambda-support#readme"
+}

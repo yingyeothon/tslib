@@ -1,0 +1,52 @@
+{
+  "name": "@yingyeothon/logger-s3",
+  "version": "0.0.0",
+  "description": "Buffered log writer that flushes structured log records into S3 via s3-cache-bridge.",
+  "keywords": [
+    "yyt",
+    "yingyeothon"
+  ],
+  "license": "MIT",
+  "author": "yingyeothon",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup --config ../../tsup.config.base.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@yingyeothon/logger": "workspace:^",
+    "@yingyeothon/s3-cache-bridge-client": "workspace:^",
+    "serialize-error": "^8.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yingyeothon/yyt-tslib.git",
+    "directory": "packages/logger-s3"
+  },
+  "homepage": "https://github.com/yingyeothon/yyt-tslib/tree/main/packages/logger-s3#readme"
+}
