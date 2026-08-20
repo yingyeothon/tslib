@@ -1,18 +1,17 @@
 import { createServer, type Server, type Socket } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import {
   ConnectionState,
-  NaiveSocket,
-  TextMatch,
+  createNaiveSocket,
+  createTextMatch,
   withMatch,
-  type Logger,
+  type NaiveSocket,
+  type NaiveSocketOptions,
+  type TextMatch,
 } from "../src/index.js";
 
-const silentLogger: Logger = {
-  info: () => undefined,
-  warn: () => undefined,
-  error: () => undefined,
-};
+const silentLogger: Logger = nullLogger;
 
 interface TestServer {
   server: Server;
@@ -83,9 +82,9 @@ async function echoServer(): Promise<TestServer> {
 
 function newSocket(
   port: number,
-  options: Partial<ConstructorParameters<typeof NaiveSocket>[0]> = {},
+  options: Partial<NaiveSocketOptions> = {},
 ): NaiveSocket {
-  const ns = new NaiveSocket({
+  const ns = createNaiveSocket({
     host: "127.0.0.1",
     port,
     logger: silentLogger,
@@ -208,7 +207,7 @@ describe("NaiveSocket", () => {
       timeoutMillis: 1000,
     });
     expect(members).toBe(payload);
-    expect(match(new TextMatch(members)).values()).toEqual([
+    expect(match(createTextMatch(members)).values()).toEqual([
       "*2",
       "$5",
       "abcde",
@@ -455,28 +454,21 @@ describe("NaiveSocket", () => {
     realDestroy();
   });
 
-  it("emits info logs through the default logger when DEBUG is set", async () => {
+  it("stays silent by default without touching the console", async () => {
     const server = await echoServer();
-    vi.stubEnv("DEBUG", "1");
-    vi.resetModules();
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    const error = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => undefined);
     try {
-      const { NaiveSocket: DebugNaiveSocket } =
-        await import("../src/naive-socket.js");
-      const ns = new DebugNaiveSocket({ host: "127.0.0.1", port: server.port });
-      expect(await ns.send({ message: "debug" })).toBe("debug");
-      expect(info).toHaveBeenCalledWith("[NaiveSocket]", "Start to connect");
-      ns.disconnect();
+      const ns = createNaiveSocket({ host: "127.0.0.1", port: server.port });
+      cleanups.push(() => ns.disconnect());
+      expect(await ns.send({ message: "quiet" })).toBe("quiet");
+      expect(info).not.toHaveBeenCalled();
+      expect(error).not.toHaveBeenCalled();
     } finally {
       info.mockRestore();
-      vi.unstubAllEnvs();
+      error.mockRestore();
     }
-  });
-
-  it("uses the default logger without emitting info logs when DEBUG is unset", async () => {
-    const server = await echoServer();
-    const ns = new NaiveSocket({ host: "127.0.0.1", port: server.port });
-    cleanups.push(() => ns.disconnect());
-    expect(await ns.send({ message: "quiet" })).toBe("quiet");
   });
 });

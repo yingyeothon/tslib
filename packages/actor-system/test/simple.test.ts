@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   enqueue,
-  InMemoryAwaiter,
-  InMemoryLock,
-  InMemoryQueue,
+  createInMemoryAwaiter,
+  createInMemoryLock,
+  createInMemoryQueue,
   post,
   singleConsumer,
   tryToProcess,
@@ -33,9 +33,9 @@ class Adder {
 describe("single-mode actor", () => {
   it("processes enqueued and posted messages via tryToProcess", async () => {
     const actorSubsys = {
-      queue: new InMemoryQueue(),
-      lock: new InMemoryLock(),
-      awaiter: new InMemoryAwaiter(),
+      queue: createInMemoryQueue(),
+      lock: createInMemoryLock(),
+      awaiter: createInMemoryAwaiter(),
     };
     const adder = new Adder("adder");
     const env = { ...singleConsumer, ...actorSubsys, ...adder };
@@ -72,7 +72,7 @@ describe("single-mode actor", () => {
 
 describe("enqueue", () => {
   it("fills default metadata and keeps a provided messageId", async () => {
-    const queue = new InMemoryQueue();
+    const queue = createInMemoryQueue();
     const env = { id: "meta", queue };
 
     const generated = await enqueue(env, { item: { delta: 1 } });

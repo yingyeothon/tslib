@@ -1,7 +1,13 @@
-export function debugPrint(...args: unknown[]): void {
-  if (process.env.DEBUG) {
-    console.debug(...args);
+export type DebugPrint = (...args: unknown[]) => void;
+
+/** Builds an internal diagnostics printer gated by an explicit flag. */
+export function createDebugPrint(enabled: boolean | undefined): DebugPrint {
+  if (!enabled) {
+    return () => undefined;
   }
+  return (...args: unknown[]) => {
+    console.debug(...args);
+  };
 }
 
 export function yyyyMMdd(now = new Date()): string {

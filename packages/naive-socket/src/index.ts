@@ -1,10 +1,15 @@
 export {
   ConnectionState,
-  NaiveSocket,
+  createNaiveSocket,
   type ConnectionStateListener,
   type Fulfill,
-  type Logger,
+  type NaiveSocket,
   type NaiveSocketOptions,
   type SendRequest,
 } from "./naive-socket.js";
-export { TextMatch, withMatch, type TextMatchChain } from "./match.js";
+export {
+  createTextMatch,
+  withMatch,
+  type TextMatch,
+  type TextMatchChain,
+} from "./match.js";

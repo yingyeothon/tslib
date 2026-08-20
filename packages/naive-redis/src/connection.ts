@@ -1,7 +1,11 @@
-import { ConnectionState, NaiveSocket } from "@yingyeothon/naive-socket";
+import {
+  ConnectionState,
+  createNaiveSocket,
+  type NaiveSocket,
+} from "@yingyeothon/naive-socket";
 import { redisAuth } from "./auth.js";
 
-export interface RedisConfig {
+export interface RedisConnectionOptions {
   host: string;
   port?: number;
   password?: string;
@@ -14,13 +18,13 @@ export interface RedisConnection {
   authenticated?: Promise<boolean>;
 }
 
-export function redisConnect({
+export function createRedisConnection({
   host,
   port = 6379,
   password,
   timeoutMillis = 1000,
-}: RedisConfig): RedisConnection {
-  const socket = new NaiveSocket({
+}: RedisConnectionOptions): RedisConnection {
+  const socket = createNaiveSocket({
     host,
     port,
     onConnectionStateChanged: ({ state }) => {

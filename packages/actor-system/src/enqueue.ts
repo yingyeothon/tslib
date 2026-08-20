@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { nullLogger } from "@yingyeothon/logger";
 import type { ActorLogger, ActorProperty } from "./environment.js";
-import { noopLogger } from "./logger.js";
 import type {
   UserMessage,
   UserMessageItem,
@@ -9,7 +9,7 @@ import type {
 import { AwaitPolicy } from "./message.js";
 import type { QueueProducer } from "./queue.js";
 
-export type ActorEnqueueEnvironment = ActorProperty &
+export type ActorEnqueueOptions = ActorProperty &
   ActorLogger & { queue: QueueProducer };
 
 /**
@@ -18,10 +18,10 @@ export type ActorEnqueueEnvironment = ActorProperty &
  * and an `awaitTimeoutMillis` of 0.
  */
 export async function enqueue<T>(
-  env: ActorEnqueueEnvironment,
+  env: ActorEnqueueOptions,
   input: UserMessageItem<T> & Partial<UserMessageMeta>,
 ): Promise<UserMessage<T>> {
-  const { id, queue, logger = noopLogger } = env;
+  const { id, queue, logger = nullLogger } = env;
   const message: UserMessage<T> = {
     messageId: input.messageId || randomUUID(),
     awaitPolicy: input.awaitPolicy || AwaitPolicy.Forget,
@@ -30,6 +30,6 @@ export async function enqueue<T>(
   };
 
   await queue.push(id, message);
-  logger.debug("actor", "enqueue", id, message);
+  logger.debug("enqueue message", { actorId: id, message });
   return message;
 }

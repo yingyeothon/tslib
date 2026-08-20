@@ -10,5 +10,10 @@ export function combine(...writers: LogWriter[]): LogWriter {
         writer[severity](...args);
       }
     };
-  return { debug: write("debug"), info: write("info"), error: write("error") };
+  return {
+    debug: write("debug"),
+    info: write("info"),
+    warn: write("warn"),
+    error: write("error"),
+  };
 }

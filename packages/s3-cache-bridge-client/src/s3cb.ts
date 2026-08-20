@@ -13,7 +13,7 @@ import type {
   FetchOptions,
   JSONModificationRequest,
   LockOptions,
-  S3cbEnv,
+  S3cbClientOptions,
   SyncOptions,
 } from "./types.js";
 
@@ -48,12 +48,24 @@ export interface S3cbClient {
   exists: (key: string, options?: LockOptions) => Promise<boolean>;
 }
 
-export function S3cb(env: S3cbEnv): S3cbClient {
-  const headers = () => authorizationHeader(env);
+export function s3cbClientOptionsFromEnv(): S3cbClientOptions {
+  const apiUrl = process.env.S3CB_URL;
+  if (apiUrl === undefined) {
+    throw new Error("S3CB_URL environment variable is not set");
+  }
+  return {
+    apiUrl,
+    apiId: process.env.S3CB_ID,
+    apiPassword: process.env.S3CB_PASSWORD,
+  };
+}
+
+export function createS3cbClient(options: S3cbClientOptions): S3cbClient {
+  const headers = () => authorizationHeader(options);
 
   const get = (key: string, { noLock = false }: LockOptions = {}) =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ noLock }),
+      url: options.apiUrl + key + buildQueryParams({ noLock }),
       method: "GET",
       headers: headers(),
     });
@@ -64,7 +76,7 @@ export function S3cb(env: S3cbEnv): S3cbClient {
     { noLock = false, sync = false }: LockOptions & SyncOptions = {},
   ) =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ noLock, sync }),
+      url: options.apiUrl + key + buildQueryParams({ noLock, sync }),
       // Note: unlike the legacy client, Content-Length is not set manually;
       // fetch derives the identical value from the buffered body, and setting
       // it explicitly would duplicate the header on the wire.
@@ -75,7 +87,7 @@ export function S3cb(env: S3cbEnv): S3cbClient {
 
   const del = (key: string, { noLock = false }: LockOptions = {}) =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ noLock }),
+      url: options.apiUrl + key + buildQueryParams({ noLock }),
       method: "DELETE",
       headers: headers(),
     });
@@ -86,7 +98,8 @@ export function S3cb(env: S3cbEnv): S3cbClient {
     { noLock = false, sync = false }: LockOptions & SyncOptions = {},
   ) =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ append: true, noLock, sync }),
+      url:
+        options.apiUrl + key + buildQueryParams({ append: true, noLock, sync }),
       method: "PUT",
       headers: headers(),
       body: makeBodyAsBuffer(body),
@@ -94,28 +107,28 @@ export function S3cb(env: S3cbEnv): S3cbClient {
 
   const sync = (key: string) =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ sync: true }),
+      url: options.apiUrl + key + buildQueryParams({ sync: true }),
       method: "POST",
       headers: headers(),
     });
 
   const invalidate = (key: string) =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ cache: true }),
+      url: options.apiUrl + key + buildQueryParams({ cache: true }),
       method: "DELETE",
       headers: headers(),
     });
 
   const lock = (key: string) =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ lock: "acquire" }),
+      url: options.apiUrl + key + buildQueryParams({ lock: "acquire" }),
       method: "POST",
       headers: headers(),
     });
 
   const unlock = (key: string) =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ lock: "release" }),
+      url: options.apiUrl + key + buildQueryParams({ lock: "release" }),
       method: "POST",
       headers: headers(),
     });
@@ -130,7 +143,7 @@ export function S3cb(env: S3cbEnv): S3cbClient {
     }: LockOptions & SyncOptions & FetchOptions = {},
   ): Promise<T | null> =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ noLock, sync, fetch }),
+      url: options.apiUrl + key + buildQueryParams({ noLock, sync, fetch }),
       method: "PATCH",
       headers: headers(),
       body: makeBodyAsBuffer(JSON.stringify(modRequest)),
@@ -151,7 +164,7 @@ export function S3cb(env: S3cbEnv): S3cbClient {
 
   const getBuffer = (key: string, { noLock = false }: LockOptions = {}) =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ noLock }),
+      url: options.apiUrl + key + buildQueryParams({ noLock }),
       method: "GET",
       headers: headers(),
       handleResponse: (response) =>
@@ -166,7 +179,7 @@ export function S3cb(env: S3cbEnv): S3cbClient {
     { noLock = false }: LockOptions = {},
   ): Promise<string> =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ noLock }),
+      url: options.apiUrl + key + buildQueryParams({ noLock }),
       method: "GET",
       headers: headers(),
       handleResponse: async (response) => {
@@ -184,7 +197,7 @@ export function S3cb(env: S3cbEnv): S3cbClient {
     { noLock = false }: LockOptions = {},
   ): Promise<boolean> =>
     httpRequest({
-      url: env.apiUrl + key + buildQueryParams({ noLock }),
+      url: options.apiUrl + key + buildQueryParams({ noLock }),
       method: "HEAD",
       headers: headers(),
     })

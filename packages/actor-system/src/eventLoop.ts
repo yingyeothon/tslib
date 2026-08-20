@@ -1,10 +1,10 @@
+import { nullLogger } from "@yingyeothon/logger";
 import type { ActorLogger, ActorProperty } from "./environment.js";
 import type { LockAcquire, LockRelease } from "./lock.js";
-import { noopLogger } from "./logger.js";
 import type { UserMessage } from "./message.js";
 import type { QueueBulkConsumer } from "./queue.js";
 
-export type ActorEventLoopEnvironment<T> = ActorProperty &
+export type ActorEventLoopOptions<T> = ActorProperty &
   ActorLogger & {
     lock: LockAcquire & LockRelease;
     queue: QueueBulkConsumer;
@@ -17,28 +17,28 @@ export type ActorEventLoopEnvironment<T> = ActorProperty &
  * lock is already held by someone else.
  */
 export async function eventLoop<T>(
-  env: ActorEventLoopEnvironment<T>,
+  env: ActorEventLoopOptions<T>,
 ): Promise<boolean> {
-  const { id, queue, lock, loop, logger = noopLogger } = env;
+  const { id, queue, lock, loop, logger = nullLogger } = env;
 
   // Do nothing if cannot get the lock.
-  logger.debug("actor", "try-to-lock", id);
+  logger.debug("try to lock", { actorId: id });
   if (!(await lock.tryAcquire(id))) {
-    logger.debug("actor", "cannot-lock", id);
+    logger.debug("cannot lock", { actorId: id });
     return false;
   }
 
   const poll = async () => {
     const messages: UserMessage<T>[] = await queue.flush(id);
-    logger.debug("actor", "poll-messages", id, messages.length);
+    logger.debug("poll messages", { actorId: id, count: messages.length });
     return messages.map((message) => message.item);
   };
 
-  logger.debug("actor", "start-loop", id);
+  logger.debug("start loop", { actorId: id });
   await loop(poll);
 
   // Whatever its reason, release the lock.
-  logger.debug("actor", "release-lock", id);
+  logger.debug("release lock", { actorId: id });
   await lock.release(id);
 
   return true;

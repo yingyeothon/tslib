@@ -13,9 +13,9 @@ npm install @yingyeothon/logger-s3
 ESM:
 
 ```ts
-import { getS3Logger } from "@yingyeothon/logger-s3";
+import { createS3Logger } from "@yingyeothon/logger-s3";
 
-const { logger, flush } = getS3Logger({
+const { logger, flush } = createS3Logger({
   apiUrl: "https://s3cb.example.com/",
   apiId: "id",
   apiPassword: "password",
@@ -34,14 +34,18 @@ await flush(); // Appends buffered records to S3, one JSON line per record.
 Lambda variant (CJS shown):
 
 ```js
-const { getLambdaS3Logger } = require("@yingyeothon/logger-s3");
+const {
+  createLambdaS3Logger,
+  s3cbLogFlushOptionsFromEnv,
+} = require("@yingyeothon/logger-s3");
 
-const { logger, flush, updateSystemId } = getLambdaS3Logger({
+const { logger, flush, updateSystemId } = createLambdaS3Logger({
   systemName: "HelloWorld",
   handlerName: "testHandler",
   lambdaId: context.awsRequestId,
   logKeyPrefix: "logging",
-  apiUrl: process.env.S3CB_URL, // also read from S3CB_URL/S3CB_ID/S3CB_PASSWORD by default
+  // Explicit opt-in: reads S3CB_URL / S3CB_ID / S3CB_PASSWORD.
+  ...s3cbLogFlushOptionsFromEnv(),
 });
 
 logger.info("started");
@@ -79,17 +83,23 @@ Records sharing the same key are concatenated and sent as a single `append` call
 
 ## Public API
 
-- `getS3Logger(env)` — buffered S3 logger; returns `{ logger, flush }` (`S3Logger`)
-- `getLambdaS3Logger(env)` — Lambda-flavored logger; returns `{ logger, flush, updateSystemId }` (`LambdaS3Logger`)
-- `getS3LogWriter(env)` — the underlying `LogWriter` plus `flush` (`S3LogWriter`)
-- `buffered(env)` — in-memory buffering with auto-flush by interval/size (`BufferedEnv`, `BufferedWriter`)
-- `s3cbLogFlush(env)` — flush function that appends aggregated records via s3-cache-bridge (`S3cbLogFlushEnv`, `LogFlush`)
+- `createS3Logger(options)` — buffered S3 logger; returns `{ logger, flush }` (`S3Logger`)
+- `createLambdaS3Logger(options)` — Lambda-flavored logger; returns `{ logger, flush, updateSystemId }` (`LambdaS3Logger`)
+- `createS3LogWriter(options)` — the underlying `LogWriter` (`debug`/`info`/`warn`/`error`) plus `flush` (`S3LogWriter`)
+- `createBufferedWriter(options)` — in-memory buffering with auto-flush by interval/size (`BufferedWriterOptions`, `BufferedWriter`)
+- `createS3cbLogFlush(options)` — returns a flush function that appends aggregated records via s3-cache-bridge (`S3cbLogFlushOptions`, `LogFlush`)
+- `s3cbLogFlushOptionsFromEnv()` — reads `S3CB_URL`, `S3CB_ID`, `S3CB_PASSWORD` and returns connection options; the only place these variables are read, and only when you call it
 - `serializeAsJSON` — default record serializer
-- Types: `S3Logger`, `S3LoggerEnv`, `LambdaS3Logger`, `LambdaS3LoggerEnv`, `S3LogWriter`, `S3LogWriterEnv`, `BufferedEnv`, `BufferedWriter`, `S3cbLogFlushEnv`, `LogFlush`, `LogSerializer`, `LogTuple`, `WritableLogSeverity`
+- Types: `S3Logger`, `S3LoggerOptions`, `LambdaS3Logger`, `LambdaS3LoggerOptions`, `S3LogWriter`, `S3LogWriterOptions`, `BufferedWriterOptions`, `BufferedWriter`, `S3cbLogFlushOptions`, `LogFlush`, `LogSerializer`, `LogTuple`, `WritableLogSeverity`
 
 ## Migrating from the legacy package
 
-- Named exports only: the default export `getS3Logger` is now `import { getS3Logger }`, and `LambdaS3Logger` (function) is now `getLambdaS3Logger`; the `ILambdaS3Logger` interface is renamed to `LambdaS3Logger`.
+- Named exports only: the default export `getS3Logger` is now `import { createS3Logger }`, and `LambdaS3Logger` (function) is now `createLambdaS3Logger`; the `ILambdaS3Logger` interface is renamed to `LambdaS3Logger`.
 - Deep imports (`@yingyeothon/logger-s3/lib/...`) are no longer supported — import everything from the package root.
-- `S3cbLogFlushEnv` (formerly `S3CBLogFlushEnv`) accepts an optional `client: S3cbClient` to inject a preconfigured or fake s3-cache-bridge client; `apiUrl`/`S3CB_URL` is only required when no client is given.
-- Record format, flush semantics (aggregation per key, chained sequential flushes, auto-flush triggers), and environment variable defaults (`S3CB_URL`, `S3CB_ID`, `S3CB_PASSWORD`) are unchanged.
+- Factory renames: `getS3Logger` → `createS3Logger`, `getLambdaS3Logger` → `createLambdaS3Logger`, `getS3LogWriter` → `createS3LogWriter`, `buffered` → `createBufferedWriter`, `s3cbLogFlush` → `createS3cbLogFlush` (it returns a `LogFlush` function, so it keeps the factory prefix).
+- Options type renames: `S3LoggerEnv` → `S3LoggerOptions`, `LambdaS3LoggerEnv` → `LambdaS3LoggerOptions`, `S3LogWriterEnv` → `S3LogWriterOptions`, `BufferedEnv` → `BufferedWriterOptions`, `S3cbLogFlushEnv` (formerly `S3CBLogFlushEnv`) → `S3cbLogFlushOptions`.
+- `S3cbLogFlushOptions` accepts an optional `client: S3cbClient` to inject a preconfigured or fake s3-cache-bridge client; `apiUrl` is only required when no client is given.
+- Environment variable defaults are removed: `createS3cbLogFlush` (and everything built on it) no longer reads `S3CB_URL`, `S3CB_ID`, `S3CB_PASSWORD` implicitly. Opt in explicitly with `...s3cbLogFlushOptionsFromEnv()` in your options.
+- The `DEBUG` environment variable no longer enables internal diagnostics; pass the explicit `debug: true` option instead.
+- The writer now implements the full `LogWriter` contract including `warn`.
+- Record format and flush semantics (aggregation per key, chained sequential flushes, auto-flush triggers) are unchanged.

@@ -1,12 +1,14 @@
-import { debugPrint } from "./internal.js";
+import { createDebugPrint } from "./internal.js";
 import type { LogTuple, WritableLogSeverity } from "./types.js";
 
-export interface BufferedEnv {
+export interface BufferedWriterOptions {
   asKey: (date: Date, severity: WritableLogSeverity) => string;
   autoFlushIntervalMillis?: number;
   autoFlushMaxBufferSize?: number;
   onAutoFlush: (tuples: LogTuple[], timestamp: number) => unknown;
   withConsole?: boolean | ((tuple: Omit<LogTuple, "key">) => void);
+  /** Prints internal auto-flush diagnostics to the console when true. */
+  debug?: boolean;
 }
 
 export interface BufferedWriter {
@@ -14,13 +16,15 @@ export interface BufferedWriter {
   flush: () => LogTuple[];
 }
 
-export function buffered({
+export function createBufferedWriter({
   asKey,
   autoFlushIntervalMillis = 10 * 1000,
   autoFlushMaxBufferSize = 1024,
   onAutoFlush,
   withConsole = false,
-}: BufferedEnv): BufferedWriter {
+  debug = false,
+}: BufferedWriterOptions): BufferedWriter {
+  const debugPrint = createDebugPrint(debug);
   let lastFlushed = Date.now();
   let buffer: LogTuple[] = [];
 

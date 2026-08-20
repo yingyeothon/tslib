@@ -1,4 +1,4 @@
-import type { RedisConfig } from "../connection.js";
+import type { RedisConnectionOptions } from "../connection.js";
 import { redisGet } from "../get.js";
 import { redisSet } from "../set.js";
 import { redisSimpleDel } from "./del.js";
@@ -21,7 +21,7 @@ export type RedisSimpleCacheFriends<
 };
 
 export interface RedisSimpleCacheOptions<A extends unknown[], R> {
-  config: RedisConfig;
+  config: RedisConnectionOptions;
   cacheKey: (...args: A) => string;
   expirationMillis?: number;
   decode?: (input: string) => R;

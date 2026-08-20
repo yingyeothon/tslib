@@ -1,25 +1,28 @@
+import { nullLogger } from "@yingyeothon/logger";
 import type { AwaiterResolve, AwaiterWait } from "./awaiter.js";
 import type { ActorLogger, ActorProperty } from "./environment.js";
-import { noopLogger } from "./logger.js";
 import type { AwaiterMeta } from "./message.js";
 import { AwaitPolicy } from "./message.js";
 
-type AwaitEnvironment = ActorProperty & ActorLogger & { awaiter: AwaiterWait };
-type ResolveEnvironment = ActorProperty &
-  ActorLogger & { awaiter: AwaiterResolve };
+type AwaitOptions = ActorProperty & ActorLogger & { awaiter: AwaiterWait };
+type ResolveOptions = ActorProperty & ActorLogger & { awaiter: AwaiterResolve };
 
 export async function awaitMessage(
-  env: AwaitEnvironment,
+  env: AwaitOptions,
   messageId: string,
   awaitTimeoutMillis: number,
 ): Promise<boolean> {
-  const { id, awaiter, logger = noopLogger } = env;
-  logger.debug("actor", "await-message", id, messageId, awaitTimeoutMillis);
+  const { id, awaiter, logger = nullLogger } = env;
+  logger.debug("await message", {
+    actorId: id,
+    messageId,
+    awaitTimeoutMillis,
+  });
   return awaiter.wait(id, messageId, awaitTimeoutMillis);
 }
 
 export async function awaitMessageAfterTryToProcess(
-  env: AwaitEnvironment,
+  env: AwaitOptions,
   currentMeta: AwaiterMeta,
   tryToProcess: () => Promise<AwaiterMeta[]>,
 ): Promise<boolean> {
@@ -46,26 +49,26 @@ export async function awaitMessageAfterTryToProcess(
 }
 
 export async function notifyCompletion(
-  env: ResolveEnvironment,
+  env: ResolveOptions,
   meta: AwaiterMeta,
 ): Promise<void> {
-  const { id, logger = noopLogger, awaiter } = env;
+  const { id, logger = nullLogger, awaiter } = env;
   try {
-    logger.debug("actor", "awaiter-resolve", id, meta.messageId);
+    logger.debug("resolve awaiter", { actorId: id, messageId: meta.messageId });
     await awaiter.resolve(id, meta.messageId);
   } catch (error) {
-    logger.error("actor", "awaiter-resolve-error", id, error);
+    logger.error("awaiter resolve error", { actorId: id, error });
   }
 }
 
 export async function notifyCompletions(
-  env: ResolveEnvironment,
+  env: ResolveOptions,
   metas: AwaiterMeta[],
 ): Promise<void> {
-  const { id, logger = noopLogger, awaiter } = env;
+  const { id, logger = nullLogger, awaiter } = env;
   try {
     const targetIds = metas.map(({ messageId }) => messageId);
-    logger.debug("actor", "awaiter-resolve", id, targetIds);
+    logger.debug("resolve awaiters", { actorId: id, messageIds: targetIds });
     if (targetIds.length === 0) {
       return;
     }
@@ -74,6 +77,6 @@ export async function notifyCompletions(
       targetIds.map((messageId) => awaiter.resolve(id, messageId)),
     );
   } catch (error) {
-    logger.error("actor", "awaiter-resolve-error", id, error);
+    logger.error("awaiter resolve error", { actorId: id, error });
   }
 }

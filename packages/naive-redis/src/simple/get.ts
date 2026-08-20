@@ -1,4 +1,4 @@
-import type { RedisConfig } from "../connection.js";
+import type { RedisConnectionOptions } from "../connection.js";
 import { redisGet } from "../get.js";
 import { redisSimpleWork } from "./work.js";
 
@@ -7,7 +7,7 @@ export async function redisSimpleGet<T>({
   key,
   decode = JSON.parse,
 }: {
-  config: RedisConfig;
+  config: RedisConnectionOptions;
   key: string;
   decode?: (maybe: string) => T;
 }): Promise<T | null> {

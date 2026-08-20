@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AwaitPolicy,
-  InMemoryAwaiter,
-  InMemoryLock,
-  InMemoryQueue,
+  createInMemoryAwaiter,
+  createInMemoryLock,
+  createInMemoryQueue,
   post,
   send,
   singleConsumer,
@@ -38,9 +38,9 @@ afterEach(() => {
 describe("awaiting an actor", () => {
   it("awaits commits, in-thread or resolved by another processor", async () => {
     const actorSubsys = {
-      queue: new InMemoryQueue(),
-      lock: new InMemoryLock(),
-      awaiter: new InMemoryAwaiter(),
+      queue: createInMemoryQueue(),
+      lock: createInMemoryLock(),
+      awaiter: createInMemoryAwaiter(),
     };
     const adder = new Adder("adder");
     const env = { ...singleConsumer, ...actorSubsys, ...adder };
@@ -85,8 +85,8 @@ describe("awaiting an actor", () => {
     vi.useFakeTimers();
     const env = {
       id: "lonely",
-      queue: new InMemoryQueue(),
-      awaiter: new InMemoryAwaiter(),
+      queue: createInMemoryQueue(),
+      awaiter: createInMemoryAwaiter(),
     };
 
     const posted = post(env, {
@@ -100,13 +100,13 @@ describe("awaiting an actor", () => {
 
   it("returns false when send cannot process (lock contention) and times out", async () => {
     vi.useFakeTimers();
-    const lock = new InMemoryLock();
+    const lock = createInMemoryLock();
     const adder = new Adder("contended");
     const env = {
       ...singleConsumer,
-      queue: new InMemoryQueue(),
+      queue: createInMemoryQueue(),
       lock,
-      awaiter: new InMemoryAwaiter(),
+      awaiter: createInMemoryAwaiter(),
       ...adder,
     };
 

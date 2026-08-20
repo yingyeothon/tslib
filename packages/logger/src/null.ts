@@ -4,5 +4,6 @@ export const nullLogger: Logger = {
   severity: "none",
   debug: () => undefined,
   info: () => undefined,
+  warn: () => undefined,
   error: () => undefined,
 };

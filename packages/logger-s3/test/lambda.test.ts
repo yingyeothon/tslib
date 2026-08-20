@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getLambdaS3Logger } from "../src/index.js";
+import { createLambdaS3Logger } from "../src/index.js";
 import type { Appended } from "./helpers.js";
 import { fakeS3cbClient, parseLines } from "./helpers.js";
 
@@ -24,7 +24,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("getLambdaS3Logger", () => {
+describe("createLambdaS3Logger", () => {
   it("runs the legacy basic lambda scenario", async () => {
     const consoleSpies = [
       vi.spyOn(console, "debug").mockImplementation(() => undefined),
@@ -33,7 +33,7 @@ describe("getLambdaS3Logger", () => {
     ];
 
     const appends: Appended[] = [];
-    const { logger, flush, updateSystemId } = getLambdaS3Logger({
+    const { logger, flush, updateSystemId } = createLambdaS3Logger({
       // Lambda information
       systemName: "HelloWorld",
       lambdaId: "2f40adbe-b450-40fe-9796-cc3d072b4c62",
@@ -90,7 +90,7 @@ describe("getLambdaS3Logger", () => {
       .spyOn(console, "info")
       .mockImplementation(() => undefined);
 
-    const { logger, flush } = getLambdaS3Logger({
+    const { logger, flush } = createLambdaS3Logger({
       systemName: "OnlyName",
       severity: "debug",
       client: fakeS3cbClient([]),
@@ -112,7 +112,7 @@ describe("getLambdaS3Logger", () => {
   });
 
   it("throws when none of asKey, logKeyPrefix and systemName is given", () => {
-    expect(() => getLambdaS3Logger({ client: fakeS3cbClient([]) })).toThrow(
+    expect(() => createLambdaS3Logger({ client: fakeS3cbClient([]) })).toThrow(
       "Please set one of `asKey`, `logKeyPrefix` and `systemName`",
     );
   });
@@ -120,7 +120,7 @@ describe("getLambdaS3Logger", () => {
   it("builds the log key without a prefix when only systemName is set", async () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     const appends: Appended[] = [];
-    const { logger, flush } = getLambdaS3Logger({
+    const { logger, flush } = createLambdaS3Logger({
       systemName: "Solo",
       client: fakeS3cbClient(appends),
     });
@@ -133,7 +133,7 @@ describe("getLambdaS3Logger", () => {
   it("prefers a user-provided asKey over the generated one", async () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const appends: Appended[] = [];
-    const { logger, flush } = getLambdaS3Logger({
+    const { logger, flush } = createLambdaS3Logger({
       systemName: "Ignored",
       asKey: (_date, severity) => `custom/${severity}`,
       severity: "debug",
@@ -147,7 +147,7 @@ describe("getLambdaS3Logger", () => {
 
   it("rejects the flush when the underlying append fails", async () => {
     vi.spyOn(console, "info").mockImplementation(() => undefined);
-    const { logger, flush } = getLambdaS3Logger({
+    const { logger, flush } = createLambdaS3Logger({
       systemName: "Broken",
       client: fakeS3cbClient([], () => Promise.reject(new Error("s3 down"))),
     });

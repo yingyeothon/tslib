@@ -1,3 +1,4 @@
+import { nullLogger } from "@yingyeothon/logger";
 import type { AwaiterResolve } from "./awaiter.js";
 import { notifyCompletion, notifyCompletions } from "./awaiting.js";
 import type {
@@ -8,7 +9,6 @@ import type {
   ActorSingleMessageHandler,
 } from "./environment.js";
 import type { LockAcquire, LockRelease } from "./lock.js";
-import { noopLogger } from "./logger.js";
 import type { AwaiterMeta, UserMessage } from "./message.js";
 import { AwaitPolicy } from "./message.js";
 import type {
@@ -18,7 +18,7 @@ import type {
 } from "./queue.js";
 import type { ActorShift } from "./shift.js";
 
-export interface ActorProcessOptions {
+export interface TryToProcessOptions {
   /**
    * A flag that decides whether to process the actor's message queue only once or continue.
    * Combining `aliveMillis` can lead to complex situations, so please refer to `aliveMillis` comment.
@@ -49,23 +49,25 @@ export interface ActorProcessOptions {
   shiftable?: boolean;
 }
 
-export type ActorSingleEnv<T> = ActorProperty &
+export type ActorSingleOptions<T> = ActorProperty &
   ActorLogger & { queue: QueueSingleConsumer & QueueLength } & {
     awaiter: AwaiterResolve;
   } & ActorSingleMessageHandler<T> &
   ActorErrorHandler;
 
-export type ActorBulkEnv<T> = ActorProperty &
+export type ActorBulkOptions<T> = ActorProperty &
   ActorLogger & { queue: QueueBulkConsumer & QueueLength } & {
     awaiter: AwaiterResolve;
   } & ActorMessageBulkConsumer<T> &
   ActorErrorHandler;
 
-export type ActorLoopEnvironment<T> = (ActorSingleEnv<T> | ActorBulkEnv<T>) & {
+export type ActorLoopOptions<T> = (
+  ActorSingleOptions<T> | ActorBulkOptions<T>
+) & {
   lock: LockAcquire & LockRelease;
 };
 
-export type ActorProcessEnvironment<T> = ActorLoopEnvironment<T> & {
+export type ActorProcessOptions<T> = ActorLoopOptions<T> & {
   shift?: ActorShift;
 };
 
@@ -74,10 +76,10 @@ export type ActorProcessEnvironment<T> = ActorLoopEnvironment<T> & {
  * Returns the metadata of every message processed by this call.
  */
 export async function tryToProcess<T>(
-  env: ActorProcessEnvironment<T>,
-  { oneShot, aliveMillis, shiftable }: ActorProcessOptions = {},
+  env: ActorProcessOptions<T>,
+  { oneShot, aliveMillis, shiftable }: TryToProcessOptions = {},
 ): Promise<AwaiterMeta[]> {
-  const { logger = noopLogger, id, shift } = env;
+  const { logger = nullLogger, id, shift } = env;
   const maybeOneShot = oneShot === undefined && aliveMillis === undefined;
 
   const startMillis = Date.now();
@@ -93,7 +95,7 @@ export async function tryToProcess<T>(
 
     // Shift to new actor when a container has been timeout.
     if (!isAlive() && shiftable) {
-      logger.debug("actor", "shift-timeout", id);
+      logger.debug("shift on timeout", { actorId: id });
       if (shift) {
         await maybeAwait(shift(id));
       }
@@ -108,18 +110,18 @@ export async function tryToProcess<T>(
 }
 
 async function processLoop<T>(
-  env: ActorLoopEnvironment<T>,
+  env: ActorLoopOptions<T>,
   isAlive: () => boolean,
 ): Promise<AwaiterMeta[]> {
-  const { id, queue, lock, logger = noopLogger } = env;
+  const { id, queue, lock, logger = nullLogger } = env;
 
   const messageMetas: AwaiterMeta[] = [];
-  logger.debug("actor", "process-loop", id);
+  logger.debug("process loop", { actorId: id });
   while (isAlive()) {
     // Do nothing if cannot get the lock.
-    logger.debug("actor", "try-to-lock", id);
+    logger.debug("try to lock", { actorId: id });
     if (!(await lock.tryAcquire(id))) {
-      logger.debug("actor", "cannot-lock", id);
+      logger.debug("cannot lock", { actorId: id });
       break;
     }
 
@@ -135,7 +137,7 @@ async function processLoop<T>(
     messageMetas.push(...localMetas);
 
     // Whatever its reason, release the lock.
-    logger.debug("actor", "release-lock", id);
+    logger.debug("release lock", { actorId: id });
     await lock.release(id);
 
     // Notify the end of process to awaiters.
@@ -147,7 +149,7 @@ async function processLoop<T>(
     // There is no messages in the queue after unlocked,
     // We can get off from it.
     if ((await queue.size(id)) === 0) {
-      logger.debug("actor", "empty-queue", id);
+      logger.debug("empty queue", { actorId: id });
       break;
     }
 
@@ -158,7 +160,7 @@ async function processLoop<T>(
 }
 
 async function processInSingleMode<T>(
-  env: ActorSingleEnv<T>,
+  env: ActorSingleOptions<T>,
   isAlive: () => boolean,
 ): Promise<AwaiterMeta[]> {
   if (!isAlive()) {
@@ -182,12 +184,12 @@ async function processInSingleMode<T>(
 }
 
 async function processQueueInLock<T>(
-  env: ActorSingleEnv<T>,
+  env: ActorSingleOptions<T>,
   isAlive: () => boolean,
 ): Promise<AwaiterMeta[]> {
-  const { queue, id, logger = noopLogger } = env;
+  const { queue, id, logger = nullLogger } = env;
 
-  logger.debug("actor", "process-queue-in-single", id);
+  logger.debug("process queue in single mode", { actorId: id });
 
   // Process messages as possible as it can while alive.
   const messageMetas: AwaiterMeta[] = [];
@@ -195,11 +197,11 @@ async function processQueueInLock<T>(
   while (isAlive() && (await queue.size(id)) > 0) {
     // Step 1. Peek a message from the queue to process it.
     const message = await queue.peek<UserMessage<T>>(id);
-    logger.debug("actor", "get-message", id, message);
+    logger.debug("get message", { actorId: id, message });
 
     // Step 1-1. We should stop to process when the queue is broken.
     if (!message) {
-      logger.debug("actor", "invalid-message", id, message);
+      logger.debug("invalid message", { actorId: id, message });
       break;
     }
 
@@ -216,7 +218,7 @@ async function processQueueInLock<T>(
     // Step 4. Delete a message from the queue.
     // It will help to preserve the order of messages from broken handlers.
     await queue.pop(id);
-    logger.debug("actor", "delete-message", id);
+    logger.debug("delete message", { actorId: id });
   }
 
   await Promise.all(notifyPromises);
@@ -224,15 +226,19 @@ async function processQueueInLock<T>(
 }
 
 async function processMessage<T>(
-  env: ActorSingleEnv<T>,
+  env: ActorSingleOptions<T>,
   message: UserMessage<T>,
 ): Promise<void> {
-  const { id, logger = noopLogger, onMessage, onError } = env;
+  const { id, logger = nullLogger, onMessage, onError } = env;
   try {
-    logger.debug("actor", "process-user-message", id, message);
+    logger.debug("process user message", { actorId: id, message });
     await maybeAwait(onMessage(message.item));
   } catch (error) {
-    logger.error("actor", "process-user-message-error", id, message, error);
+    logger.error("process user message error", {
+      actorId: id,
+      message,
+      error,
+    });
     if (onError) {
       await maybeAwait(onError(error as Error));
     }
@@ -240,27 +246,27 @@ async function processMessage<T>(
 }
 
 async function processInBulkMode<T>(
-  env: ActorBulkEnv<T>,
+  env: ActorBulkOptions<T>,
   isAlive: () => boolean,
 ): Promise<AwaiterMeta[]> {
-  const { queue, id, logger = noopLogger, onMessages, onError } = env;
-  logger.debug("actor", "process-queue-in-bulk", id);
+  const { queue, id, logger = nullLogger, onMessages, onError } = env;
+  logger.debug("process queue in bulk mode", { actorId: id });
 
   // Process messages as possible as it can while alive.
   const messageMetas: AwaiterMeta[] = [];
   while (isAlive()) {
     const messages: UserMessage<T>[] = await queue.flush(id);
-    logger.debug("actor", "get-messages", id, messages.length);
+    logger.debug("get messages", { actorId: id, count: messages.length });
     if (messages.length === 0) {
       break;
     }
 
     // Step 2. Process messages.
     try {
-      logger.debug("actor", "process-messages", id, messages);
+      logger.debug("process messages", { actorId: id, messages });
       await maybeAwait(onMessages(messages.map((message) => message.item)));
     } catch (error) {
-      logger.error("actor", "process-messages-error", id, messages, error);
+      logger.error("process messages error", { actorId: id, messages, error });
       if (onError) {
         await maybeAwait(onError(error as Error));
       }

@@ -1,6 +1,6 @@
 # @yingyeothon/naive-socket
 
-Zero-dependency TCP socket client over `node:net` with a serialized request queue, per-request timeouts, pluggable response matching (regex, fixed length, or a custom function), and automatic reconnection. Useful for talking to simple line- or length-based text protocols (for example Redis) without pulling in a full client library.
+Minimal TCP socket client over `node:net` with a serialized request queue, per-request timeouts, pluggable response matching (regex, fixed length, or a custom function), and automatic reconnection. Useful for talking to simple line- or length-based text protocols (for example Redis) without pulling in a full client library.
 
 ## Install
 
@@ -13,9 +13,9 @@ npm install @yingyeothon/naive-socket
 ESM:
 
 ```ts
-import { NaiveSocket, withMatch } from "@yingyeothon/naive-socket";
+import { createNaiveSocket, withMatch } from "@yingyeothon/naive-socket";
 
-const socket = new NaiveSocket({
+const socket = createNaiveSocket({
   host: "localhost",
   port: 6379,
   connectionRetryInterval: 5000, // negative value disables auto-reconnect
@@ -50,8 +50,8 @@ socket.disconnect();
 CJS:
 
 ```js
-const { NaiveSocket } = require("@yingyeothon/naive-socket");
-const socket = new NaiveSocket({ host: "localhost", port: 6379 });
+const { createNaiveSocket } = require("@yingyeothon/naive-socket");
+const socket = createNaiveSocket({ host: "localhost", port: 6379 });
 socket
   .send({ message: "PING\r\n", timeoutMillis: 500 })
   .then(console.log)
@@ -62,18 +62,21 @@ Requests are written one at a time: the next queued message is sent only after t
 
 ## Public API
 
-- `NaiveSocket` — the client; `send(request)` returns `Promise<string>`, `disconnect()` rejects all pending requests with `DeadSocket`
-- `NaiveSocketOptions` — `{ host, port, connectionRetryInterval?, logger?, onConnectionStateChanged? }` (type)
+- `createNaiveSocket(options)` — create a `NaiveSocket` client
+- `NaiveSocket` — the client; `send(request)` returns `Promise<string>`, `disconnect()` rejects all pending requests with `DeadSocket` (type)
+- `NaiveSocketOptions` — `{ host, port, connectionRetryInterval?, logger?, onConnectionStateChanged? }`; `logger` is a `Logger` from `@yingyeothon/logger` and defaults to `nullLogger` (type)
 - `SendRequest` — `{ message, fulfill?, timeoutMillis?, urgent? }` (type)
 - `Fulfill` — `((buffer: string) => number) | RegExp | number` (type)
 - `ConnectionState` — `Connecting | Connected | Disconnected` (enum)
 - `ConnectionStateListener` — callback for `onConnectionStateChanged` (type)
-- `Logger` — `{ info, warn, error }` sink used for internal logging (type)
-- `TextMatch` — cursor-based text scanner: `capture(endMark)`, `values()`, `evaluate()`
+- `createTextMatch(buffer)` — create a `TextMatch` scanner over a buffer
+- `TextMatch` — cursor-based text scanner: `capture(endMark)`, `values()`, `evaluate()` (type)
 - `withMatch(chain)` — lifts a `TextMatch` chain into a `fulfill` function
 - `TextMatchChain` — `(m: TextMatch) => TextMatch` (type)
 
 ## Migrating from the legacy package
 
-- All exports are named now: `import NaiveSocket from "naive-socket"` becomes `import { NaiveSocket } from "@yingyeothon/naive-socket"`, and `import TextMatch, { withMatch } from "naive-socket/lib/match"` becomes `import { TextMatch, withMatch } from "@yingyeothon/naive-socket"` — deep imports are no longer supported.
+- All exports are named now: `import NaiveSocket from "naive-socket"` becomes `import { createNaiveSocket } from "@yingyeothon/naive-socket"`, and `import TextMatch, { withMatch } from "naive-socket/lib/match"` becomes `import { createTextMatch, withMatch } from "@yingyeothon/naive-socket"` — deep imports are no longer supported.
+- The exported classes are gone: `new NaiveSocket(options)` becomes `createNaiveSocket(options)` and `new TextMatch(buffer)` becomes `createTextMatch(buffer)`; `NaiveSocket` and `TextMatch` remain as interface types.
+- The package-local `Logger` interface was removed; pass a `Logger` from `@yingyeothon/logger` as `options.logger`. The default is `nullLogger` (silent) — the old behavior of logging warnings/errors to the console and info logs when the `DEBUG` environment variable was set is gone.
 - The package ships dual ESM/CJS with bundled types; runtime behavior of `send`, `disconnect`, fulfill strategies, timeouts, urgent ordering, and auto-reconnect is unchanged.

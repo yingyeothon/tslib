@@ -1,11 +1,11 @@
 import type { AwaiterWait } from "./awaiter.js";
 import { awaitMessage } from "./awaiting.js";
-import type { ActorEnqueueEnvironment } from "./enqueue.js";
+import type { ActorEnqueueOptions } from "./enqueue.js";
 import { enqueue } from "./enqueue.js";
 import type { UserMessageItem, UserMessageMeta } from "./message.js";
 import { AwaitPolicy } from "./message.js";
 
-export type ActorPostEnvironment = ActorEnqueueEnvironment & {
+export type ActorPostOptions = ActorEnqueueOptions & {
   awaiter: AwaiterWait;
 };
 
@@ -17,7 +17,7 @@ export type ActorPostEnvironment = ActorEnqueueEnvironment & {
  * with `aliveMillis` and no `oneShot`.
  */
 export async function post<T>(
-  env: ActorPostEnvironment,
+  env: ActorPostOptions,
   input: UserMessageItem<T> & Partial<UserMessageMeta>,
 ): Promise<boolean> {
   const message = await enqueue(env, input);

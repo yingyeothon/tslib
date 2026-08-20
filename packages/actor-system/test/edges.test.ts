@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   AwaitPolicy,
-  InMemoryAwaiter,
-  InMemoryLock,
-  InMemoryQueue,
+  createInMemoryAwaiter,
+  createInMemoryLock,
+  createInMemoryQueue,
   post,
   send,
   singleConsumer,
@@ -16,9 +16,9 @@ interface AdderMessage {
 
 function newSubsys() {
   return {
-    queue: new InMemoryQueue(),
-    lock: new InMemoryLock(),
-    awaiter: new InMemoryAwaiter(),
+    queue: createInMemoryQueue(),
+    lock: createInMemoryLock(),
+    awaiter: createInMemoryAwaiter(),
   };
 }
 
@@ -100,15 +100,17 @@ describe("single-mode error handling", () => {
     const env = {
       ...singleConsumer,
       id: "bad-awaiter",
-      queue: new InMemoryQueue(),
-      lock: new InMemoryLock(),
+      queue: createInMemoryQueue(),
+      lock: createInMemoryLock(),
       awaiter: {
         resolve: () => Promise.reject(new Error("resolve-broken")),
         wait: () => Promise.resolve(true),
       },
       logger: {
+        severity: "error" as const,
         debug: () => undefined,
         info: () => undefined,
+        warn: () => undefined,
         error: (...args: unknown[]) => {
           logged.push(args);
         },
@@ -162,8 +164,8 @@ describe("broken or expiring environments", () => {
     const env = {
       ...singleConsumer,
       id: "broken-queue",
-      lock: new InMemoryLock(),
-      awaiter: new InMemoryAwaiter(),
+      lock: createInMemoryLock(),
+      awaiter: createInMemoryAwaiter(),
       queue: {
         push: () => Promise.resolve(),
         size: () => Promise.resolve(sizes.shift() ?? 0),

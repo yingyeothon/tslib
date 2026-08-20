@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { RedisSimple } from "../src/index.js";
+import { createRedisSimple } from "../src/index.js";
 import { testbed } from "./fixture.js";
 
 interface Stuff {
@@ -8,7 +8,7 @@ interface Stuff {
 }
 
 testbed("redis-simple", async (config) => {
-  const { get, set, del, cache } = new RedisSimple({ config });
+  const { get, set, del, cache } = createRedisSimple({ config });
 
   const stuff: Stuff = { a: 100, b: "world" };
   expect(await get<Stuff>("hello")).toBeNull();

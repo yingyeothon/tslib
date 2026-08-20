@@ -1,13 +1,13 @@
-import type { ActorSystemLogger } from "./logger.js";
+import type { Logger } from "@yingyeothon/logger";
 
 /** The identity of an actor. */
 export interface ActorProperty {
   id: string;
 }
 
-/** An optional logger for actor internals. */
+/** An optional logger for actor internals. Defaults to `nullLogger`. */
 export interface ActorLogger {
-  logger?: ActorSystemLogger;
+  logger?: Logger;
 }
 
 /** An optional error hook invoked when a message handler throws. */
@@ -29,8 +29,8 @@ export interface ActorMessageBulkConsumer<T> {
   onMessages: (messages: T[]) => unknown;
 }
 
-/** Spread into an environment to select single-message consumption. */
+/** Spread into an options object to select single-message consumption. */
 export const singleConsumer: { _consume: "single" } = { _consume: "single" };
 
-/** Spread into an environment to select bulk-message consumption. */
+/** Spread into an options object to select bulk-message consumption. */
 export const bulkConsumer: { _consume: "bulk" } = { _consume: "bulk" };

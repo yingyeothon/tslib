@@ -1,4 +1,4 @@
-import type { RedisConfig } from "../connection.js";
+import type { RedisConnectionOptions } from "../connection.js";
 import {
   redisSimpleCache,
   type RedisSimpleCacheFriends,
@@ -10,69 +10,59 @@ import { redisSimpleGet } from "./get.js";
 import { redisSimpleSet } from "./set.js";
 
 export interface RedisSimpleOptions {
-  config: RedisConfig;
+  config: RedisConnectionOptions;
   encode?: (input: unknown) => string;
   decode?: <T>(input: string) => T;
   keyPrefix?: string;
 }
 
-export class RedisSimple {
-  private readonly config: RedisConfig;
-  private readonly encode: (input: unknown) => string;
-  private readonly decode: <T>(input: string) => T;
-  private readonly keyPrefix: string;
-
-  constructor({
-    config,
-    encode = JSON.stringify,
-    decode = JSON.parse,
-    keyPrefix = "",
-  }: RedisSimpleOptions) {
-    this.config = config;
-    this.encode = encode;
-    this.decode = decode;
-    this.keyPrefix = keyPrefix;
-  }
-
-  public cache = <A extends unknown[], R>(
+export interface RedisSimple {
+  cache: <A extends unknown[], R>(
     fn: RedisSimpleFn<A, R>,
-    {
-      cacheKey,
-      expirationMillis,
-    }: Pick<RedisSimpleCacheOptions<A, R>, "cacheKey" | "expirationMillis">,
-  ): RedisSimpleCacheFriends<A, R> => {
-    return redisSimpleCache<A, R>(fn, {
-      config: this.config,
-      cacheKey: (...args: A) => this.keyPrefix + cacheKey(...args),
-      encode: this.encode,
-      decode: this.decode,
-      expirationMillis,
-    });
-  };
-
-  public get = async <T>(key: string): Promise<T | null> => {
-    return await redisSimpleGet<T>({
-      config: this.config,
-      key,
-      decode: this.decode,
-    });
-  };
-
-  public set = async (
+    options: Pick<
+      RedisSimpleCacheOptions<A, R>,
+      "cacheKey" | "expirationMillis"
+    >,
+  ) => RedisSimpleCacheFriends<A, R>;
+  get: <T>(key: string) => Promise<T | null>;
+  set: (
     key: string,
     value: unknown,
     expirationMillis?: number,
-  ): Promise<boolean> => {
-    return await redisSimpleSet({
-      config: this.config,
-      key,
-      value,
-      expirationMillis,
-      encode: this.encode,
-    });
-  };
+  ) => Promise<boolean>;
+  del: (key: string) => Promise<number>;
+}
 
-  public del = async (key: string): Promise<number> => {
-    return await redisSimpleDel({ config: this.config, key });
+export function createRedisSimple({
+  config,
+  encode = JSON.stringify,
+  decode = JSON.parse,
+  keyPrefix = "",
+}: RedisSimpleOptions): RedisSimple {
+  return {
+    cache: <A extends unknown[], R>(
+      fn: RedisSimpleFn<A, R>,
+      {
+        cacheKey,
+        expirationMillis,
+      }: Pick<RedisSimpleCacheOptions<A, R>, "cacheKey" | "expirationMillis">,
+    ): RedisSimpleCacheFriends<A, R> =>
+      redisSimpleCache<A, R>(fn, {
+        config,
+        cacheKey: (...args: A) => keyPrefix + cacheKey(...args),
+        encode,
+        decode,
+        expirationMillis,
+      }),
+    get: async <T>(key: string): Promise<T | null> =>
+      await redisSimpleGet<T>({ config, key, decode }),
+    set: async (
+      key: string,
+      value: unknown,
+      expirationMillis?: number,
+    ): Promise<boolean> =>
+      await redisSimpleSet({ config, key, value, expirationMillis, encode }),
+    del: async (key: string): Promise<number> =>
+      await redisSimpleDel({ config, key }),
   };
 }

@@ -1,12 +1,8 @@
 import { Socket } from "node:net";
 
-import { decomposePromise, type DecomposedPromise } from "./promise.js";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 
-export interface Logger {
-  info: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-}
+import { decomposePromise, type DecomposedPromise } from "./promise.js";
 
 export enum ConnectionState {
   Connecting = "Connecting",
@@ -54,6 +50,18 @@ export interface SendRequest {
   urgent?: boolean;
 }
 
+/**
+ * A minimal TCP client over `node:net` with a serialized request queue,
+ * per-request timeouts, pluggable response matching, and auto-reconnect.
+ */
+export interface NaiveSocket {
+  /** Queue a request and resolve with its fulfilled response. */
+  send: (request: SendRequest) => Promise<string>;
+
+  /** Close the connection and reject all pending requests with `DeadSocket`. */
+  disconnect: () => void;
+}
+
 interface SendWork {
   message: string;
   fulfill: Fulfill;
@@ -62,19 +70,9 @@ interface SendWork {
   timer: NodeJS.Timeout | null;
 }
 
-const noLog = (): void => undefined;
+const noListener = (): void => undefined;
 
-const defaultLogger: Logger = {
-  info: process.env["DEBUG"] ? console.info : noLog,
-  warn: console.warn,
-  error: console.error,
-};
-
-/**
- * A minimal TCP client over `node:net` with a serialized request queue,
- * per-request timeouts, pluggable response matching, and auto-reconnect.
- */
-export class NaiveSocket {
+class NaiveSocketImpl implements NaiveSocket {
   private readonly host: string;
   private readonly port: number;
   private readonly logger: Logger;
@@ -91,8 +89,8 @@ export class NaiveSocket {
     host,
     port,
     connectionRetryInterval = 5000,
-    logger = defaultLogger,
-    onConnectionStateChanged = noLog,
+    logger = nullLogger,
+    onConnectionStateChanged = noListener,
   }: NaiveSocketOptions) {
     this.host = host;
     this.port = port;
@@ -297,6 +295,14 @@ export class NaiveSocket {
       this.retryToConnect();
     });
   };
+}
+
+/**
+ * Create a {@link NaiveSocket} connected lazily to `host:port`.
+ * Logging defaults to `nullLogger`; pass a `logger` to observe activity.
+ */
+export function createNaiveSocket(options: NaiveSocketOptions): NaiveSocket {
+  return new NaiveSocketImpl(options);
 }
 
 function fulfillByRegex(regex: RegExp, buffer: string): number {

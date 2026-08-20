@@ -43,5 +43,8 @@
     "url": "git+https://github.com/yingyeothon/tslib.git",
     "directory": "packages/actor-system"
   },
-  "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/actor-system#readme"
+  "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/actor-system#readme",
+  "dependencies": {
+    "@yingyeothon/logger": "workspace:*"
+  }
 }

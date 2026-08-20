@@ -3,48 +3,51 @@ import type { Versioned } from "./versioned.js";
 
 export type Values<V> = V[];
 
-export class ListDocument<V = string> {
-  constructor(
-    private readonly repository: Repository,
-    private readonly tupleKey: string,
-  ) {}
+export interface ListDocument<V = string> {
+  insert(value: V): Promise<Versioned<Values<V>>>;
+  deleteIf(filter: (input: V) => boolean): Promise<Versioned<Values<V>>>;
+  truncate(): Promise<void>;
+  read(): Promise<Versioned<Values<V>>>;
+  edit(modifier: (input: V[]) => V[]): Promise<Versioned<Values<V>>>;
+  view<U>(selector: (input: V[]) => U): Promise<U>;
+}
 
-  public async insert(value: V): Promise<Versioned<Values<V>>> {
-    return this.edit((values) => [...values, value]);
-  }
+export interface ListDocumentOptions {
+  repository: Repository;
+  key: string;
+}
 
-  public async deleteIf(
-    filter: (input: V) => boolean,
-  ): Promise<Versioned<Values<V>>> {
-    return this.edit((values) => values.filter((value) => !filter(value)));
-  }
+export function createListDocument<V = string>(
+  options: ListDocumentOptions,
+): ListDocument<V> {
+  const { repository, key } = options;
 
-  public async truncate(): Promise<void> {
-    return this.repository.delete(this.tupleKey);
-  }
-
-  public async read(): Promise<Versioned<Values<V>>> {
-    const actual = await this.repository.get<Versioned<Values<V>>>(
-      this.tupleKey,
-    );
+  async function read(): Promise<Versioned<Values<V>>> {
+    const actual = await repository.get<Versioned<Values<V>>>(key);
     return ensureDocument(actual);
   }
 
-  public async edit(
+  async function edit(
     modifier: (input: V[]) => V[],
   ): Promise<Versioned<Values<V>>> {
-    const doc = await this.read();
+    const doc = await read();
     const newDoc = {
       content: modifier(doc.content),
       version: doc.version + 1,
     };
-    await this.repository.set(this.tupleKey, newDoc);
+    await repository.set(key, newDoc);
     return newDoc;
   }
 
-  public async view<U>(selector: (input: V[]) => U): Promise<U> {
-    return selector((await this.read()).content);
-  }
+  return {
+    read,
+    edit,
+    insert: (value) => edit((values) => [...values, value]),
+    deleteIf: (filter) =>
+      edit((values) => values.filter((value) => !filter(value))),
+    truncate: () => repository.delete(key),
+    view: async (selector) => selector((await read()).content),
+  };
 }
 
 function ensureDocument<V>(

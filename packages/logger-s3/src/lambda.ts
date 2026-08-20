@@ -1,8 +1,8 @@
 import { serializeError } from "serialize-error";
 
 import { yyyyMMdd } from "./internal.js";
-import type { S3Logger, S3LoggerEnv } from "./logger.js";
-import { getS3Logger } from "./logger.js";
+import type { S3Logger, S3LoggerOptions } from "./logger.js";
+import { createS3Logger } from "./logger.js";
 import type { LogTuple, WritableLogSeverity } from "./types.js";
 
 interface LambdaInfo {
@@ -12,18 +12,20 @@ interface LambdaInfo {
   lambdaId?: string;
 }
 
-export type LambdaS3LoggerEnv = Omit<S3LoggerEnv, "asKey"> &
+export type LambdaS3LoggerOptions = Omit<S3LoggerOptions, "asKey"> &
   LambdaInfo & {
     logKeyPrefix?: string;
-    asKey?: S3LoggerEnv["asKey"];
+    asKey?: S3LoggerOptions["asKey"];
   };
 
 export interface LambdaS3Logger extends S3Logger {
   updateSystemId: (systemId: string) => void;
 }
 
-export function getLambdaS3Logger(env: LambdaS3LoggerEnv): LambdaS3Logger {
-  const { systemName, handlerName, lambdaId } = env;
+export function createLambdaS3Logger(
+  options: LambdaS3LoggerOptions,
+): LambdaS3Logger {
+  const { systemName, handlerName, lambdaId } = options;
   function serialize(
     timestamp: Date,
     level: WritableLogSeverity,
@@ -34,7 +36,7 @@ export function getLambdaS3Logger(env: LambdaS3LoggerEnv): LambdaS3Logger {
         timestamp: timestamp.toISOString(),
         level,
         systemName,
-        systemId: env.systemId,
+        systemId: options.systemId,
         handlerName,
         lambdaId,
         args: args.map((arg) =>
@@ -48,7 +50,7 @@ export function getLambdaS3Logger(env: LambdaS3LoggerEnv): LambdaS3Logger {
     console[severity](
       timestamp.toISOString(),
       severity.toUpperCase(),
-      ...[systemName, env.systemId, handlerName, lambdaId].map((v) =>
+      ...[systemName, options.systemId, handlerName, lambdaId].map((v) =>
         v === undefined ? "null" : v,
       ),
       ...args,
@@ -56,21 +58,21 @@ export function getLambdaS3Logger(env: LambdaS3LoggerEnv): LambdaS3Logger {
   }
 
   function updateSystemId(systemId: string) {
-    env.systemId = systemId;
+    options.systemId = systemId;
   }
 
-  if (!env.asKey && !env.logKeyPrefix && !env.systemName) {
+  if (!options.asKey && !options.logKeyPrefix && !options.systemName) {
     throw new Error(
       "Please set one of `asKey`, `logKeyPrefix` and `systemName` at least",
     );
   }
 
-  const s3Logger = getS3Logger({
+  const s3Logger = createS3Logger({
     asKey: () =>
-      [env.logKeyPrefix, systemName, yyyyMMdd()].filter(Boolean).join("/"),
+      [options.logKeyPrefix, systemName, yyyyMMdd()].filter(Boolean).join("/"),
     serializer: serialize,
     withConsole: writeConsole,
-    ...env,
+    ...options,
   });
   return { ...s3Logger, updateSystemId };
 }

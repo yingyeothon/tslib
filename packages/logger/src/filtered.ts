@@ -4,22 +4,32 @@ const levels: Record<LogSeverity, number> = {
   none: Number.POSITIVE_INFINITY,
   debug: 100,
   info: 500,
+  warn: 700,
   error: 900,
 };
 
-export class FilteredLogger implements Logger {
-  constructor(
-    public severity: LogSeverity,
-    private readonly writer: LogWriter,
-  ) {}
+export interface FilteredLoggerOptions {
+  severity: LogSeverity;
+  writer: LogWriter;
+}
 
-  public debug = (...args: unknown[]): void => this.write("debug", ...args);
-  public info = (...args: unknown[]): void => this.write("info", ...args);
-  public error = (...args: unknown[]): void => this.write("error", ...args);
-
-  private write(severity: Exclude<LogSeverity, "none">, ...args: unknown[]) {
-    if (levels[severity] >= levels[this.severity]) {
-      this.writer[severity](...args);
-    }
-  }
+export function createFilteredLogger({
+  severity,
+  writer,
+}: FilteredLoggerOptions): Logger {
+  const write =
+    (level: Exclude<LogSeverity, "none">) =>
+    (...args: unknown[]): void => {
+      if (levels[level] >= levels[logger.severity]) {
+        writer[level](...args);
+      }
+    };
+  const logger: Logger = {
+    severity,
+    debug: write("debug"),
+    info: write("info"),
+    warn: write("warn"),
+    error: write("error"),
+  };
+  return logger;
 }

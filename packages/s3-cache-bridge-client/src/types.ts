@@ -1,4 +1,4 @@
-export interface S3cbEnv {
+export interface S3cbClientOptions {
   apiUrl: string;
   apiId?: string;
   apiPassword?: string;

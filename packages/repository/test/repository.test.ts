@@ -1,28 +1,28 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  InMemoryRepository,
-  ListDocument,
-  MapDocument,
-  SimpleRepository,
+  createInMemoryRepository,
+  createListDocument,
+  createMapDocument,
+  createRepositoryFromKV,
   type ExpirableRepository,
   type Repository,
 } from "../src/index.js";
 
-describe("InMemoryRepository", () => {
+describe("createInMemoryRepository", () => {
   it("returns the stored value after set", async () => {
-    const mem: Repository = new InMemoryRepository();
+    const mem: Repository = createInMemoryRepository();
     const expected = { hi: "there" };
     await mem.set("hello", expected);
     expect(await mem.get("hello")).toEqual(expected);
   });
 
   it("returns undefined for an absent key", async () => {
-    const mem: Repository = new InMemoryRepository();
+    const mem: Repository = createInMemoryRepository();
     expect(await mem.get("hello")).toBeUndefined();
   });
 
   it("returns undefined after delete", async () => {
-    const mem: Repository = new InMemoryRepository();
+    const mem: Repository = createInMemoryRepository();
     const expected = { hi: "there" };
     await mem.set("hello", expected);
     expect(await mem.get("hello")).toEqual(expected);
@@ -32,12 +32,12 @@ describe("InMemoryRepository", () => {
   });
 
   it("deleting an absent key is a no-op", async () => {
-    const mem: Repository = new InMemoryRepository();
+    const mem: Repository = createInMemoryRepository();
     await expect(mem.delete("nothing")).resolves.toBeUndefined();
   });
 
   it("set overwrites a previous value", async () => {
-    const mem: Repository = new InMemoryRepository();
+    const mem: Repository = createInMemoryRepository();
     await mem.set("key", "first");
     await mem.set("key", "second");
     expect(await mem.get("key")).toBe("second");
@@ -53,7 +53,7 @@ describe("InMemoryRepository", () => {
     });
 
     it("returns the value before the TTL elapses and undefined after", async () => {
-      const mem: ExpirableRepository = new InMemoryRepository();
+      const mem: ExpirableRepository = createInMemoryRepository();
       const expected = { hi: "there" };
       await mem.setWithExpire("hello", expected, 10);
       expect(await mem.get("hello")).toEqual(expected);
@@ -66,7 +66,7 @@ describe("InMemoryRepository", () => {
     });
 
     it("treats a non-positive TTL as never expiring", async () => {
-      const mem: ExpirableRepository = new InMemoryRepository();
+      const mem: ExpirableRepository = createInMemoryRepository();
       await mem.setWithExpire("zero", "value", 0);
       await mem.setWithExpire("negative", "value", -5);
 
@@ -76,7 +76,7 @@ describe("InMemoryRepository", () => {
     });
 
     it("set clears a previous expiration", async () => {
-      const mem: ExpirableRepository = new InMemoryRepository();
+      const mem: ExpirableRepository = createInMemoryRepository();
       await mem.setWithExpire("key", "expiring", 10);
       await mem.set("key", "persistent");
 
@@ -85,7 +85,7 @@ describe("InMemoryRepository", () => {
     });
 
     it("setWithExpire refreshes the TTL of an existing key", async () => {
-      const mem: ExpirableRepository = new InMemoryRepository();
+      const mem: ExpirableRepository = createInMemoryRepository();
       await mem.setWithExpire("key", "v1", 10);
       vi.advanceTimersByTime(8);
       await mem.setWithExpire("key", "v2", 10);
@@ -98,59 +98,82 @@ describe("InMemoryRepository", () => {
   });
 });
 
-describe("SimpleRepository document factories", () => {
-  it("creates a ListDocument bound to the repository", async () => {
-    const mem = new InMemoryRepository();
-    const list = mem.getListDocument<string>("list-key");
-    expect(list).toBeInstanceOf(ListDocument);
+describe("createRepositoryFromKV", () => {
+  function newStringStore() {
+    const store = new Map<string, string>();
+    return {
+      store,
+      primitives: {
+        get: (key: string) => Promise.resolve(store.get(key)),
+        set: (key: string, serialized: string) => {
+          store.set(key, serialized);
+          return Promise.resolve();
+        },
+        delete: (key: string) => {
+          store.delete(key);
+          return Promise.resolve();
+        },
+      },
+    };
+  }
 
-    await list.insert("a");
-    expect(await mem.get("list-key")).toEqual({
-      version: 1,
-      content: ["a"],
-    });
+  it("round-trips structured values through JSON serialization", async () => {
+    const { store, primitives } = newStringStore();
+    const repo = createRepositoryFromKV(primitives);
+    const expected = { hi: "there", n: 42, list: [1, 2] };
+    await repo.set("key", expected);
+    expect(store.get("key")).toBe(JSON.stringify(expected));
+    expect(await repo.get("key")).toEqual(expected);
   });
 
-  it("creates a MapDocument bound to the repository", async () => {
-    const mem = new InMemoryRepository();
-    const map = mem.getMapDocument<string>("map-key");
-    expect(map).toBeInstanceOf(MapDocument);
-
-    await map.insertOrUpdate("k", "v");
-    expect(await mem.get("map-key")).toEqual({
-      version: 1,
-      content: { k: "v" },
-    });
+  it("returns undefined when the primitive store has no value", async () => {
+    const repo = createRepositoryFromKV(newStringStore().primitives);
+    expect(await repo.get("absent")).toBeUndefined();
   });
 
-  it("works with a custom SimpleRepository subclass", async () => {
-    class RecordRepository extends SimpleRepository {
-      public readonly store: Record<string, unknown> = {};
-      public get<T>(key: string): Promise<T | undefined> {
-        return Promise.resolve(this.store[key] as T | undefined);
-      }
-      public set<T>(key: string, value: T): Promise<void> {
-        this.store[key] = value;
-        return Promise.resolve();
-      }
-      public delete(key: string): Promise<void> {
-        delete this.store[key];
-        return Promise.resolve();
-      }
-    }
+  it("delete removes the underlying entry", async () => {
+    const { store, primitives } = newStringStore();
+    const repo = createRepositoryFromKV(primitives);
+    await repo.set("key", "value");
+    await repo.delete("key");
+    expect(store.has("key")).toBe(false);
+    expect(await repo.get("key")).toBeUndefined();
+  });
 
-    const repo = new RecordRepository();
-    const list = repo.getListDocument<number>("numbers");
+  it("does not expose setWithExpire when the primitive is absent", () => {
+    const repo = createRepositoryFromKV(newStringStore().primitives);
+    expect("setWithExpire" in repo).toBe(false);
+  });
+
+  it("exposes setWithExpire when the primitive is provided", async () => {
+    const { store, primitives } = newStringStore();
+    const calls: Array<[string, string, number]> = [];
+    const repo = createRepositoryFromKV({
+      ...primitives,
+      setWithExpire: (key, serialized, expiresInMillis) => {
+        calls.push([key, serialized, expiresInMillis]);
+        store.set(key, serialized);
+        return Promise.resolve();
+      },
+    });
+    await repo.setWithExpire("key", { a: 1 }, 1000);
+    expect(calls).toEqual([["key", JSON.stringify({ a: 1 }), 1000]]);
+    expect(await repo.get("key")).toEqual({ a: 1 });
+  });
+
+  it("documents work on top of a KV-built repository", async () => {
+    const repo = createRepositoryFromKV(newStringStore().primitives);
+    const list = createListDocument<number>({ repository: repo, key: "n" });
     await list.insert(1);
     await list.insert(2);
     expect(await list.view((values) => values.length)).toBe(2);
   });
 });
 
-describe("ListDocument", () => {
+describe("createListDocument", () => {
   function newList<V = string>(key = "list") {
-    const mem = new InMemoryRepository();
-    return { mem, list: new ListDocument<V>(mem, key) };
+    const mem = createInMemoryRepository();
+    return { mem, list: createListDocument<V>({ repository: mem, key }) };
   }
 
   it("reads an empty document at version 0 when nothing is stored", async () => {
@@ -164,6 +187,15 @@ describe("ListDocument", () => {
     expect(await list.insert("b")).toEqual({
       version: 2,
       content: ["a", "b"],
+    });
+  });
+
+  it("writes documents under the given key", async () => {
+    const { mem, list } = newList("list-key");
+    await list.insert("a");
+    expect(await mem.get("list-key")).toEqual({
+      version: 1,
+      content: ["a"],
     });
   });
 
@@ -212,10 +244,10 @@ describe("ListDocument", () => {
   });
 });
 
-describe("MapDocument", () => {
+describe("createMapDocument", () => {
   function newMap<V = string>(key = "map") {
-    const mem = new InMemoryRepository();
-    return { mem, map: new MapDocument<V>(mem, key) };
+    const mem = createInMemoryRepository();
+    return { mem, map: createMapDocument<V>({ repository: mem, key }) };
   }
 
   it("reads an empty document at version 0 when nothing is stored", async () => {
@@ -232,6 +264,15 @@ describe("MapDocument", () => {
     expect(await map.insertOrUpdate("k", "v2")).toEqual({
       version: 2,
       content: { k: "v2" },
+    });
+  });
+
+  it("writes documents under the given key", async () => {
+    const { mem, map } = newMap("map-key");
+    await map.insertOrUpdate("k", "v");
+    expect(await mem.get("map-key")).toEqual({
+      version: 1,
+      content: { k: "v" },
     });
   });
 

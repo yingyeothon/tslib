@@ -14,7 +14,7 @@ ESM:
 
 ```ts
 import {
-  redisConnect,
+  createRedisConnection,
   redisGet,
   redisSet,
   redisDel,
@@ -22,7 +22,7 @@ import {
   redisLpop,
 } from "@yingyeothon/naive-redis";
 
-const connection = redisConnect({
+const connection = createRedisConnection({
   host: "localhost",
   port: 6379,
   password: "optional-password",
@@ -51,9 +51,9 @@ redisSimpleWork({ host: "localhost" }, async (connection) => {
 The simple layer manages connections for you and (de)serializes values as JSON:
 
 ```ts
-import { RedisSimple, redisSimpleCache } from "@yingyeothon/naive-redis";
+import { createRedisSimple, redisSimpleCache } from "@yingyeothon/naive-redis";
 
-const simple = new RedisSimple({ config: { host: "localhost" } });
+const simple = createRedisSimple({ config: { host: "localhost" } });
 await simple.set("stuff", { a: 100, b: "world" });
 console.log(await simple.get<{ a: number; b: string }>("stuff"));
 await simple.del("stuff");
@@ -72,14 +72,14 @@ await cachedAnswer.clear("universe"); // drop the cached entry
 
 ## Public API
 
-- `redisConnect(config)` — create a `RedisConnection`; authenticates automatically when `password` is set.
+- `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set.
 - `redisAuth(connection, password)` — send `AUTH` explicitly.
 - `redisSend({ connection, commands, match, transform, urgent? })` — low-level RESP exchange for commands not covered below.
 - Strings and keys: `redisGet`, `redisSet` (with `RedisSetOptions`: `expirationMillis`, `onlySet: "nx" | "xx"`), `redisDel`, `redisExists`, `redisIncr`.
 - Lists: `redisRpush`, `redisLpop`, `redisLrange`, `redisLlen`, `redisLindex`, `redisLtrim`.
 - Sets: `redisSadd`, `redisSrem`, `redisSmembers`.
-- Simple layer: `RedisSimple` class (`get`/`set`/`del`/`cache` with a shared `keyPrefix` and codec), `redisSimpleWork(config, work)` (connect, run, always disconnect), `redisSimpleCache(fn, options)`.
-- Types: `RedisConfig`, `RedisConnection`, `RedisSendOptions`, `RedisSetOptions`, `RedisSimpleFn`, `RedisSimpleCacheFriends`, `RedisSimpleCacheOptions`, `RedisSimpleOptions`.
+- Simple layer: `createRedisSimple(options)` returns a `RedisSimple` (`get`/`set`/`del`/`cache` with a shared `keyPrefix` and codec), `redisSimpleWork(options, work)` (connect, run, always disconnect), `redisSimpleCache(fn, options)`.
+- Types: `RedisConnectionOptions`, `RedisConnection`, `RedisSendOptions`, `RedisSetOptions`, `RedisSimpleFn`, `RedisSimpleCacheFriends`, `RedisSimpleCacheOptions`, `RedisSimpleOptions`.
 
 ## Migrating from the legacy package
 
@@ -87,9 +87,9 @@ The legacy package exposed one default export per deep-imported module (for exam
 
 | Legacy import                         | Now                                     |
 | ------------------------------------- | --------------------------------------- |
-| `lib/connection` (default)            | `redisConnect`                          |
+| `lib/connection` (default)            | `createRedisConnection`                 |
 | `lib/get`, `lib/set`, `lib/del`, ...  | `redisGet`, `redisSet`, `redisDel`, ... |
-| `lib/simple` (default `RedisSimple`)  | `RedisSimple`                           |
+| `lib/simple` (default `RedisSimple`)  | `createRedisSimple`                     |
 | `lib/simple/work`, `lib/simple/cache` | `redisSimpleWork`, `redisSimpleCache`   |
 
-Function parameters, return types, and RESP behavior are unchanged.
+Renames from the previous named-export API: `redisConnect` is now `createRedisConnection`, the `RedisConfig` type is now `RedisConnectionOptions`, and the `RedisSimple` class was replaced by the `createRedisSimple(options)` factory (with `RedisSimple` remaining as the returned interface). Function parameters, return types, and RESP behavior are otherwise unchanged.

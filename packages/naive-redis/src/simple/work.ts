@@ -1,14 +1,14 @@
 import {
-  redisConnect,
-  type RedisConfig,
+  createRedisConnection,
+  type RedisConnectionOptions,
   type RedisConnection,
 } from "../connection.js";
 
 export async function redisSimpleWork<R>(
-  config: RedisConfig,
+  config: RedisConnectionOptions,
   work: (connection: RedisConnection) => Promise<R>,
 ): Promise<R> {
-  const connection = redisConnect(config);
+  const connection = createRedisConnection(config);
   try {
     return await work(connection);
   } finally {

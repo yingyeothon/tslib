@@ -3,43 +3,48 @@
  * Each `capture(endMark)` consumes the text up to (and including) the next
  * `endMark` and records the consumed text (without the mark).
  */
-export class TextMatch {
-  private readonly captured: string[] = [];
-  private pos = 0;
-  private error = false;
-
-  constructor(private readonly buffer: string) {}
-
-  public capture(endMark: string): this {
-    if (this.error) {
-      return this;
-    }
-    const start = this.pos;
-    this.pos = this.buffer.indexOf(endMark, start);
-    if (this.pos < 0) {
-      this.error = true;
-      return this;
-    }
-    this.captured.push(this.buffer.slice(start, this.pos));
-    this.pos += endMark.length;
-    if (this.pos > this.buffer.length) {
-      this.error = true;
-    }
-    return this;
-  }
+export interface TextMatch {
+  /** Consume up to (and including) the next `endMark`, recording the text before it. */
+  capture: (endMark: string) => TextMatch;
 
   /** All captured fragments so far, as a copy. */
-  public values(): string[] {
-    return [...this.captured];
-  }
+  values: () => string[];
 
   /**
    * The number of characters consumed by the whole chain,
    * or `-1` when any capture failed.
    */
-  public evaluate(): number {
-    return this.error ? -1 : this.pos;
-  }
+  evaluate: () => number;
+}
+
+/** Create a {@link TextMatch} scanner over `buffer`. */
+export function createTextMatch(buffer: string): TextMatch {
+  const captured: string[] = [];
+  let pos = 0;
+  let error = false;
+
+  const match: TextMatch = {
+    capture: (endMark) => {
+      if (error) {
+        return match;
+      }
+      const start = pos;
+      pos = buffer.indexOf(endMark, start);
+      if (pos < 0) {
+        error = true;
+        return match;
+      }
+      captured.push(buffer.slice(start, pos));
+      pos += endMark.length;
+      if (pos > buffer.length) {
+        error = true;
+      }
+      return match;
+    },
+    values: () => [...captured],
+    evaluate: () => (error ? -1 : pos),
+  };
+  return match;
 }
 
 export type TextMatchChain = (m: TextMatch) => TextMatch;
@@ -50,5 +55,5 @@ export type TextMatchChain = (m: TextMatch) => TextMatch;
  * matches, or `-1` to keep waiting for more data.
  */
 export function withMatch(check: TextMatchChain): (buffer: string) => number {
-  return (buffer) => check(new TextMatch(buffer)).evaluate();
+  return (buffer) => check(createTextMatch(buffer)).evaluate();
 }

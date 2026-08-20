@@ -1,19 +1,28 @@
 export type { LogSerializer, LogTuple, WritableLogSeverity } from "./types.js";
 export { serializeAsJSON } from "./serialize.js";
-export { buffered, type BufferedEnv, type BufferedWriter } from "./buffered.js";
 export {
-  s3cbLogFlush,
+  createBufferedWriter,
+  type BufferedWriter,
+  type BufferedWriterOptions,
+} from "./buffered.js";
+export {
+  createS3cbLogFlush,
+  s3cbLogFlushOptionsFromEnv,
   type LogFlush,
-  type S3cbLogFlushEnv,
+  type S3cbLogFlushOptions,
 } from "./s3cbLogFlush.js";
 export {
-  getS3LogWriter,
+  createS3LogWriter,
   type S3LogWriter,
-  type S3LogWriterEnv,
+  type S3LogWriterOptions,
 } from "./writer.js";
-export { getS3Logger, type S3Logger, type S3LoggerEnv } from "./logger.js";
 export {
-  getLambdaS3Logger,
+  createS3Logger,
+  type S3Logger,
+  type S3LoggerOptions,
+} from "./logger.js";
+export {
+  createLambdaS3Logger,
   type LambdaS3Logger,
-  type LambdaS3LoggerEnv,
+  type LambdaS3LoggerOptions,
 } from "./lambda.js";

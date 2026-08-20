@@ -1,8 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  InMemoryAwaiter,
-  InMemoryLock,
-  InMemoryQueue,
+  createInMemoryAwaiter,
+  createInMemoryLock,
+  createInMemoryQueue,
   post,
   singleConsumer,
   tryToProcess,
@@ -43,9 +43,9 @@ describe("shiftable processing", () => {
   it("shifts to a new actor whenever aliveMillis expires with messages left", async () => {
     vi.useFakeTimers();
     const actorSubsys = {
-      queue: new InMemoryQueue(),
-      lock: new InMemoryLock(),
-      awaiter: new InMemoryAwaiter(),
+      queue: createInMemoryQueue(),
+      lock: createInMemoryLock(),
+      awaiter: createInMemoryAwaiter(),
     };
     const actor = new Adder("adder");
 
@@ -83,9 +83,9 @@ describe("shiftable processing", () => {
 
   it("does not call shift when it finishes within its lifetime", async () => {
     const actorSubsys = {
-      queue: new InMemoryQueue(),
-      lock: new InMemoryLock(),
-      awaiter: new InMemoryAwaiter(),
+      queue: createInMemoryQueue(),
+      lock: createInMemoryLock(),
+      awaiter: createInMemoryAwaiter(),
     };
 
     let shiftCount = 0;

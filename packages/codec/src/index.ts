@@ -1,2 +1,2 @@
 export type { Codec } from "./types.js";
-export { JsonCodec } from "./json.js";
+export { jsonCodec } from "./json.js";

@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   enqueue,
   eventLoop,
-  InMemoryLock,
-  InMemoryQueue,
+  createInMemoryLock,
+  createInMemoryQueue,
 } from "../src/index.js";
 
 interface AdderMessage {
@@ -25,8 +25,8 @@ describe("eventLoop", () => {
   it("polls all queued items inside the user loop", async () => {
     const sharedEnv = {
       id: "loop-1",
-      queue: new InMemoryQueue(),
-      lock: new InMemoryLock(),
+      queue: createInMemoryQueue(),
+      lock: createInMemoryLock(),
     };
 
     const loop = new AdderLoop();
@@ -47,8 +47,8 @@ describe("eventLoop", () => {
   });
 
   it("returns false without looping when the lock is held", async () => {
-    const lock = new InMemoryLock();
-    const queue = new InMemoryQueue();
+    const lock = createInMemoryLock();
+    const queue = createInMemoryQueue();
     await lock.tryAcquire("loop-2");
 
     const loop = new AdderLoop();
@@ -64,8 +64,8 @@ describe("eventLoop", () => {
   });
 
   it("releases the lock even after the loop finishes", async () => {
-    const lock = new InMemoryLock();
-    const queue = new InMemoryQueue();
+    const lock = createInMemoryLock();
+    const queue = createInMemoryQueue();
     const loop = new AdderLoop();
     const env = { id: "loop-3", queue, lock, ...loop };
 

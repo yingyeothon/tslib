@@ -13,9 +13,9 @@ npm install @yingyeothon/s3-cache-bridge-client
 ESM:
 
 ```ts
-import { S3cb } from "@yingyeothon/s3-cache-bridge-client";
+import { createS3cbClient } from "@yingyeothon/s3-cache-bridge-client";
 
-const cb = S3cb({
+const cb = createS3cbClient({
   apiUrl: "https://cache.example.com/",
   apiId: "my-id",
   apiPassword: "my-password",
@@ -48,16 +48,17 @@ await cb.del("greeting");
 CJS:
 
 ```js
-const { S3cb } = require("@yingyeothon/s3-cache-bridge-client");
-const cb = S3cb({ apiUrl: "http://localhost:3000/" });
+const { createS3cbClient } = require("@yingyeothon/s3-cache-bridge-client");
+const cb = createS3cbClient({ apiUrl: "http://localhost:3000/" });
 cb.get("key").then(console.log);
 ```
 
 ## Public API
 
-- `S3cb(env)` — factory that binds every method below to one server environment
-- `S3cbEnv` — `{ apiUrl, apiId?, apiPassword? }`; credentials become a `Basic` Authorization header (type)
-- `S3cbClient` — the object returned by `S3cb` (type)
+- `createS3cbClient(options)` — factory that binds every method below to one server environment
+- `S3cbClientOptions` — `{ apiUrl, apiId?, apiPassword? }`; credentials become a `Basic` Authorization header (type)
+- `S3cbClient` — the object returned by `createS3cbClient` (type)
+- `s3cbClientOptionsFromEnv()` — builds `S3cbClientOptions` from the `S3CB_URL`, `S3CB_ID`, and `S3CB_PASSWORD` environment variables; throws if `S3CB_URL` is unset. Calling it is the caller's choice — the library itself never reads `process.env`
 - `JSONModificationRequest` — `append` / `modify` / `remove` / `fetch` operations for `patch` (type)
 - `LockOptions` — `{ noLock?: boolean }` (type)
 - `SyncOptions` — `{ sync?: boolean }` (type)
@@ -81,7 +82,7 @@ Every method rejects with an `Error` whose message is `"<status> <statusText>"` 
 
 ## Migrating from the legacy package
 
-- The default export is gone: use the named export `S3cb` (`import { S3cb } from ...` instead of `import S3cb from ...`). The factory signature and every method are unchanged.
+- The default export is gone and the factory was renamed: `S3cb` → `createS3cbClient` (named export, `import { createS3cbClient } from ...`), and the `S3cbEnv` type → `S3cbClientOptions`. Every method is unchanged.
 - The package now ships dual ESM/CJS with types; deep imports (`.../lib/...`) are no longer supported — import everything from the package root.
 - Implemented on the global `fetch` (Node >= 20) instead of `node-fetch`/`https`; `get-stream` is no longer a dependency.
 - `put` no longer sets a manual `Content-Length` header; `fetch` derives the identical value from the buffered body automatically.

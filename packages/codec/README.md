@@ -1,6 +1,6 @@
 # @yingyeothon/codec
 
-Tiny codec abstraction: a generic `Codec<B>` interface for encoding domain values into a base representation `B` (and decoding them back), plus a `JsonCodec` implementation that uses JSON strings.
+Tiny codec abstraction: a generic `Codec<B>` interface for encoding domain values into a base representation `B` (and decoding them back), plus a `jsonCodec` implementation that uses JSON strings.
 
 ## Install
 
@@ -13,14 +13,14 @@ npm install @yingyeothon/codec
 ESM:
 
 ```ts
-import { JsonCodec, type Codec } from "@yingyeothon/codec";
+import { jsonCodec, type Codec } from "@yingyeothon/codec";
 
 interface Context {
   a: number;
   b: string;
 }
 
-const codec: Codec<string> = new JsonCodec();
+const codec: Codec<string> = jsonCodec;
 const encoded = codec.encode<Context>({ a: 10, b: "hello" });
 const decoded = codec.decode<Context>(encoded);
 ```
@@ -28,18 +28,17 @@ const decoded = codec.decode<Context>(encoded);
 CJS:
 
 ```js
-const { JsonCodec } = require("@yingyeothon/codec");
+const { jsonCodec } = require("@yingyeothon/codec");
 
-const codec = new JsonCodec();
-const encoded = codec.encode({ a: 10, b: "hello" });
-const decoded = codec.decode(encoded);
+const encoded = jsonCodec.encode({ a: 10, b: "hello" });
+const decoded = jsonCodec.decode(encoded);
 ```
 
 ## Public API
 
 - `Codec<B>` — interface with `encode<T>(item: T): B` and `decode<T>(value: B): T`.
-- `JsonCodec` — `Codec<string>` backed by `JSON.stringify`/`JSON.parse`. Encoding `undefined` returns the literal string `"undefined"`; decoding `undefined` throws; decoding invalid JSON throws a `SyntaxError`.
+- `jsonCodec` — stateless `Codec<string>` singleton backed by `JSON.stringify`/`JSON.parse`. Encoding `undefined` returns the literal string `"undefined"`; decoding `undefined` throws; decoding invalid JSON throws a `SyntaxError`.
 
 ## Migrating from the legacy package
 
-Same API as the legacy `@yingyeothon/codec` (`Codec<B>` and `JsonCodec` named exports); only the packaging changed (dual ESM/CJS, Node >= 20).
+The legacy `JsonCodec` class is replaced by the stateless `jsonCodec` const: replace `new JsonCodec()` with `jsonCodec`. The `Codec<B>` interface is unchanged; packaging is dual ESM/CJS, Node >= 20.

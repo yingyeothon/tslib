@@ -1,4 +1,4 @@
-import type { RedisConfig } from "../connection.js";
+import type { RedisConnectionOptions } from "../connection.js";
 import { redisSet } from "../set.js";
 import { redisSimpleWork } from "./work.js";
 
@@ -9,7 +9,7 @@ export async function redisSimpleSet<T>({
   expirationMillis,
   encode = JSON.stringify,
 }: {
-  config: RedisConfig;
+  config: RedisConnectionOptions;
   key: string;
   value: T;
   expirationMillis?: number;

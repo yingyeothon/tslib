@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { MockAgent, setGlobalDispatcher, type Interceptable } from "undici";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { S3cb, type S3cbEnv } from "../src/index.js";
+import { createS3cbClient, type S3cbClientOptions } from "../src/index.js";
 
 const origin = "http://api.test";
-const env: S3cbEnv = {
+const env: S3cbClientOptions = {
   apiUrl: `${origin}/`,
   apiId: "test",
   apiPassword: "test",
@@ -74,20 +74,22 @@ describe("get", () => {
       path: "/hello?noLock=0",
       responseBody: "WORLD",
     });
-    await expect(S3cb(env).get("hello")).resolves.toEqual("WORLD");
+    await expect(createS3cbClient(env).get("hello")).resolves.toEqual("WORLD");
     expect(captured.headers?.["Authorization"]).toEqual(basicAuth);
   });
 
   it("passes noLock=1 when requested", async () => {
     intercept({ method: "GET", path: "/hello?noLock=1", responseBody: "x" });
-    await expect(S3cb(env).get("hello", { noLock: true })).resolves.toEqual(
-      "x",
-    );
+    await expect(
+      createS3cbClient(env).get("hello", { noLock: true }),
+    ).resolves.toEqual("x");
   });
 
   it("rejects with '404 Not Found' for a missing key", async () => {
     intercept({ method: "GET", path: "/hello?noLock=0", status: 404 });
-    await expect(S3cb(env).get("hello")).rejects.toThrow(/404 Not Found/);
+    await expect(createS3cbClient(env).get("hello")).rejects.toThrow(
+      /404 Not Found/,
+    );
   });
 
   it("omits the Authorization header without credentials", async () => {
@@ -96,9 +98,9 @@ describe("get", () => {
       path: "/hello?noLock=0",
       responseBody: "x",
     });
-    await expect(S3cb({ apiUrl: `${origin}/` }).get("hello")).resolves.toEqual(
-      "x",
-    );
+    await expect(
+      createS3cbClient({ apiUrl: `${origin}/` }).get("hello"),
+    ).resolves.toEqual("x");
     expect(captured.headers?.["Authorization"]).toBeUndefined();
   });
 
@@ -112,7 +114,7 @@ describe("get", () => {
       path: "/mbcs?noLock=0",
       responseBody: Buffer.from(mbcs, "utf8"),
     });
-    await expect(S3cb(env).get("mbcs")).resolves.toEqual(mbcs);
+    await expect(createS3cbClient(env).get("mbcs")).resolves.toEqual(mbcs);
   });
 });
 
@@ -123,7 +125,9 @@ describe("put", () => {
       path: "/hello?noLock=0&sync=0",
       responseBody: "ok",
     });
-    await expect(S3cb(env).put("hello", "안녕WORLD")).resolves.toEqual("ok");
+    await expect(
+      createS3cbClient(env).put("hello", "안녕WORLD"),
+    ).resolves.toEqual("ok");
     expect(captured.body).toEqual("안녕WORLD");
     expect(captured.headers?.["Authorization"]).toEqual(basicAuth);
   });
@@ -135,7 +139,9 @@ describe("put", () => {
       responseBody: "ok",
     });
     const buffer = Buffer.from("SOMETHING SPECIAL", "utf8");
-    await expect(S3cb(env).put("binkey", buffer)).resolves.toEqual("ok");
+    await expect(createS3cbClient(env).put("binkey", buffer)).resolves.toEqual(
+      "ok",
+    );
     expect(captured.body).toEqual("SOMETHING SPECIAL");
   });
 
@@ -146,7 +152,7 @@ describe("put", () => {
       responseBody: "ok",
     });
     await expect(
-      S3cb(env).put("hello", "x", { noLock: true, sync: true }),
+      createS3cbClient(env).put("hello", "x", { noLock: true, sync: true }),
     ).resolves.toEqual("ok");
   });
 
@@ -156,7 +162,7 @@ describe("put", () => {
       path: "/hello?noLock=0&sync=0",
       status: 500,
     });
-    await expect(S3cb(env).put("hello", "x")).rejects.toThrow(
+    await expect(createS3cbClient(env).put("hello", "x")).rejects.toThrow(
       /500 Internal Server Error/,
     );
   });
@@ -169,7 +175,9 @@ describe("del", () => {
       path: "/hello?noLock=0",
       responseBody: "deleted",
     });
-    await expect(S3cb(env).del("hello")).resolves.toEqual("deleted");
+    await expect(createS3cbClient(env).del("hello")).resolves.toEqual(
+      "deleted",
+    );
     expect(captured.headers?.["Authorization"]).toEqual(basicAuth);
   });
 
@@ -179,9 +187,9 @@ describe("del", () => {
       path: "/hello?noLock=1",
       responseBody: "deleted",
     });
-    await expect(S3cb(env).del("hello", { noLock: true })).resolves.toEqual(
-      "deleted",
-    );
+    await expect(
+      createS3cbClient(env).del("hello", { noLock: true }),
+    ).resolves.toEqual("deleted");
   });
 });
 
@@ -192,9 +200,9 @@ describe("append", () => {
       path: "/hello?append=1&noLock=0&sync=0",
       responseBody: "appended",
     });
-    await expect(S3cb(env).append("hello", "MORE")).resolves.toEqual(
-      "appended",
-    );
+    await expect(
+      createS3cbClient(env).append("hello", "MORE"),
+    ).resolves.toEqual("appended");
     expect(captured.body).toEqual("MORE");
   });
 
@@ -205,7 +213,10 @@ describe("append", () => {
       responseBody: "appended",
     });
     await expect(
-      S3cb(env).append("hello", "MORE", { noLock: true, sync: true }),
+      createS3cbClient(env).append("hello", "MORE", {
+        noLock: true,
+        sync: true,
+      }),
     ).resolves.toEqual("appended");
   });
 });
@@ -213,7 +224,7 @@ describe("append", () => {
 describe("sync", () => {
   it("issues POST with sync=1", async () => {
     intercept({ method: "POST", path: "/hello?sync=1", responseBody: "ok" });
-    await expect(S3cb(env).sync("hello")).resolves.toEqual("ok");
+    await expect(createS3cbClient(env).sync("hello")).resolves.toEqual("ok");
   });
 });
 
@@ -224,7 +235,9 @@ describe("invalidate", () => {
       path: "/hello?cache=1",
       responseBody: "ok",
     });
-    await expect(S3cb(env).invalidate("hello")).resolves.toEqual("ok");
+    await expect(createS3cbClient(env).invalidate("hello")).resolves.toEqual(
+      "ok",
+    );
   });
 });
 
@@ -235,7 +248,9 @@ describe("lock and unlock", () => {
       path: "/hello?lock=acquire",
       responseBody: "locked",
     });
-    await expect(S3cb(env).lock("hello")).resolves.toEqual("locked");
+    await expect(createS3cbClient(env).lock("hello")).resolves.toEqual(
+      "locked",
+    );
     expect(captured.headers?.["Authorization"]).toEqual(basicAuth);
   });
 
@@ -245,12 +260,16 @@ describe("lock and unlock", () => {
       path: "/hello?lock=release",
       responseBody: "unlocked",
     });
-    await expect(S3cb(env).unlock("hello")).resolves.toEqual("unlocked");
+    await expect(createS3cbClient(env).unlock("hello")).resolves.toEqual(
+      "unlocked",
+    );
   });
 
   it("rejects when the lock is already held", async () => {
     intercept({ method: "POST", path: "/hello?lock=acquire", status: 409 });
-    await expect(S3cb(env).lock("hello")).rejects.toThrow(/409 Conflict/);
+    await expect(createS3cbClient(env).lock("hello")).rejects.toThrow(
+      /409 Conflict/,
+    );
   });
 
   it("supports a full lock, mutate, unlock flow", async () => {
@@ -269,7 +288,7 @@ describe("lock and unlock", () => {
       path: "/hello?lock=release",
       responseBody: "unlocked",
     });
-    const cb = S3cb(env);
+    const cb = createS3cbClient(env);
     await expect(cb.lock("hello")).resolves.toEqual("locked");
     await expect(cb.put("hello", "x", { noLock: true })).resolves.toEqual(
       "stored",
@@ -286,7 +305,7 @@ describe("patch", () => {
       responseBody: "",
     });
     await expect(
-      S3cb(env).patch("mod", {
+      createS3cbClient(env).patch("mod", {
         operation: "append",
         path: "a.b",
         value: { c: 10 },
@@ -311,7 +330,7 @@ describe("patch", () => {
       }),
     });
     await expect(
-      S3cb(env).patch(
+      createS3cbClient(env).patch(
         "mod",
         { operation: "modify", path: "a.b", value: { c: 10 } },
         { fetch: true },
@@ -326,7 +345,7 @@ describe("patch", () => {
       responseBody: JSON.stringify({ _ok: true, result: { b: { c: 20 } } }),
     });
     await expect(
-      S3cb(env).patch("mod", { operation: "fetch", path: "a" }),
+      createS3cbClient(env).patch("mod", { operation: "fetch", path: "a" }),
     ).resolves.toEqual({ b: { c: 20 } });
   });
 
@@ -337,7 +356,7 @@ describe("patch", () => {
       responseBody: "",
     });
     await expect(
-      S3cb(env).patch(
+      createS3cbClient(env).patch(
         "mod",
         { operation: "remove", path: "a.b" },
         { noLock: true, sync: true },
@@ -352,7 +371,7 @@ describe("patch", () => {
       responseBody: JSON.stringify({ _ok: false, error: "invalid path" }),
     });
     await expect(
-      S3cb(env).patch("mod", { operation: "fetch", path: "a" }),
+      createS3cbClient(env).patch("mod", { operation: "fetch", path: "a" }),
     ).rejects.toThrow(/invalid path/);
   });
 
@@ -363,7 +382,7 @@ describe("patch", () => {
       status: 400,
     });
     await expect(
-      S3cb(env).patch("mod", { operation: "fetch", path: "a" }),
+      createS3cbClient(env).patch("mod", { operation: "fetch", path: "a" }),
     ).rejects.toThrow(/400 Bad Request/);
   });
 });
@@ -376,14 +395,14 @@ describe("getBuffer", () => {
       path: "/binkey?noLock=0",
       responseBody: bytes,
     });
-    const result = await S3cb(env).getBuffer("binkey");
+    const result = await createS3cbClient(env).getBuffer("binkey");
     expect(Buffer.isBuffer(result)).toBe(true);
     expect(result.equals(bytes)).toBe(true);
   });
 
   it("rejects with '404 Not Found' for a missing key", async () => {
     intercept({ method: "GET", path: "/binkey?noLock=0", status: 404 });
-    await expect(S3cb(env).getBuffer("binkey")).rejects.toThrow(
+    await expect(createS3cbClient(env).getBuffer("binkey")).rejects.toThrow(
       /404 Not Found/,
     );
   });
@@ -407,16 +426,16 @@ describe("download", () => {
       responseBody: "SOMETHING SPECIAL",
     });
     const downloadPath = join(tempDir, "binkey-test");
-    await expect(S3cb(env).download("binkey", downloadPath)).resolves.toEqual(
-      downloadPath,
-    );
+    await expect(
+      createS3cbClient(env).download("binkey", downloadPath),
+    ).resolves.toEqual(downloadPath);
     expect(readFileSync(downloadPath, "utf8")).toEqual("SOMETHING SPECIAL");
   });
 
   it("rejects with '404 Not Found' for a missing key", async () => {
     intercept({ method: "GET", path: "/binkey?noLock=0", status: 404 });
     await expect(
-      S3cb(env).download("binkey", join(tempDir, "missing")),
+      createS3cbClient(env).download("binkey", join(tempDir, "missing")),
     ).rejects.toThrow(/404 Not Found/);
   });
 });
@@ -424,25 +443,25 @@ describe("download", () => {
 describe("exists", () => {
   it("returns true when the HEAD request succeeds", async () => {
     intercept({ method: "HEAD", path: "/hello?noLock=0" });
-    await expect(S3cb(env).exists("hello")).resolves.toBe(true);
+    await expect(createS3cbClient(env).exists("hello")).resolves.toBe(true);
   });
 
   it("returns false when the key does not exist", async () => {
     intercept({ method: "HEAD", path: "/hello?noLock=0", status: 404 });
-    await expect(S3cb(env).exists("hello")).resolves.toBe(false);
+    await expect(createS3cbClient(env).exists("hello")).resolves.toBe(false);
   });
 
   it("rethrows non-404 errors", async () => {
     intercept({ method: "HEAD", path: "/hello?noLock=0", status: 500 });
-    await expect(S3cb(env).exists("hello")).rejects.toThrow(
+    await expect(createS3cbClient(env).exists("hello")).rejects.toThrow(
       /500 Internal Server Error/,
     );
   });
 
   it("passes noLock=1 when requested", async () => {
     intercept({ method: "HEAD", path: "/hello?noLock=1" });
-    await expect(S3cb(env).exists("hello", { noLock: true })).resolves.toBe(
-      true,
-    );
+    await expect(
+      createS3cbClient(env).exists("hello", { noLock: true }),
+    ).resolves.toBe(true);
   });
 });

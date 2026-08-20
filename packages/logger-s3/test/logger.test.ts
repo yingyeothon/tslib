@@ -1,7 +1,12 @@
 import type { LogSeverity } from "@yingyeothon/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { getS3Logger, s3cbLogFlush, serializeAsJSON } from "../src/index.js";
+import {
+  createS3Logger,
+  createS3cbLogFlush,
+  s3cbLogFlushOptionsFromEnv,
+  serializeAsJSON,
+} from "../src/index.js";
 import type { Appended } from "./helpers.js";
 import { fakeS3cbClient, parseLines } from "./helpers.js";
 
@@ -25,14 +30,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("getS3Logger", () => {
+describe("createS3Logger", () => {
   it("runs the legacy basic scenario and flushes every record", async () => {
     vi.spyOn(console, "debug").mockImplementation(() => undefined);
     vi.spyOn(console, "info").mockImplementation(() => undefined);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
 
     const appends: Appended[] = [];
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client: fakeS3cbClient(appends),
       asKey: buildLogFileName,
       autoFlushIntervalMillis: 100,
@@ -85,7 +90,7 @@ describe("getS3Logger", () => {
   it("buffers records and appends nothing before a flush trigger", async () => {
     const appends: Appended[] = [];
     const client = fakeS3cbClient(appends);
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client,
       asKey: (_date, severity) => `log/${severity}`,
       severity: "debug",
@@ -104,9 +109,28 @@ describe("getS3Logger", () => {
     });
   });
 
+  it("writes warn records through the full LogWriter contract", async () => {
+    const appends: Appended[] = [];
+    const { logger, flush } = createS3Logger({
+      client: fakeS3cbClient(appends),
+      asKey: (_date, severity) => `log/${severity}`,
+      severity: "warn",
+    });
+
+    logger.info("dropped");
+    logger.warn("kept");
+    await flush();
+
+    const records = parseLines(appends);
+    expect(records["log/info"]).toBeUndefined();
+    expect(records["log/warn"]).toEqual([
+      expect.objectContaining({ level: "warn", args: ["kept"] }),
+    ]);
+  });
+
   it("filters records below the configured severity", async () => {
     const appends: Appended[] = [];
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client: fakeS3cbClient(appends),
       asKey: (_date, severity) => severity,
       severity: "info",
@@ -125,7 +149,7 @@ describe("getS3Logger", () => {
 
   it("auto flushes when the buffer exceeds autoFlushMaxBufferSize", async () => {
     const appends: Appended[] = [];
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client: fakeS3cbClient(appends),
       asKey: () => "log",
       severity: "debug",
@@ -143,7 +167,7 @@ describe("getS3Logger", () => {
   it("auto flushes when autoFlushIntervalMillis has elapsed", async () => {
     vi.useFakeTimers();
     const appends: Appended[] = [];
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client: fakeS3cbClient(appends),
       asKey: () => "log",
       severity: "debug",
@@ -162,7 +186,7 @@ describe("getS3Logger", () => {
 
   it("aggregates records that share the same key into one append", async () => {
     const appends: Appended[] = [];
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client: fakeS3cbClient(appends),
       asKey: () => "same-key",
       severity: "debug",
@@ -178,7 +202,7 @@ describe("getS3Logger", () => {
 
   it("serializes Error arguments with serialize-error", async () => {
     const appends: Appended[] = [];
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client: fakeS3cbClient(appends),
       asKey: () => "errors",
       severity: "debug",
@@ -200,7 +224,7 @@ describe("getS3Logger", () => {
 
   it("supports a custom serializer", async () => {
     const appends: Appended[] = [];
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client: fakeS3cbClient(appends),
       asKey: () => "custom",
       severity: "debug",
@@ -215,7 +239,7 @@ describe("getS3Logger", () => {
 
   it("invokes a withConsole callback for every written record", async () => {
     const seen: unknown[][] = [];
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client: fakeS3cbClient([]),
       asKey: () => "log",
       severity: "debug",
@@ -232,7 +256,7 @@ describe("getS3Logger", () => {
   });
 
   it("rejects the flush when the append call fails, and poisons later flushes", async () => {
-    const { logger, flush } = getS3Logger({
+    const { logger, flush } = createS3Logger({
       client: fakeS3cbClient([], () =>
         Promise.reject(new Error("append failed")),
       ),
@@ -250,7 +274,7 @@ describe("getS3Logger", () => {
 
   it("resolves immediately when there is nothing to flush", async () => {
     const appends: Appended[] = [];
-    const { flush } = getS3Logger({
+    const { flush } = createS3Logger({
       client: fakeS3cbClient(appends),
       asKey: () => "log",
     });
@@ -259,16 +283,32 @@ describe("getS3Logger", () => {
   });
 });
 
-describe("s3cbLogFlush", () => {
-  it("throws when neither a client nor an apiUrl is available", () => {
-    const savedUrl = process.env.S3CB_URL;
-    delete process.env.S3CB_URL;
+describe("createS3cbLogFlush", () => {
+  it("throws when neither a client nor an apiUrl is given", () => {
+    expect(() => createS3cbLogFlush({})).toThrow("No URL for S3CB");
+  });
+
+  it("does not read process.env implicitly", () => {
+    vi.stubEnv("S3CB_URL", "http://from-env.example.com/");
     try {
-      expect(() => s3cbLogFlush({})).toThrow("No URL for S3CB");
+      expect(() => createS3cbLogFlush({})).toThrow("No URL for S3CB");
     } finally {
-      if (savedUrl !== undefined) {
-        process.env.S3CB_URL = savedUrl;
-      }
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("reads the documented variables via s3cbLogFlushOptionsFromEnv", () => {
+    vi.stubEnv("S3CB_URL", "http://from-env.example.com/");
+    vi.stubEnv("S3CB_ID", "env-id");
+    vi.stubEnv("S3CB_PASSWORD", "env-password");
+    try {
+      expect(s3cbLogFlushOptionsFromEnv()).toEqual({
+        apiUrl: "http://from-env.example.com/",
+        apiId: "env-id",
+        apiPassword: "env-password",
+      });
+    } finally {
+      vi.unstubAllEnvs();
     }
   });
 
@@ -278,7 +318,7 @@ describe("s3cbLogFlush", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const flush = s3cbLogFlush({
+    const flush = createS3cbLogFlush({
       apiUrl: "http://localhost:3000/",
       apiId: "test",
       apiPassword: "test",
@@ -307,7 +347,7 @@ describe("s3cbLogFlush", () => {
       "fetch",
       vi.fn(() => Promise.resolve(new Response("nope", { status: 500 }))),
     );
-    const flush = s3cbLogFlush({ apiUrl: "http://localhost:3000/" });
+    const flush = createS3cbLogFlush({ apiUrl: "http://localhost:3000/" });
     await expect(
       flush(
         [{ key: "k", timestamp: new Date(), severity: "error", args: [] }],

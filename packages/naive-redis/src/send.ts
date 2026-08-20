@@ -1,5 +1,5 @@
 import {
-  TextMatch,
+  createTextMatch,
   withMatch,
   type TextMatchChain,
 } from "@yingyeothon/naive-socket";
@@ -29,7 +29,7 @@ export function redisSend<T>({
       timeoutMillis: connection.timeoutMillis,
       urgent,
     });
-    return transform(match(new TextMatch(response)).values());
+    return transform(match(createTextMatch(response)).values());
   }
   return connection.authenticated
     ? connection.authenticated.then((success) => {

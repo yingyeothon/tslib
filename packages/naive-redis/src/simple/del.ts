@@ -1,4 +1,4 @@
-import type { RedisConfig } from "../connection.js";
+import type { RedisConnectionOptions } from "../connection.js";
 import { redisDel } from "../del.js";
 import { redisSimpleWork } from "./work.js";
 
@@ -6,7 +6,7 @@ export async function redisSimpleDel({
   config,
   key,
 }: {
-  config: RedisConfig;
+  config: RedisConnectionOptions;
   key: string;
 }): Promise<number> {
   return await redisSimpleWork(config, async (connection) => {

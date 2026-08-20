@@ -1,6 +1,6 @@
 export {
-  redisConnect,
-  type RedisConfig,
+  createRedisConnection,
+  type RedisConnectionOptions,
   type RedisConnection,
 } from "./connection.js";
 export { redisAuth } from "./auth.js";
@@ -30,4 +30,8 @@ export {
   type RedisSimpleCacheOptions,
   type RedisSimpleFn,
 } from "./simple/cache.js";
-export { RedisSimple, type RedisSimpleOptions } from "./simple/redis-simple.js";
+export {
+  createRedisSimple,
+  type RedisSimple,
+  type RedisSimpleOptions,
+} from "./simple/redis-simple.js";

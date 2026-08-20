@@ -1,9 +1,11 @@
-import type { S3cbEnv } from "./types.js";
+import type { S3cbClientOptions } from "./types.js";
 
-export function authorizationHeader(env: S3cbEnv): Record<string, string> {
-  if (env.apiId !== undefined && env.apiPassword !== undefined) {
+export function authorizationHeader(
+  options: S3cbClientOptions,
+): Record<string, string> {
+  if (options.apiId !== undefined && options.apiPassword !== undefined) {
     const authorization = Buffer.from(
-      `${env.apiId}:${env.apiPassword}`,
+      `${options.apiId}:${options.apiPassword}`,
       "utf-8",
     ).toString("base64");
     return { Authorization: `Basic ${authorization}` };

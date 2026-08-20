@@ -2,7 +2,11 @@ export type {
   FetchOptions,
   JSONModificationRequest,
   LockOptions,
-  S3cbEnv,
+  S3cbClientOptions,
   SyncOptions,
 } from "./types.js";
-export { S3cb, type S3cbClient } from "./s3cb.js";
+export {
+  createS3cbClient,
+  s3cbClientOptionsFromEnv,
+  type S3cbClient,
+} from "./s3cb.js";

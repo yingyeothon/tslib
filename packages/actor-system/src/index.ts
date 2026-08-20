@@ -1,6 +1,6 @@
 export type { AwaiterResolve, AwaiterWait } from "./awaiter.js";
 export { enqueue } from "./enqueue.js";
-export type { ActorEnqueueEnvironment } from "./enqueue.js";
+export type { ActorEnqueueOptions } from "./enqueue.js";
 export {
   bulkConsumer,
   singleConsumer,
@@ -11,11 +11,18 @@ export {
   type ActorSingleMessageHandler,
 } from "./environment.js";
 export { eventLoop } from "./eventLoop.js";
-export type { ActorEventLoopEnvironment } from "./eventLoop.js";
-export { InMemoryAwaiter, InMemoryLock, InMemoryQueue } from "./inMemory.js";
+export type { ActorEventLoopOptions } from "./eventLoop.js";
+export {
+  createInMemoryAwaiter,
+  createInMemoryLock,
+  createInMemoryQueue,
+} from "./inMemory.js";
+export type {
+  InMemoryAwaiter,
+  InMemoryLock,
+  InMemoryQueue,
+} from "./inMemory.js";
 export type { LockAcquire, LockRelease } from "./lock.js";
-export { noopLogger } from "./logger.js";
-export type { ActorSystemLogger } from "./logger.js";
 export { AwaitPolicy } from "./message.js";
 export type {
   AwaiterMeta,
@@ -24,14 +31,14 @@ export type {
   UserMessageMeta,
 } from "./message.js";
 export { post } from "./post.js";
-export type { ActorPostEnvironment } from "./post.js";
+export type { ActorPostOptions } from "./post.js";
 export { tryToProcess } from "./process.js";
 export type {
-  ActorBulkEnv,
-  ActorLoopEnvironment,
-  ActorProcessEnvironment,
+  ActorBulkOptions,
+  ActorLoopOptions,
   ActorProcessOptions,
-  ActorSingleEnv,
+  ActorSingleOptions,
+  TryToProcessOptions,
 } from "./process.js";
 export type {
   QueueBulkConsumer,
@@ -40,5 +47,5 @@ export type {
   QueueSingleConsumer,
 } from "./queue.js";
 export { send } from "./send.js";
-export type { ActorSendEnvironment } from "./send.js";
+export type { ActorSendOptions } from "./send.js";
 export type { ActorShift } from "./shift.js";

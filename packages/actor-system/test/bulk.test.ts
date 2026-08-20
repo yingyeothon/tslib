@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   AwaitPolicy,
   bulkConsumer,
-  InMemoryAwaiter,
-  InMemoryLock,
-  InMemoryQueue,
+  createInMemoryAwaiter,
+  createInMemoryLock,
+  createInMemoryQueue,
   post,
   tryToProcess,
 } from "../src/index.js";
@@ -27,9 +27,9 @@ class Adder {
 
 function newSubsys() {
   return {
-    queue: new InMemoryQueue(),
-    lock: new InMemoryLock(),
-    awaiter: new InMemoryAwaiter(),
+    queue: createInMemoryQueue(),
+    lock: createInMemoryLock(),
+    awaiter: createInMemoryAwaiter(),
   };
 }
 
@@ -111,15 +111,17 @@ describe("bulk-mode actor", () => {
     const env = {
       ...bulkConsumer,
       id: "bad-awaiter",
-      queue: new InMemoryQueue(),
-      lock: new InMemoryLock(),
+      queue: createInMemoryQueue(),
+      lock: createInMemoryLock(),
       awaiter: {
         resolve: () => Promise.reject(new Error("resolve-broken")),
         wait: () => Promise.resolve(true),
       },
       logger: {
+        severity: "error" as const,
         debug: () => undefined,
         info: () => undefined,
+        warn: () => undefined,
         error: (...args: unknown[]) => {
           logged.push(args);
         },

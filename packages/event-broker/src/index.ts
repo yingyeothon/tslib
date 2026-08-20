@@ -1,2 +1,3 @@
 export type { EventHandler, EventListenable } from "./types.js";
-export { EventBroker } from "./event-broker.js";
+export { createEventBroker } from "./event-broker.js";
+export type { EventBroker } from "./event-broker.js";

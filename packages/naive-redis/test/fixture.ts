@@ -1,20 +1,20 @@
 import { inject, test } from "vitest";
 import {
-  redisConnect,
-  type RedisConfig,
+  createRedisConnection,
+  type RedisConnectionOptions,
   type RedisConnection,
 } from "../src/index.js";
 
-export function redisConfigFromEnv(): RedisConfig {
+export function redisConnectionOptionsFromEnv(): RedisConnectionOptions {
   return { host: inject("redisHost"), port: inject("redisPort") };
 }
 
 export function testbed(
   testName: string,
-  testWork: (config: RedisConfig) => Promise<void>,
+  testWork: (config: RedisConnectionOptions) => Promise<void>,
 ): void {
   test(testName, async () => {
-    await testWork(redisConfigFromEnv());
+    await testWork(redisConnectionOptionsFromEnv());
   });
 }
 
@@ -23,7 +23,7 @@ export function fixture(
   connectionWork: (connection: RedisConnection) => Promise<void>,
 ): void {
   testbed(testName, async (config) => {
-    const connection = redisConnect(config);
+    const connection = createRedisConnection(config);
     try {
       await connectionWork(connection);
     } finally {

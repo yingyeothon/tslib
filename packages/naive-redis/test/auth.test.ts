@@ -1,22 +1,22 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   redisAuth,
-  redisConnect,
+  createRedisConnection,
   redisDel,
   redisGet,
   redisSend,
   redisSet,
-  type RedisConfig,
+  type RedisConnectionOptions,
 } from "../src/index.js";
-import { redisConfigFromEnv } from "./fixture.js";
+import { redisConnectionOptionsFromEnv } from "./fixture.js";
 
 const password = "naive-redis-test-password-1234";
 
 async function configSetRequirepass(
-  config: RedisConfig,
+  config: RedisConnectionOptions,
   value: string,
 ): Promise<void> {
-  const connection = redisConnect(config);
+  const connection = createRedisConnection(config);
   try {
     await redisSend({
       connection,
@@ -31,16 +31,19 @@ async function configSetRequirepass(
 
 describe("auth", () => {
   beforeAll(async () => {
-    await configSetRequirepass(redisConfigFromEnv(), password);
+    await configSetRequirepass(redisConnectionOptionsFromEnv(), password);
   });
 
   afterAll(async () => {
-    await configSetRequirepass({ ...redisConfigFromEnv(), password }, "");
+    await configSetRequirepass(
+      { ...redisConnectionOptionsFromEnv(), password },
+      "",
+    );
   });
 
   it("authenticates automatically when a password is configured", async () => {
-    const config = { ...redisConfigFromEnv(), password };
-    const connection = redisConnect(config);
+    const config = { ...redisConnectionOptionsFromEnv(), password };
+    const connection = createRedisConnection(config);
     try {
       const testKey = "naive-redis-auth-test";
       expect(await redisGet(connection, testKey)).toBeNull();
@@ -53,7 +56,7 @@ describe("auth", () => {
   });
 
   it("authenticates explicitly via redisAuth", async () => {
-    const connection = redisConnect(redisConfigFromEnv());
+    const connection = createRedisConnection(redisConnectionOptionsFromEnv());
     try {
       expect(await redisAuth(connection, password)).toBe(true);
       expect(await redisGet(connection, "naive-redis-auth-test")).toBeNull();
@@ -63,7 +66,7 @@ describe("auth", () => {
   });
 
   it("rejects commands without authentication", async () => {
-    const connection = redisConnect(redisConfigFromEnv());
+    const connection = createRedisConnection(redisConnectionOptionsFromEnv());
     try {
       await expect(redisGet(connection, "any-key")).rejects.toThrow(/NOAUTH/);
     } finally {
@@ -72,8 +75,8 @@ describe("auth", () => {
   });
 
   it("rejects commands with a wrong password", async () => {
-    const connection = redisConnect({
-      ...redisConfigFromEnv(),
+    const connection = createRedisConnection({
+      ...redisConnectionOptionsFromEnv(),
       password: "wrong-password",
     });
     try {
