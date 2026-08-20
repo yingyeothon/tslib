@@ -1,5 +1,6 @@
 import type { RedisConnection } from "./connection.js";
 import { singleCount } from "./exchange/singleCount.js";
+import { quoteArg } from "./exchange/quote.js";
 
 export function redisRpush(
   connection: RedisConnection,
@@ -7,6 +8,6 @@ export function redisRpush(
   ...values: string[]
 ): Promise<number> {
   return singleCount(connection, [
-    `RPUSH "${key}" ${values.map((value) => JSON.stringify(value)).join(" ")}`,
+    `RPUSH ${quoteArg(key)} ${values.map((value) => JSON.stringify(value)).join(" ")}`,
   ]);
 }

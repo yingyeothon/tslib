@@ -55,6 +55,27 @@ describe("serializeCommand", () => {
       `*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$${big.length}\r\n${big}\r\n`,
     );
   });
+
+  it("never lets whitespace or CRLF break the inline framing", () => {
+    // An injected command must stay inside one length-prefixed argument.
+    const evil = "pw\r\nCONFIG SET dir /tmp";
+    expect(serializeCommand(["AUTH", evil])).toBe(
+      `*2\r\n$4\r\nAUTH\r\n$${evil.length}\r\n${evil}\r\n`,
+    );
+    expect(serializeCommand(["SET", "key", "two words"])).toBe(
+      "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$9\r\ntwo words\r\n",
+    );
+    expect(serializeCommand(["SET", "key", "back\\slash"])).toBe(
+      "*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$10\r\nback\\slash\r\n",
+    );
+  });
+
+  it("uses byte lengths for multi-byte parts in the RESP array form", () => {
+    const value = "한글 값";
+    expect(serializeCommand(["SET", "key", value])).toBe(
+      `*3\r\n$3\r\nSET\r\n$3\r\nkey\r\n$${Buffer.byteLength(value)}\r\n${value}\r\n`,
+    );
+  });
 });
 
 describe("ensureValue", () => {

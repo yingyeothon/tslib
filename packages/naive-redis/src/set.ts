@@ -1,5 +1,6 @@
 import type { RedisConnection } from "./connection.js";
 import { ensureValue } from "./exchange/ensureValue.js";
+import { serializeCommand } from "./exchange/serialize.js";
 import { redisSend } from "./send.js";
 
 export interface RedisSetOptions {
@@ -29,23 +30,4 @@ export function redisSet(
   });
 }
 
-export function serializeCommand(command: string[]): string {
-  const totalLength = command
-    .map((part) => part.length)
-    .reduce((a, b) => a + b, 0);
-  const maxInlineRequestLength = 1 << 16;
-  if (
-    totalLength <= maxInlineRequestLength &&
-    command.every((part) => !part.includes(`"`))
-  ) {
-    return command.join(" ");
-  }
-
-  const lines: string[] = [];
-  lines.push(`*${command.length}`);
-  for (const part of command) {
-    lines.push(`$${part.length}`);
-    lines.push(part);
-  }
-  return lines.join("\r\n") + "\r\n";
-}
+export { serializeCommand };

@@ -35,13 +35,17 @@ export function buildAuthorizer({
 
     // Step 1. Authorize.
     try {
-      logger.debug(`authorizationToken`, event.authorizationToken);
+      // Never log the raw token: it is a credential.
+      logger.debug(
+        `authorizationToken`,
+        event.authorizationToken === undefined ? "absent" : "present",
+      );
       if (event.authorizationToken === undefined) {
         throw new Error(`No authorizationToken`);
       }
 
       const authorization = parseAuthorization(event.authorizationToken);
-      logger.debug(`authorization`, authorization);
+      logger.debug(`authorization`, authorization.type);
 
       authorized = await authorize(authorization);
       logger.debug(`authorized`, authorized);

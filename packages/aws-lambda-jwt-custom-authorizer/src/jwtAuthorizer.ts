@@ -33,17 +33,18 @@ export function buildJWTAuthorizer({
         const token = jwt.sign(buildJWTPayload(auth.credential), jwtSecret, {
           expiresIn: jwtExpiresIn,
         });
-        logger.debug(`BasicAuth`, `JWT issued`, token);
+        logger.debug(`BasicAuth`, `JWT issued`, auth.credential.id);
         return { allow: true, context: { token } };
       }
 
       // Token authentication
       if (auth.type === "Bearer") {
-        logger.debug(`BearerAuth`, auth.token);
+        // Never log the raw token: it is a credential.
+        logger.debug(`BearerAuth`);
         const decoded = jwt.verify(auth.token, jwtSecret);
 
         if (!decoded) {
-          logger.debug(`BearerAuth`, `Failed`, auth.token);
+          logger.debug(`BearerAuth`, `Failed`);
           return { allow: false };
         }
         logger.debug(`BearerAuth`, `Decoded`, decoded);

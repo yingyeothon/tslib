@@ -1,5 +1,6 @@
 import type { RedisConnection } from "./connection.js";
 import { singleCount } from "./exchange/singleCount.js";
+import { quoteArg } from "./exchange/quote.js";
 
 export function redisSadd(
   connection: RedisConnection,
@@ -7,6 +8,6 @@ export function redisSadd(
   ...values: string[]
 ): Promise<number> {
   return singleCount(connection, [
-    `SADD "${key}" ${values.map((value) => JSON.stringify(value)).join(" ")}`,
+    `SADD ${quoteArg(key)} ${values.map((value) => JSON.stringify(value)).join(" ")}`,
   ]);
 }
