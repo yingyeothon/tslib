@@ -57,6 +57,9 @@ importers:
 
   packages/actor-system-aws-lambda-support:
     dependencies:
+      "@types/aws-lambda":
+        specifier: ^8.10.152
+        version: 8.10.162
       "@yingyeothon/actor-system":
         specifier: workspace:^
         version: link:../actor-system
@@ -67,9 +70,6 @@ importers:
       "@aws-sdk/client-lambda":
         specifier: ^3.879.0
         version: 3.1113.0
-      "@types/aws-lambda":
-        specifier: ^8.10.152
-        version: 8.10.162
 
   packages/actor-system-redis-support:
     dependencies:
@@ -88,16 +88,21 @@ importers:
 
   packages/aws-lambda-custom-authorizer:
     dependencies:
-      "@yingyeothon/logger":
-        specifier: workspace:^
-        version: link:../logger
-    devDependencies:
       "@types/aws-lambda":
         specifier: ^8.10.152
         version: 8.10.162
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
 
   packages/aws-lambda-jwt-custom-authorizer:
     dependencies:
+      "@types/aws-lambda":
+        specifier: ^8.10.152
+        version: 8.10.162
+      "@types/jsonwebtoken":
+        specifier: ^9.0.10
+        version: 9.0.10
       "@yingyeothon/aws-lambda-custom-authorizer":
         specifier: workspace:^
         version: link:../aws-lambda-custom-authorizer
@@ -107,13 +112,6 @@ importers:
       jsonwebtoken:
         specifier: ^9.0.2
         version: 9.0.3
-    devDependencies:
-      "@types/aws-lambda":
-        specifier: ^8.10.152
-        version: 8.10.162
-      "@types/jsonwebtoken":
-        specifier: ^9.0.10
-        version: 9.0.10
 
   packages/codec: {}
 
@@ -130,6 +128,9 @@ importers:
 
   packages/lambda-gamebase:
     dependencies:
+      "@types/aws-lambda":
+        specifier: ^8.10.152
+        version: 8.10.162
       "@yingyeothon/actor-system":
         specifier: workspace:^
         version: link:../actor-system
@@ -149,9 +150,6 @@ importers:
       "@aws-sdk/client-lambda":
         specifier: ^3.879.0
         version: 3.1113.0
-      "@types/aws-lambda":
-        specifier: ^8.10.152
-        version: 8.10.162
 
   packages/logger: {}
 

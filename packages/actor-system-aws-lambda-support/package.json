@@ -37,14 +37,14 @@
   },
   "dependencies": {
     "@yingyeothon/actor-system": "workspace:^",
-    "@yingyeothon/logger": "workspace:^"
+    "@yingyeothon/logger": "workspace:^",
+    "@types/aws-lambda": "^8.10.152"
   },
   "peerDependencies": {
     "@aws-sdk/client-lambda": "^3.879.0"
   },
   "devDependencies": {
-    "@aws-sdk/client-lambda": "^3.879.0",
-    "@types/aws-lambda": "^8.10.152"
+    "@aws-sdk/client-lambda": "^3.879.0"
   },
   "publishConfig": {
     "access": "public"

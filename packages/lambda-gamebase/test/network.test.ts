@@ -125,6 +125,44 @@ describe("broadcast", () => {
       [fakeConnectionId]: true,
     });
   });
+
+  it("logs with the module logger when none is injected", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const send = vi.fn().mockResolvedValue({});
+      const client = { send } as unknown as ApiGatewayManagementApiClient;
+      expect(
+        await broadcast(["connection-1"], { type: "stage" }, { client }),
+      ).toEqual({ "connection-1": true });
+      expect(info).toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+    }
+  });
+
+  it("uses an info-severity module logger in production", async () => {
+    vi.stubEnv("STAGE", "production");
+    vi.resetModules();
+    const { broadcast: productionBroadcast } =
+      await import("../src/network/broadcast.js");
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const send = vi.fn().mockResolvedValue({});
+      const client = { send } as unknown as ApiGatewayManagementApiClient;
+      expect(
+        await productionBroadcast(
+          ["connection-1"],
+          { type: "stage" },
+          {
+            client,
+          },
+        ),
+      ).toEqual({ "connection-1": true });
+      expect(info).toHaveBeenCalled();
+    } finally {
+      info.mockRestore();
+    }
+  });
 });
 
 describe("isGoneException", () => {

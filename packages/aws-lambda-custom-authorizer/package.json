@@ -36,9 +36,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@yingyeothon/logger": "workspace:^"
-  },
-  "devDependencies": {
+    "@yingyeothon/logger": "workspace:^",
     "@types/aws-lambda": "^8.10.152"
   },
   "publishConfig": {

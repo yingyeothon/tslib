@@ -13,8 +13,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
-        with:
-          version: 11
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -22,14 +20,16 @@ jobs:
           registry-url: https://registry.npmjs.org
       - name: Verify tag format
         run: |
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Release tag '$GITHUB_REF_NAME' must look like v1.2.3" >&2
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag '$GITHUB_REF_NAME' must look like v1.2.3 (stable only)" >&2
             exit 1
           fi
       - run: pnpm install --frozen-lockfile
       - name: Stamp version from tag
         run: node scripts/set-version.mjs "${GITHUB_REF_NAME#v}"
       - run: pnpm build
+      - run: pnpm lint
+      - run: pnpm typecheck
       - run: pnpm test
       - name: Publish all packages
         run: pnpm -r publish --access public --no-git-checks --provenance

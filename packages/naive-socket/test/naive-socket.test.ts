@@ -378,6 +378,101 @@ describe("NaiveSocket", () => {
     );
   });
 
+  it("waits for more data when a fixed-length fulfill is not satisfied yet", async () => {
+    const server = await startServer((message, client) => {
+      client.write("AB");
+      setTimeout(() => client.write("CD"), 10);
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port);
+    expect(await ns.send({ message: "go", fulfill: 4 })).toBe("ABCD");
+  });
+
+  it("rejects the active work when the write fails on a broken socket", async () => {
+    const server = await echoServer();
+    const ns = newSocket(server.port, { connectionRetryInterval: -1 });
+    await ns.send({ message: "warmup" });
+
+    // Destroy the underlying socket; its close event has not been handled
+    // yet, so the next send still writes to the destroyed socket and the
+    // write callback reports the error.
+    const internals = ns as unknown as { socket: Socket };
+    internals.socket.destroy();
+    await expect(
+      ns.send({ message: "never-sent", timeoutMillis: 1000 }),
+    ).rejects.toThrow(/destroyed/i);
+  });
+
+  it("ignores an error event while connected", async () => {
+    const server = await echoServer();
+    const warn = vi.fn();
+    const error = vi.fn();
+    const ns = newSocket(server.port, {
+      logger: { ...silentLogger, warn, error },
+    });
+    await ns.send({ message: "ping" });
+
+    const internals = ns as unknown as { onError: (error: Error) => void };
+    internals.onError(new Error("caught by the write callback instead"));
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("logs an unexpected error event in the disconnected state", () => {
+    const error = vi.fn();
+    const ns = newSocket(1, { logger: { ...silentLogger, error } });
+
+    const internals = ns as unknown as { onError: (error: Error) => void };
+    const unexpected = new Error("boom");
+    internals.onError(unexpected);
+    expect(error).toHaveBeenCalledWith(
+      "[NaiveSocket]",
+      "Invalid error in disconnected state",
+      unexpected,
+    );
+  });
+
+  it("warns when destroying the socket fails during disconnect", async () => {
+    const server = await echoServer();
+    const warn = vi.fn();
+    const ns = newSocket(server.port, { logger: { ...silentLogger, warn } });
+    await ns.send({ message: "ping" });
+
+    const internals = ns as unknown as { socket: Socket };
+    const realSocket = internals.socket;
+    const realDestroy = realSocket.destroy.bind(realSocket);
+    const failure = new Error("destroy failed");
+    realSocket.destroy = () => {
+      throw failure;
+    };
+    ns.disconnect();
+    expect(warn).toHaveBeenCalledWith(
+      "[NaiveSocket]",
+      "Error occurred while disconnecting",
+      failure,
+    );
+    // Release the handle for real.
+    realDestroy();
+  });
+
+  it("emits info logs through the default logger when DEBUG is set", async () => {
+    const server = await echoServer();
+    vi.stubEnv("DEBUG", "1");
+    vi.resetModules();
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const { NaiveSocket: DebugNaiveSocket } =
+        await import("../src/naive-socket.js");
+      const ns = new DebugNaiveSocket({ host: "127.0.0.1", port: server.port });
+      expect(await ns.send({ message: "debug" })).toBe("debug");
+      expect(info).toHaveBeenCalledWith("[NaiveSocket]", "Start to connect");
+      ns.disconnect();
+    } finally {
+      info.mockRestore();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("uses the default logger without emitting info logs when DEBUG is unset", async () => {
     const server = await echoServer();
     const ns = new NaiveSocket({ host: "127.0.0.1", port: server.port });

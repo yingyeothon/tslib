@@ -69,7 +69,3 @@ There is no need to await the result of `fire` when every handler is synchronous
 - `EventListenable<E>` now declares `once` and `off` in addition to `on`, so custom implementations must provide all three.
 - Handlers are snapshotted per `fire` call: handlers added or removed during dispatch take effect from the next `fire`, whereas the legacy broker iterated the live handler array.
 - `fire` resolves to `false` when the event has no remaining handlers (the legacy broker returned `false` only when the event name had never been registered).
-
-## License
-
-MIT

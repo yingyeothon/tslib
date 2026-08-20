@@ -38,9 +38,7 @@
   "dependencies": {
     "@yingyeothon/aws-lambda-custom-authorizer": "workspace:^",
     "@yingyeothon/logger": "workspace:^",
-    "jsonwebtoken": "^9.0.2"
-  },
-  "devDependencies": {
+    "jsonwebtoken": "^9.0.2",
     "@types/aws-lambda": "^8.10.152",
     "@types/jsonwebtoken": "^9.0.10"
   },

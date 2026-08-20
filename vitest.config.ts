@@ -7,10 +7,14 @@ export default defineConfig({
       provider: "v8",
       include: ["packages/*/src/**"],
       thresholds: {
-        lines: 80,
-        functions: 80,
-        statements: 80,
-        branches: 70,
+        // Enforced per package so one package cannot hide behind the
+        // monorepo aggregate.
+        "packages/*/src/**": {
+          lines: 80,
+          functions: 80,
+          statements: 80,
+          branches: 70,
+        },
       },
     },
   },

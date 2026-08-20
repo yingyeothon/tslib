@@ -4,26 +4,26 @@ TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) 
 
 ## Packages
 
-| Package | Description |
-| --- | --- |
-| [@yingyeothon/codec](packages/codec) | Tiny codec abstraction (`Codec` + `JsonCodec`) |
-| [@yingyeothon/logger](packages/logger) | Minimal structured logger with severity filtering |
-| [@yingyeothon/event-broker](packages/event-broker) | Type-safe async event broker |
-| [@yingyeothon/slack-logger](packages/slack-logger) | Logger that batches records into a Slack webhook |
-| [@yingyeothon/logger-s3](packages/logger-s3) | Buffered log writer flushing into S3 via s3-cache-bridge |
-| [@yingyeothon/naive-socket](packages/naive-socket) | Zero-dependency TCP client with queueing and reconnect |
-| [@yingyeothon/naive-redis](packages/naive-redis) | Minimal Redis client built on naive-socket |
-| [@yingyeothon/s3-cache-bridge-client](packages/s3-cache-bridge-client) | HTTP client for the s3-cache-bridge server |
-| [@yingyeothon/repository](packages/repository) | Key-value repository abstractions + in-memory impl |
-| [@yingyeothon/repository-redis](packages/repository-redis) | Redis-backed repository |
-| [@yingyeothon/repository-s3](packages/repository-s3) | S3-backed repository |
-| [@yingyeothon/actor-system](packages/actor-system) | Lightweight actor system (queue/lock/awaiter) |
-| [@yingyeothon/actor-system-redis-support](packages/actor-system-redis-support) | Redis-backed actor system support |
-| [@yingyeothon/actor-system-aws-lambda-support](packages/actor-system-aws-lambda-support) | AWS Lambda glue for the actor system |
-| [@yingyeothon/aws-lambda-custom-authorizer](packages/aws-lambda-custom-authorizer) | API Gateway custom authorizer helpers |
-| [@yingyeothon/aws-lambda-jwt-custom-authorizer](packages/aws-lambda-jwt-custom-authorizer) | JWT-verifying API Gateway authorizer |
-| [@yingyeothon/lambda-gamebase](packages/lambda-gamebase) | Serverless WebSocket game framework on AWS Lambda |
-| [@yingyeothon/do-game-all-together](packages/do-game-all-together) | Wait/running stage game loop plugin for lambda-gamebase |
+| Package                                                                                    | Description                                              |
+| ------------------------------------------------------------------------------------------ | -------------------------------------------------------- |
+| [@yingyeothon/codec](packages/codec)                                                       | Tiny codec abstraction (`Codec` + `JsonCodec`)           |
+| [@yingyeothon/logger](packages/logger)                                                     | Minimal structured logger with severity filtering        |
+| [@yingyeothon/event-broker](packages/event-broker)                                         | Type-safe async event broker                             |
+| [@yingyeothon/slack-logger](packages/slack-logger)                                         | Logger that batches records into a Slack webhook         |
+| [@yingyeothon/logger-s3](packages/logger-s3)                                               | Buffered log writer flushing into S3 via s3-cache-bridge |
+| [@yingyeothon/naive-socket](packages/naive-socket)                                         | Zero-dependency TCP client with queueing and reconnect   |
+| [@yingyeothon/naive-redis](packages/naive-redis)                                           | Minimal Redis client built on naive-socket               |
+| [@yingyeothon/s3-cache-bridge-client](packages/s3-cache-bridge-client)                     | HTTP client for the s3-cache-bridge server               |
+| [@yingyeothon/repository](packages/repository)                                             | Key-value repository abstractions + in-memory impl       |
+| [@yingyeothon/repository-redis](packages/repository-redis)                                 | Redis-backed repository                                  |
+| [@yingyeothon/repository-s3](packages/repository-s3)                                       | S3-backed repository                                     |
+| [@yingyeothon/actor-system](packages/actor-system)                                         | Lightweight actor system (queue/lock/awaiter)            |
+| [@yingyeothon/actor-system-redis-support](packages/actor-system-redis-support)             | Redis-backed actor system support                        |
+| [@yingyeothon/actor-system-aws-lambda-support](packages/actor-system-aws-lambda-support)   | AWS Lambda glue for the actor system                     |
+| [@yingyeothon/aws-lambda-custom-authorizer](packages/aws-lambda-custom-authorizer)         | API Gateway custom authorizer helpers                    |
+| [@yingyeothon/aws-lambda-jwt-custom-authorizer](packages/aws-lambda-jwt-custom-authorizer) | JWT-verifying API Gateway authorizer                     |
+| [@yingyeothon/lambda-gamebase](packages/lambda-gamebase)                                   | Serverless WebSocket game framework on AWS Lambda        |
+| [@yingyeothon/do-game-all-together](packages/do-game-all-together)                         | Wait/running stage game loop plugin for lambda-gamebase  |
 
 ## Dependency graph
 
@@ -57,7 +57,7 @@ graph LR
 
 ## Development
 
-Requirements: Node >= 20, pnpm >= 9, Docker (for Redis testcontainers-based integration tests).
+Requirements: Node >= 20, pnpm 11 (pinned via `packageManager`), Docker (for Redis testcontainers-based integration tests).
 
 ```bash
 pnpm install

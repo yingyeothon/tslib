@@ -13,7 +13,12 @@ npm install @yingyeothon/logger
 ESM:
 
 ```ts
-import { ConsoleLogger, FilteredLogger, combine, nullLogger } from "@yingyeothon/logger";
+import {
+  ConsoleLogger,
+  FilteredLogger,
+  combine,
+  nullLogger,
+} from "@yingyeothon/logger";
 
 const logger = new ConsoleLogger("info");
 logger.debug("dropped: below severity");
@@ -25,7 +30,11 @@ const buffered: string[] = [];
 const audit = new FilteredLogger(
   "debug",
   combine(
-    { debug: () => {}, info: (...a) => buffered.push(a.join(" ")), error: console.error },
+    {
+      debug: () => {},
+      info: (...a) => buffered.push(a.join(" ")),
+      error: console.error,
+    },
     nullLogger, // combine() skips the null logger
   ),
 );
