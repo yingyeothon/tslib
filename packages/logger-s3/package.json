@@ -45,8 +45,8 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yingyeothon/yyt-tslib.git",
+    "url": "git+https://github.com/yingyeothon/tslib.git",
     "directory": "packages/logger-s3"
   },
-  "homepage": "https://github.com/yingyeothon/yyt-tslib/tree/main/packages/logger-s3#readme"
+  "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/logger-s3#readme"
 }
