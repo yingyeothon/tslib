@@ -1,11 +1,12 @@
 import {
+  createTicker,
+  createTimeDelta,
   sleep,
-  Ticker,
-  TimeDelta,
   type BaseGameContext,
   type BaseGameRequest,
+  type NetworkOptions,
 } from "@yingyeothon/lambda-gamebase";
-import type { Logger } from "@yingyeothon/logger";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import { GameStage } from "../models/GameStage.js";
 import { broadcastStage } from "./broadcastStage.js";
 import { processEnterLeave } from "./processEnterLeave.js";
@@ -34,6 +35,16 @@ export interface GameController<M extends GameMessageBase> {
   }) => Promise<unknown>;
 }
 
+export type DoInStageRunningOptions<M extends GameMessageBase> = {
+  context: BaseGameContext;
+  gameRunningSeconds: number;
+  loopInterval: number;
+  pollMessages: () => Promise<M[]>;
+  logger?: Logger;
+  /** Network options (gamebase context or explicit client) for broadcasts. */
+  network?: NetworkOptions;
+} & GameController<M>;
+
 /**
  * Running stage: dispatches enter/leave and game messages to the game
  * controller until the game is over or the running time runs out,
@@ -47,21 +58,16 @@ export async function doInStageRunning<M extends GameMessageBase>({
   processMessage,
   updateTimeDelta,
   pollMessages,
-  logger,
-}: {
-  context: BaseGameContext;
-  gameRunningSeconds: number;
-  loopInterval: number;
-  pollMessages: () => Promise<M[]>;
-  logger: Logger;
-} & GameController<M>): Promise<void> {
-  logger.info({ context }, "Start of running stage");
+  logger = nullLogger,
+  network,
+}: DoInStageRunningOptions<M>): Promise<void> {
+  logger.info("Start of running stage", { context });
 
-  const timeDelta = new TimeDelta();
-  const ticker = new Ticker<GameStage>(
-    GameStage.Running,
-    gameRunningSeconds * 1000,
-  );
+  const timeDelta = createTimeDelta();
+  const ticker = createTicker<GameStage>({
+    stage: GameStage.Running,
+    aliveMillis: gameRunningSeconds * 1000,
+  });
   while (ticker.isAlive() && !isGameOver({ context })) {
     const messages = await pollMessages();
     for (const message of messages) {
@@ -70,31 +76,33 @@ export async function doInStageRunning<M extends GameMessageBase>({
           await processEnterLeave({
             context,
             message: message as unknown as BaseGameRequest,
+            network,
           });
         } else {
           await processMessage({ context, message });
         }
       } catch (error) {
-        logger.error({ context, message, error }, "Cannot process message");
+        logger.error("Cannot process message", { context, message, error });
       }
       if (updateTimeDelta) {
         const delta = timeDelta.getDelta();
         try {
           await updateTimeDelta({ context, delta });
         } catch (error) {
-          logger.error(
-            { context, delta, error },
-            "Cannot update with time-delta",
-          );
+          logger.error("Cannot update with time-delta", {
+            context,
+            delta,
+            error,
+          });
         }
       }
     }
 
     await ticker.checkAgeChanged((stage, age) =>
-      broadcastStage({ context, stage, age }),
+      broadcastStage({ context, stage, age, network }),
     );
     await sleep(loopInterval);
   }
 
-  logger.info({ context }, "End of running stage");
+  logger.info("End of running stage", { context });
 }

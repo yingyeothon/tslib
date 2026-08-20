@@ -4,33 +4,33 @@ TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) 
 
 ## Packages
 
-| Package                                                                                  | Description                                              |
-| ---------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| [@yingyeothon/codec](packages/codec)                                                     | Tiny codec abstraction (`Codec` + `JsonCodec`)           |
-| [@yingyeothon/logger](packages/logger)                                                   | Minimal structured logger with severity filtering        |
-| [@yingyeothon/event-broker](packages/event-broker)                                       | Type-safe async event broker                             |
-| [@yingyeothon/slack-logger](packages/slack-logger)                                       | Logger that batches records into a Slack webhook         |
-| [@yingyeothon/logger-s3](packages/logger-s3)                                             | Buffered log writer flushing into S3 via s3-cache-bridge |
-| [@yingyeothon/naive-socket](packages/naive-socket)                                       | Zero-dependency TCP client with queueing and reconnect   |
-| [@yingyeothon/naive-redis](packages/naive-redis)                                         | Minimal Redis client built on naive-socket               |
-| [@yingyeothon/s3-cache-bridge-client](packages/s3-cache-bridge-client)                   | HTTP client for the s3-cache-bridge server               |
-| [@yingyeothon/repository](packages/repository)                                           | Key-value repository abstractions + in-memory impl       |
-| [@yingyeothon/repository-redis](packages/repository-redis)                               | Redis-backed repository                                  |
-| [@yingyeothon/repository-s3](packages/repository-s3)                                     | S3-backed repository                                     |
-| [@yingyeothon/actor-system](packages/actor-system)                                       | Lightweight actor system (queue/lock/awaiter)            |
-| [@yingyeothon/actor-system-redis-support](packages/actor-system-redis-support)           | Redis-backed actor system support                        |
-| [@yingyeothon/actor-system-aws-lambda-support](packages/actor-system-aws-lambda-support) | AWS Lambda glue for the actor system                     |
-| [@yingyeothon/lambda-authorizer](packages/lambda-authorizer)                             | API Gateway custom authorizer helpers                    |
-| [@yingyeothon/lambda-authorizer-jwt](packages/lambda-authorizer-jwt)                     | JWT-verifying API Gateway authorizer                     |
-| [@yingyeothon/lambda-gamebase](packages/lambda-gamebase)                                 | Serverless WebSocket game framework on AWS Lambda        |
-| [@yingyeothon/do-game-all-together](packages/do-game-all-together)                       | Wait/running stage game loop plugin for lambda-gamebase  |
+| Package                                                                | Description                                              |
+| ---------------------------------------------------------------------- | -------------------------------------------------------- |
+| [@yingyeothon/codec](packages/codec)                                   | Tiny codec abstraction (`Codec` + `jsonCodec`)           |
+| [@yingyeothon/logger](packages/logger)                                 | Minimal structured logger with severity filtering        |
+| [@yingyeothon/event-broker](packages/event-broker)                     | Type-safe async event broker                             |
+| [@yingyeothon/logger-slack](packages/logger-slack)                     | Slack-webhook log writer for @yingyeothon/logger         |
+| [@yingyeothon/logger-s3](packages/logger-s3)                           | Buffered log writer flushing into S3 via s3-cache-bridge |
+| [@yingyeothon/naive-socket](packages/naive-socket)                     | Minimal TCP client with queueing and reconnect           |
+| [@yingyeothon/naive-redis](packages/naive-redis)                       | Minimal Redis client built on naive-socket               |
+| [@yingyeothon/s3-cache-bridge-client](packages/s3-cache-bridge-client) | HTTP client for the s3-cache-bridge server               |
+| [@yingyeothon/repository](packages/repository)                         | Key-value repository abstractions + in-memory impl       |
+| [@yingyeothon/repository-redis](packages/repository-redis)             | Redis-backed repository                                  |
+| [@yingyeothon/repository-s3](packages/repository-s3)                   | S3-backed repository                                     |
+| [@yingyeothon/actor-system](packages/actor-system)                     | Lightweight actor system (queue/lock/awaiter)            |
+| [@yingyeothon/actor-system-redis](packages/actor-system-redis)         | Redis-backed actor system support                        |
+| [@yingyeothon/actor-system-lambda](packages/actor-system-lambda)       | AWS Lambda glue for the actor system                     |
+| [@yingyeothon/lambda-authorizer](packages/lambda-authorizer)           | API Gateway custom authorizer helpers                    |
+| [@yingyeothon/lambda-authorizer-jwt](packages/lambda-authorizer-jwt)   | JWT-verifying API Gateway authorizer                     |
+| [@yingyeothon/lambda-gamebase](packages/lambda-gamebase)               | Serverless WebSocket game framework on AWS Lambda        |
+| [@yingyeothon/gamebase-all-together](packages/gamebase-all-together)   | Wait/running stage game loop plugin for lambda-gamebase  |
 
 ## Dependency graph
 
 ```mermaid
 graph LR
   naive-redis --> naive-socket
-  slack-logger --> logger
+  logger-slack --> logger
   logger-s3 --> logger
   logger-s3 --> s3-cache-bridge-client
   repository-redis --> codec
@@ -38,22 +38,24 @@ graph LR
   repository-redis --> repository
   repository-s3 --> codec
   repository-s3 --> repository
-  actor-system-redis-support --> actor-system
-  actor-system-redis-support --> codec
-  actor-system-redis-support --> logger
-  actor-system-redis-support --> naive-redis
-  actor-system-aws-lambda-support --> actor-system
-  actor-system-aws-lambda-support --> logger
+  actor-system-redis --> actor-system
+  actor-system-redis --> codec
+  actor-system-redis --> logger
+  actor-system-redis --> naive-redis
+  actor-system-lambda --> actor-system
+  actor-system-lambda --> logger
   lambda-authorizer --> logger
   lambda-authorizer-jwt --> lambda-authorizer
   lambda-authorizer-jwt --> logger
   lambda-gamebase --> actor-system
-  lambda-gamebase --> actor-system-redis-support
+  lambda-gamebase --> actor-system-redis
   lambda-gamebase --> logger
   lambda-gamebase --> naive-redis
-  do-game-all-together --> lambda-gamebase
-  do-game-all-together --> logger
+  gamebase-all-together --> lambda-gamebase
+  gamebase-all-together --> logger
 ```
+
+API design rules shared by all packages are documented in [CONVENTIONS.md](CONVENTIONS.md).
 
 ## Development
 
@@ -74,7 +76,7 @@ Every package ships dual ESM/CJS with type definitions via an `exports` map, tar
 
 All packages share one version. To release:
 
-1. Create a GitHub Release with a tag like `v1.0.0`.
+1. Create a GitHub Release with a tag like `v2.0.0` (must be greater than any previously published version of the kept package names).
 2. The [release workflow](.github/workflows/release.yml) stamps that version into every package, builds, tests, and runs `pnpm -r publish` to npm with provenance.
 
 Publishing auth uses the `NPM_TOKEN` repository secret (or configure npm trusted publishing per package and drop the token).

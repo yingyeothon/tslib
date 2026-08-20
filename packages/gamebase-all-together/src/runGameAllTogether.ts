@@ -1,9 +1,10 @@
 import {
   dropConnection,
   setupBaseGameContext,
-  type GameMainArguments,
+  type GameMainOptions,
+  type NetworkOptions,
 } from "@yingyeothon/lambda-gamebase";
-import { ConsoleLogger, type Logger } from "@yingyeothon/logger";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import { GameStage } from "./models/GameStage.js";
 import { broadcastStage } from "./services/broadcastStage.js";
 import {
@@ -13,12 +14,17 @@ import {
 } from "./services/doInStageRunning.js";
 import { doInStageWait } from "./services/doInStageWait.js";
 
-export type RunGameAllTogetherArgs<M extends GameMessageBase> =
-  GameMainArguments<M> & {
+export type RunGameAllTogetherOptions<M extends GameMessageBase> =
+  GameMainOptions<M> & {
     gameWaitingSeconds: number;
     gameRunningSeconds: number;
     loopInterval?: number;
     logger?: Logger;
+    /**
+     * Network options for broadcasts and connection drops: pass the
+     * gamebase context (`{ context }`) or an explicit `client`.
+     */
+    network?: NetworkOptions;
   } & GameController<M>;
 
 /**
@@ -36,8 +42,9 @@ export async function runGameAllTogether<M extends GameMessageBase>({
   processMessage,
   updateTimeDelta,
   loopInterval = 0,
-  logger = new ConsoleLogger("debug"),
-}: RunGameAllTogetherArgs<M>): Promise<void> {
+  logger = nullLogger,
+  network,
+}: RunGameAllTogetherOptions<M>): Promise<void> {
   const context = setupBaseGameContext(members);
   try {
     const allConnected = await doInStageWait({
@@ -46,6 +53,7 @@ export async function runGameAllTogether<M extends GameMessageBase>({
       loopInterval,
       pollMessages,
       logger,
+      network,
     });
     if (allConnected) {
       await doInStageRunning({
@@ -57,20 +65,22 @@ export async function runGameAllTogether<M extends GameMessageBase>({
         updateTimeDelta,
         pollMessages,
         logger,
+        network,
       });
     }
   } catch (error) {
-    logger.error({ gameId, context, error }, "Error in game loop");
+    logger.error("Error in game loop", { gameId, context, error });
   }
   await broadcastStage({
     context,
     age: gameRunningSeconds,
     stage: GameStage.End,
+    network,
   });
   await Promise.all(
     Object.keys(context.connectedUsers).map((connectionId) =>
-      dropConnection(connectionId),
+      dropConnection(connectionId, network),
     ),
   );
-  logger.info({ gameId, members }, "Game end");
+  logger.info("Game end", { gameId, members });
 }

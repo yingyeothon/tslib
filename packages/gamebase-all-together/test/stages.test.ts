@@ -307,7 +307,7 @@ describe("runGameAllTogether", () => {
 
     expect(processMessage).not.toHaveBeenCalled();
     expect(stageBroadcasts()).toContainEqual({ stage: GameStage.End, age: 30 });
-    expect(dropConnection).toHaveBeenCalledWith("c1");
+    expect(dropConnection).toHaveBeenCalledWith("c1", undefined);
   });
 
   it("still broadcasts the end stage when the game loop fails", async () => {

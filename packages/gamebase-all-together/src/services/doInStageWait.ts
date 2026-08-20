@@ -1,14 +1,25 @@
 import {
+  createTicker,
   sleep,
-  Ticker,
   type BaseGameContext,
   type BaseGameRequest,
+  type NetworkOptions,
 } from "@yingyeothon/lambda-gamebase";
-import type { Logger } from "@yingyeothon/logger";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import { GameStage } from "../models/GameStage.js";
 import { broadcastStage } from "./broadcastStage.js";
 import type { GameMessageBase } from "./doInStageRunning.js";
 import { processEnterLeave } from "./processEnterLeave.js";
+
+export interface DoInStageWaitOptions<M extends GameMessageBase> {
+  context: BaseGameContext;
+  gameWaitingSeconds: number;
+  loopInterval: number;
+  pollMessages: () => Promise<M[]>;
+  logger?: Logger;
+  /** Network options (gamebase context or explicit client) for broadcasts. */
+  network?: NetworkOptions;
+}
 
 /**
  * Wait stage: processes enter/leave messages until every user is
@@ -21,24 +32,19 @@ export async function doInStageWait<M extends GameMessageBase>({
   gameWaitingSeconds,
   loopInterval,
   pollMessages,
-  logger,
-}: {
-  context: BaseGameContext;
-  gameWaitingSeconds: number;
-  loopInterval: number;
-  pollMessages: () => Promise<M[]>;
-  logger: Logger;
-}): Promise<boolean> {
-  logger.info({ context }, "Start of wait stage");
+  logger = nullLogger,
+  network,
+}: DoInStageWaitOptions<M>): Promise<boolean> {
+  logger.info("Start of wait stage", { context });
 
   function isAllConnected(): boolean {
     return Object.keys(context.connectedUsers).length === context.users.length;
   }
 
-  const ticker = new Ticker<GameStage>(
-    GameStage.Wait,
-    gameWaitingSeconds * 1000,
-  );
+  const ticker = createTicker<GameStage>({
+    stage: GameStage.Wait,
+    aliveMillis: gameWaitingSeconds * 1000,
+  });
   while (ticker.isAlive() && !isAllConnected()) {
     const messages = await pollMessages();
     for (const message of messages) {
@@ -46,21 +52,23 @@ export async function doInStageWait<M extends GameMessageBase>({
         await processEnterLeave({
           context,
           message: message as unknown as BaseGameRequest,
+          network,
         });
       } catch (error) {
-        logger.error(
-          { context, message, error },
-          "Cannot process enter-leave message",
-        );
+        logger.error("Cannot process enter-leave message", {
+          context,
+          message,
+          error,
+        });
       }
     }
 
     await ticker.checkAgeChanged((stage, age) =>
-      broadcastStage({ context, stage, age }),
+      broadcastStage({ context, stage, age, network }),
     );
     await sleep(loopInterval);
   }
 
-  logger.info({ context }, "End of wait stage");
+  logger.info("End of wait stage", { context });
   return isAllConnected();
 }

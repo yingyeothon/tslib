@@ -2,7 +2,15 @@ import {
   broadcast,
   type BaseGameContext,
   type BaseGameEnterRequest,
+  type NetworkOptions,
 } from "@yingyeothon/lambda-gamebase";
+
+export interface ProcessEnterOptions {
+  context: BaseGameContext;
+  message: BaseGameEnterRequest;
+  /** Network options (gamebase context or explicit client) for `broadcast`. */
+  network?: NetworkOptions;
+}
 
 /**
  * Binds an entering member's connection: observers are silently attached,
@@ -11,10 +19,8 @@ import {
 export async function processEnter({
   context,
   message: { connectionId, memberId },
-}: {
-  context: BaseGameContext;
-  message: BaseGameEnterRequest;
-}): Promise<void> {
+  network,
+}: ProcessEnterOptions): Promise<void> {
   const newbie = context.users.find((u) => u.memberId === memberId);
   const observer = context.observers.find((o) => o.memberId === memberId);
   if (observer) {
@@ -24,9 +30,13 @@ export async function processEnter({
     newbie.load = false;
 
     context.connectedUsers[connectionId] = newbie;
-    await broadcast(Object.keys(context.connectedUsers), {
-      type: "enter",
-      payload: { memberId },
-    });
+    await broadcast(
+      Object.keys(context.connectedUsers),
+      {
+        type: "enter",
+        payload: { memberId },
+      },
+      network,
+    );
   }
 }

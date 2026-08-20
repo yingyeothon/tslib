@@ -49,10 +49,14 @@ describe("processEnter", () => {
       connectionId: "c1",
       load: false,
     });
-    expect(broadcast).toHaveBeenCalledWith(["c1"], {
-      type: "enter",
-      payload: { memberId: "m1" },
-    });
+    expect(broadcast).toHaveBeenCalledWith(
+      ["c1"],
+      {
+        type: "enter",
+        payload: { memberId: "m1" },
+      },
+      undefined,
+    );
   });
 
   it("attaches an observer silently", async () => {
@@ -140,9 +144,13 @@ describe("broadcastStage", () => {
     broadcast.mockClear();
 
     await broadcastStage({ context, stage: GameStage.Running, age: 7 });
-    expect(broadcast).toHaveBeenCalledWith(["c1"], {
-      type: "stage",
-      payload: { stage: GameStage.Running, age: 7 },
-    });
+    expect(broadcast).toHaveBeenCalledWith(
+      ["c1"],
+      {
+        type: "stage",
+        payload: { stage: GameStage.Running, age: 7 },
+      },
+      undefined,
+    );
   });
 });

@@ -92,7 +92,9 @@ importers:
 
   packages/codec: {}
 
-  packages/do-game-all-together:
+  packages/event-broker: {}
+
+  packages/gamebase-all-together:
     dependencies:
       "@yingyeothon/lambda-gamebase":
         specifier: workspace:^
@@ -100,8 +102,6 @@ importers:
       "@yingyeothon/logger":
         specifier: workspace:^
         version: link:../logger
-
-  packages/event-broker: {}
 
   packages/lambda-authorizer:
     dependencies:

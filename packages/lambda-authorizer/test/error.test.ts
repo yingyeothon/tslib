@@ -76,6 +76,7 @@ describe("createAuthorizer error handling", () => {
       severity: "error",
       debug: vi.fn(),
       info: vi.fn(),
+      warn: vi.fn(),
       error,
     };
     const cause = new Error("bad credentials");

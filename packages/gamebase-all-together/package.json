@@ -1,7 +1,7 @@
 {
-  "name": "@yingyeothon/do-game-all-together",
+  "name": "@yingyeothon/gamebase-all-together",
   "version": "0.0.0",
-  "description": "Wait/running stage game loop plugin for @yingyeothon/lambda-gamebase.",
+  "description": "Wait/running stage game loop plugin for @yingyeothon/lambda-gamebase (formerly do-game-all-together).",
   "keywords": [
     "yyt",
     "yingyeothon"
@@ -45,7 +45,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/yingyeothon/tslib.git",
-    "directory": "packages/do-game-all-together"
+    "directory": "packages/gamebase-all-together"
   },
-  "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/do-game-all-together#readme"
+  "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/gamebase-all-together#readme"
 }
