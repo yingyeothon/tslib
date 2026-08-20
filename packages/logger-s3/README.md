@@ -53,9 +53,7 @@ updateSystemId("game-1234"); // Applies to all records still in the buffer.
 await flush(); // Call before the Lambda handler returns.
 ```
 
-## Record format
-
-Default serializer (`serializeAsJSON`), one line per record:
+Record format — default serializer (`serializeAsJSON`), one line per record:
 
 ```json
 {

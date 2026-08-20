@@ -82,8 +82,10 @@ const {
 } = require("@yingyeothon/lambda-gamebase");
 
 const context = createGamebaseContext(gamebaseOptionsFromEnv());
-await reply(connectionId, { type: "hello" }, { context }); // false when undeliverable
-await dropConnection(connectionId, { context });
+exports.hello = async (connectionId) => {
+  await reply(connectionId, { type: "hello" }, { context }); // false when undeliverable
+  await dropConnection(connectionId, { context });
+};
 ```
 
 ## Public API

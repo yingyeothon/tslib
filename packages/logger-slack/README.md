@@ -56,7 +56,7 @@ Each Slack message looks like `[WARN] retrying` followed by a fenced JSON block 
 - `slackLogWriterOptionsFromEnv()` — opt-in helper reading `SLACK_WEBHOOK_URL`, `SLACK_CHANNEL`, `SLACK_USER_NAME`.
 - Types: `SlackLogWriter`, `SlackLogWriterOptions`, `SlackLogger`, `SlackLoggerOptions`.
 
-## Migrating from @yingyeothon/slack-logger
+## Migrating from the legacy package
 
 The package was renamed on npm: `@yingyeothon/slack-logger` → `@yingyeothon/logger-slack`, and the API was redesigned around the shared `@yingyeothon/logger` contract.
 
@@ -65,29 +65,4 @@ The package was renamed on npm: `@yingyeothon/slack-logger` → `@yingyeothon/lo
 - `getLogger`/`useLogger`/`flushSlack`/`asYlogger` were replaced by `createSlackLogWriter`/`createSlackLogger`; the adapter is unnecessary because the writer _is_ a `@yingyeothon/logger` `LogWriter`.
 - Configuration is injected via options instead of read from `process.env`; use `slackLogWriterOptionsFromEnv()` to keep the env-driven behavior. `CONSOLE_LOG_LEVEL`/`SLACK_LOG_LEVEL` have no replacement — pass `severity`.
 - Pending Slack sends are stored per writer instead of in a module-global chain; call `flush()` on the writer/logger you created. Webhook failures are swallowed (report them via `onDeliveryError`), and the caller's context objects are no longer mutated when errors are serialized.
-
-Before:
-
-```ts
-import { getLogger } from "@yingyeothon/slack-logger";
-
-const logger = getLogger("api", "handler.ts");
-logger.error({ error: new Error("boom") }, "request failed");
-await logger.flushSlack();
-```
-
-After:
-
-```ts
-import {
-  createSlackLogger,
-  slackLogWriterOptionsFromEnv,
-} from "@yingyeothon/logger-slack";
-
-const logger = createSlackLogger({
-  ...slackLogWriterOptionsFromEnv(),
-  withConsole: true,
-});
-logger.error("request failed", { error: new Error("boom") });
-await logger.flush();
-```
+- A typical port: `getLogger("api", "handler.ts")` + `logger.error({ error }, "request failed")` + `await logger.flushSlack()` becomes `createSlackLogger(slackLogWriterOptionsFromEnv())` + `logger.error("request failed", { error })` + `await logger.flush()`.

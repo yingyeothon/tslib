@@ -56,7 +56,7 @@ const {
   createInMemoryQueue,
 } = require("@yingyeothon/actor-system");
 
-await eventLoop({
+eventLoop({
   id: "loop-1",
   queue: createInMemoryQueue(),
   lock: createInMemoryLock(),
@@ -65,10 +65,10 @@ await eventLoop({
       console.log(item);
     }
   },
-});
+}).then((processed) => console.log({ processed }));
 ```
 
-## Concepts
+Concepts:
 
 - `enqueue` appends a message to an actor's queue; `post` enqueues and optionally waits for another processor to complete it; `send` enqueues and then tries to process the queue in the calling thread.
 - `AwaitPolicy` selects how long a sender waits: `Forget` (not at all), `Act` (until its handler ran), or `Commit` (until the whole processing pass, including `onCommit`, finished).
@@ -78,26 +78,20 @@ await eventLoop({
 
 ## Public API
 
-Functions:
-
-- `enqueue(env, input)` — queue a message, filling in `messageId` (random UUID), `awaitPolicy` (`Forget`), and `awaitTimeoutMillis` (0).
-- `post(env, input)` — enqueue and await completion according to the message's `AwaitPolicy`.
-- `send(env, input, options?)` — enqueue, try to process in this thread, and await completion.
-- `tryToProcess(env, options?)` — lock and drain the actor's queue; returns the `AwaiterMeta[]` of processed messages.
-- `eventLoop(env)` — lock the actor and run a user loop with a queue-draining `poll`; `false` if the lock was held.
-- `createInMemoryQueue()`, `createInMemoryLock()`, `createInMemoryAwaiter()` — in-process support implementations.
-
-Values:
-
-- `AwaitPolicy` — `Forget` | `Act` | `Commit` enum.
-- `singleConsumer`, `bulkConsumer` — spreadable consume-type markers.
-
-Types:
-
-- Messages: `AwaiterMeta`, `UserMessage`, `UserMessageItem`, `UserMessageMeta`.
-- System interfaces: `QueueProducer`, `QueueSingleConsumer`, `QueueBulkConsumer`, `QueueLength`, `LockAcquire`, `LockRelease`, `AwaiterWait`, `AwaiterResolve`, `ActorShift`, `InMemoryQueue`, `InMemoryLock`, `InMemoryAwaiter`.
-- Options: `ActorProperty`, `ActorLogger`, `ActorErrorHandler`, `ActorSingleMessageHandler`, `ActorMessageBulkConsumer`, `ActorEnqueueOptions`, `ActorPostOptions`, `ActorSendOptions`, `ActorProcessOptions`, `ActorLoopOptions`, `ActorSingleOptions`, `ActorBulkOptions`, `ActorEventLoopOptions`, `TryToProcessOptions`.
-- Logging: `logger` fields take `Logger` from `@yingyeothon/logger`.
+- `enqueue(env, input)` — queue a message, filling in `messageId` (random UUID), `awaitPolicy` (`Forget`), and `awaitTimeoutMillis` (0)
+- `post(env, input)` — enqueue and await completion according to the message's `AwaitPolicy`
+- `send(env, input, options?)` — enqueue, try to process in this thread, and await completion
+- `tryToProcess(env, options?)` — lock and drain the actor's queue; returns the `AwaiterMeta[]` of processed messages
+- `eventLoop(env)` — lock the actor and run a user loop with a queue-draining `poll`; `false` if the lock was held
+- `createInMemoryQueue()` — in-process queue implementation
+- `createInMemoryLock()` — in-process lock implementation
+- `createInMemoryAwaiter()` — in-process awaiter implementation
+- `AwaitPolicy` — `Forget` | `Act` | `Commit` enum
+- `singleConsumer` — spreadable consume-type marker for message-by-message processing
+- `bulkConsumer` — spreadable consume-type marker for all-at-once processing
+- Message types: `AwaiterMeta`, `UserMessage`, `UserMessageItem`, `UserMessageMeta`
+- System interface types: `QueueProducer`, `QueueSingleConsumer`, `QueueBulkConsumer`, `QueueLength`, `LockAcquire`, `LockRelease`, `AwaiterWait`, `AwaiterResolve`, `ActorShift`, `InMemoryQueue`, `InMemoryLock`, `InMemoryAwaiter`
+- Options types: `ActorProperty`, `ActorLogger`, `ActorErrorHandler`, `ActorSingleMessageHandler`, `ActorMessageBulkConsumer`, `ActorEnqueueOptions`, `ActorPostOptions`, `ActorSendOptions`, `ActorProcessOptions`, `ActorLoopOptions`, `ActorSingleOptions`, `ActorBulkOptions`, `ActorEventLoopOptions`, `TryToProcessOptions` — `logger` fields take `Logger` from `@yingyeothon/logger`
 
 ## Migrating from the legacy package
 
