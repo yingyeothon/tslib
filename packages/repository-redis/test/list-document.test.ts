@@ -1,3 +1,4 @@
+import { createListDocument } from "@yingyeothon/repository";
 import { expect } from "vitest";
 import { fixture } from "./fixture.js";
 
@@ -8,7 +9,10 @@ interface KeyValue {
 
 fixture("list-doc", async (repo) => {
   await repo.delete("list-doc");
-  const listDoc = repo.getListDocument<KeyValue>("list-doc");
+  const listDoc = createListDocument<KeyValue>({
+    repository: repo,
+    key: "list-doc",
+  });
 
   const first = { key: "hello", value: "world" };
   const second = { key: "hi", value: "world" };

@@ -6,7 +6,7 @@ import {
   tryToProcess,
 } from "@yingyeothon/actor-system";
 import { expect } from "vitest";
-import { newRedisSubsystem } from "../src/index.js";
+import { createRedisSubsystem } from "../src/index.js";
 import { fixture } from "./fixture.js";
 
 interface AdderMessage {
@@ -34,7 +34,7 @@ fixture("adder-await", async (connection) => {
   const adder = new Adder("adder");
   const env = {
     ...singleConsumer,
-    ...newRedisSubsystem({ connection, keyPrefix: "__TEST__await__" }),
+    ...createRedisSubsystem({ connection, keyPrefix: "__TEST__await__" }),
     ...adder,
   };
 

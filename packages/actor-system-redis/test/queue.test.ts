@@ -1,5 +1,5 @@
 import { expect } from "vitest";
-import { RedisQueue } from "../src/index.js";
+import { createRedisQueue } from "../src/index.js";
 import { fixture } from "./fixture.js";
 
 interface KeyValue {
@@ -8,7 +8,7 @@ interface KeyValue {
 }
 
 fixture("queue push/peek/pop/size", async (connection) => {
-  const queue = new RedisQueue({ connection });
+  const queue = createRedisQueue({ connection });
   const actorId = "test-actor";
 
   expect(await queue.size(actorId)).toBe(0);
@@ -36,7 +36,7 @@ fixture("queue push/peek/pop/size", async (connection) => {
 });
 
 fixture("queue flush drains all pending items at once", async (connection) => {
-  const queue = new RedisQueue({ connection, keyPrefix: "flush:" });
+  const queue = createRedisQueue({ connection, keyPrefix: "flush:" });
   const actorId = "test-actor";
 
   expect(await queue.flush(actorId)).toEqual([]);
@@ -58,8 +58,8 @@ fixture("queue flush drains all pending items at once", async (connection) => {
 fixture(
   "queues with different key prefixes are isolated",
   async (connection) => {
-    const queueA = new RedisQueue({ connection, keyPrefix: "a:" });
-    const queueB = new RedisQueue({ connection, keyPrefix: "b:" });
+    const queueA = createRedisQueue({ connection, keyPrefix: "a:" });
+    const queueB = createRedisQueue({ connection, keyPrefix: "b:" });
     const actorId = "same-actor";
 
     await queueA.push(actorId, "only-a");

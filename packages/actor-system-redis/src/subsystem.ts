@@ -1,13 +1,13 @@
-import { nullLogger, type LogWriter } from "@yingyeothon/logger";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import type { RedisConnection } from "@yingyeothon/naive-redis";
-import { RedisAwaiter } from "./awaiter.js";
-import { RedisLock } from "./lock.js";
-import { RedisQueue } from "./queue.js";
+import { createRedisAwaiter, type RedisAwaiter } from "./awaiter.js";
+import { createRedisLock, type RedisLock } from "./lock.js";
+import { createRedisQueue, type RedisQueue } from "./queue.js";
 
 export interface RedisSubsystemOptions {
   connection: RedisConnection;
   keyPrefix?: string;
-  logger?: LogWriter;
+  logger?: Logger;
 }
 
 export interface RedisSubsystem {
@@ -21,19 +21,23 @@ export interface RedisSubsystem {
  * sharing one connection, with `queue:`, `lock:`, and `awaiter:` appended
  * to the given key prefix respectively.
  */
-export function newRedisSubsystem({
+export function createRedisSubsystem({
   connection,
   keyPrefix = "",
   logger = nullLogger,
 }: RedisSubsystemOptions): RedisSubsystem {
   return {
-    queue: new RedisQueue({
+    queue: createRedisQueue({
       connection,
       keyPrefix: keyPrefix + "queue:",
       logger,
     }),
-    lock: new RedisLock({ connection, keyPrefix: keyPrefix + "lock:", logger }),
-    awaiter: new RedisAwaiter({
+    lock: createRedisLock({
+      connection,
+      keyPrefix: keyPrefix + "lock:",
+      logger,
+    }),
+    awaiter: createRedisAwaiter({
       connection,
       keyPrefix: keyPrefix + "awaiter:",
       logger,

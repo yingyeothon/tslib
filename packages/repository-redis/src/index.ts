@@ -1,1 +1,5 @@
-export { RedisRepository, type RedisRepositoryArguments } from "./redis.js";
+export {
+  createRedisRepository,
+  type RedisRepository,
+  type RedisRepositoryOptions,
+} from "./redis.js";

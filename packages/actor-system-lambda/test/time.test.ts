@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Timeline } from "../src/index.js";
+import { createTimeline } from "../src/index.js";
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -11,7 +11,7 @@ afterEach(() => {
 
 describe("Timeline", () => {
   it("starts with a 5 second timeout", () => {
-    const timeline = new Timeline();
+    const timeline = createTimeline();
     expect(timeline.timeoutMillis).toEqual(5000);
     expect(timeline.passedMillis).toEqual(0);
     expect(timeline.remainMillis).toEqual(5000);
@@ -19,7 +19,7 @@ describe("Timeline", () => {
   });
 
   it("tracks passed and remaining time", () => {
-    const timeline = new Timeline();
+    const timeline = createTimeline();
     timeline.reset(1000);
 
     vi.advanceTimersByTime(400);
@@ -33,7 +33,7 @@ describe("Timeline", () => {
   });
 
   it("keeps the previous timeout when reset without an argument", () => {
-    const timeline = new Timeline();
+    const timeline = createTimeline();
     timeline.reset(1000);
     vi.advanceTimersByTime(1500);
     expect(timeline.over).toBe(true);

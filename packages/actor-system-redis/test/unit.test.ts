@@ -1,6 +1,11 @@
+import type { Logger } from "@yingyeothon/logger";
 import type { RedisConnection } from "@yingyeothon/naive-redis";
 import { describe, expect, it } from "vitest";
-import { newRedisSubsystem, RedisAwaiter, RedisQueue } from "../src/index.js";
+import {
+  createRedisAwaiter,
+  createRedisQueue,
+  createRedisSubsystem,
+} from "../src/index.js";
 
 interface FakeRedis {
   connection: RedisConnection;
@@ -31,10 +36,20 @@ function fakeRedis(responses: Array<string | Error>): FakeRedis {
   };
 }
 
-describe("RedisAwaiter with a fake connection", () => {
+function recordingLogger(logs: unknown[][]): Logger {
+  return {
+    severity: "debug",
+    debug: (...args: unknown[]) => logs.push(args),
+    info: () => undefined,
+    warn: () => undefined,
+    error: () => undefined,
+  };
+}
+
+describe("createRedisAwaiter with a fake connection", () => {
   it("returns false immediately when timeoutMillis <= 0", async () => {
     const { connection, messages } = fakeRedis([new Error("must not touch")]);
-    const awaiter = new RedisAwaiter({ connection });
+    const awaiter = createRedisAwaiter({ connection });
 
     expect(await awaiter.wait("actor", "message", 0)).toBe(false);
     expect(await awaiter.wait("actor", "message", -1)).toBe(false);
@@ -47,7 +62,7 @@ describe("RedisAwaiter with a fake connection", () => {
       "$-1\r\n",
       "$1\r\n1\r\n",
     ]);
-    const awaiter = new RedisAwaiter({ connection, keyPrefix: "p:" });
+    const awaiter = createRedisAwaiter({ connection, keyPrefix: "p:" });
 
     expect(await awaiter.wait("actor", "message", 10_000)).toBe(true);
     expect(messages).toHaveLength(3);
@@ -56,7 +71,7 @@ describe("RedisAwaiter with a fake connection", () => {
 
   it("propagates redis errors from wait", async () => {
     const { connection } = fakeRedis([new Error("connection reset")]);
-    const awaiter = new RedisAwaiter({ connection });
+    const awaiter = createRedisAwaiter({ connection });
 
     await expect(awaiter.wait("actor", "message", 1000)).rejects.toThrow(
       "connection reset",
@@ -66,21 +81,18 @@ describe("RedisAwaiter with a fake connection", () => {
   it("resolve sets a short-lived key", async () => {
     const { connection, messages } = fakeRedis(["+OK\r\n"]);
     const logs: unknown[][] = [];
-    const logger = {
-      debug: (...args: unknown[]) => logs.push(args),
-      info: () => undefined,
-      error: () => undefined,
-    };
-    const awaiter = new RedisAwaiter({ connection, keyPrefix: "p:", logger });
+    const awaiter = createRedisAwaiter({
+      connection,
+      keyPrefix: "p:",
+      logger: recordingLogger(logs),
+    });
 
     await awaiter.resolve("actor", "message");
     expect(messages).toHaveLength(1);
     expect(messages[0]).toContain("SET p:actor/message 1 PX 1000");
     expect(logs).toContainEqual([
-      "redis-awaiter",
-      "resolve",
-      "p:actor/message",
-      true,
+      "redis-awaiter resolved",
+      { redisKey: "p:actor/message", success: true },
     ]);
   });
 
@@ -88,32 +100,27 @@ describe("RedisAwaiter with a fake connection", () => {
     const error = new Error("connection reset");
     const { connection } = fakeRedis([error]);
     const logs: unknown[][] = [];
-    const logger = {
-      debug: (...args: unknown[]) => logs.push(args),
-      info: () => undefined,
-      error: () => undefined,
-    };
-    const awaiter = new RedisAwaiter({ connection, logger });
+    const awaiter = createRedisAwaiter({
+      connection,
+      logger: recordingLogger(logs),
+    });
 
     await expect(awaiter.resolve("actor", "message")).resolves.toBeUndefined();
     expect(logs).toContainEqual([
-      "redis-awaiter",
-      "resolve",
-      "actor/message",
-      "error",
-      error,
+      "redis-awaiter resolve failed",
+      { redisKey: "actor/message", error },
     ]);
   });
 });
 
-describe("newRedisSubsystem", () => {
+describe("createRedisSubsystem", () => {
   it("prefixes queue, lock, and awaiter keys under the given prefix", async () => {
     const { connection, messages } = fakeRedis([
       ":0\r\n", // LLEN
       "+OK\r\n", // SET NX (lock)
       "+OK\r\n", // SET PX (awaiter resolve)
     ]);
-    const subsystem = newRedisSubsystem({ connection, keyPrefix: "app:" });
+    const subsystem = createRedisSubsystem({ connection, keyPrefix: "app:" });
 
     expect(await subsystem.queue.size("actor")).toBe(0);
     expect(await subsystem.lock.tryAcquire("actor")).toBe(true);
@@ -126,15 +133,17 @@ describe("newRedisSubsystem", () => {
 
   it("spreads into an actor environment as own properties", () => {
     const { connection } = fakeRedis([]);
-    const spread = { ...newRedisSubsystem({ connection }) };
-    expect(spread.queue).toBeInstanceOf(RedisQueue);
+    const spread = { ...createRedisSubsystem({ connection }) };
+    expect(Object.keys(spread)).toEqual(
+      expect.arrayContaining(["queue", "lock", "awaiter"]),
+    );
     expect(Object.keys({ ...spread.queue })).toEqual(
       expect.arrayContaining(["size", "push", "pop", "peek", "flush"]),
     );
   });
 });
 
-describe("RedisQueue with a fake connection", () => {
+describe("createRedisQueue with a fake connection", () => {
   it("uses a custom codec for push and pop", async () => {
     const codec = {
       encode: <T>(item: T): string => `<${String(item)}>`,
@@ -145,7 +154,7 @@ describe("RedisQueue with a fake connection", () => {
       "$5\r\n<abc>\r\n", // LPOP
       "$5\r\n<abc>\r\n", // LINDEX
     ]);
-    const queue = new RedisQueue({ connection, codec });
+    const queue = createRedisQueue({ connection, codec });
 
     await queue.push("actor", "abc");
     expect(messages[0]).toContain('RPUSH "actor" "<abc>"');

@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@yingyeothon/codec": "workspace:^",
+    "@yingyeothon/logger": "workspace:^",
     "@yingyeothon/naive-redis": "workspace:^",
     "@yingyeothon/repository": "workspace:^"
   },

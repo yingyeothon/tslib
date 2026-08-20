@@ -59,7 +59,7 @@ importers:
         specifier: workspace:*
         version: link:../logger
 
-  packages/actor-system-aws-lambda-support:
+  packages/actor-system-lambda:
     dependencies:
       "@types/aws-lambda":
         specifier: ^8.10.152
@@ -75,7 +75,7 @@ importers:
         specifier: ^3.879.0
         version: 3.1113.0
 
-  packages/actor-system-redis-support:
+  packages/actor-system-redis:
     dependencies:
       "@yingyeothon/actor-system":
         specifier: workspace:^
@@ -138,9 +138,9 @@ importers:
       "@yingyeothon/actor-system":
         specifier: workspace:^
         version: link:../actor-system
-      "@yingyeothon/actor-system-redis-support":
+      "@yingyeothon/actor-system-redis":
         specifier: workspace:^
-        version: link:../actor-system-redis-support
+        version: link:../actor-system-redis
       "@yingyeothon/logger":
         specifier: workspace:^
         version: link:../logger
@@ -197,6 +197,9 @@ importers:
       "@yingyeothon/codec":
         specifier: workspace:^
         version: link:../codec
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
       "@yingyeothon/naive-redis":
         specifier: workspace:^
         version: link:../naive-redis

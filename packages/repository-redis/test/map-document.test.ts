@@ -1,9 +1,13 @@
+import { createMapDocument } from "@yingyeothon/repository";
 import { expect } from "vitest";
 import { fixture } from "./fixture.js";
 
 fixture("map-doc", async (repo) => {
   await repo.delete("map-doc");
-  const mapDoc = repo.getMapDocument<string>("map-doc");
+  const mapDoc = createMapDocument<string>({
+    repository: repo,
+    key: "map-doc",
+  });
 
   const empty = await mapDoc.read();
   expect(empty.version).toEqual(0);

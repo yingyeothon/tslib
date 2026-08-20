@@ -1,6 +1,6 @@
 # @yingyeothon/repository-redis
 
-Redis-backed implementation of the `@yingyeothon/repository` abstractions: a `Repository` that stores each value as one Redis string (key = `repo:` + optional prefix + repository key), encodes values with a pluggable `Codec` (JSON by default), and supports per-key expiration via `setWithExpire`. Because it extends `SimpleRepository`, versioned list/map documents work out of the box. Redis I/O goes through `@yingyeothon/naive-redis`, so a single lightweight socket connection is shared by everything.
+Redis-backed implementation of the `@yingyeothon/repository` abstractions: a `Repository` that stores each value as one Redis string (key = `repo:` + optional prefix + repository key), encodes values with a pluggable `Codec` (JSON by default), and supports per-key expiration via `setWithExpire`. Because it satisfies the `Repository` contract, versioned list/map documents from `@yingyeothon/repository` work out of the box. Redis I/O goes through `@yingyeothon/naive-redis`, so a single lightweight socket connection is shared by everything.
 
 ## Install
 
@@ -13,11 +13,11 @@ npm install @yingyeothon/repository-redis
 ESM:
 
 ```ts
-import { redisConnect } from "@yingyeothon/naive-redis";
-import { RedisRepository } from "@yingyeothon/repository-redis";
+import { createRedisConnection } from "@yingyeothon/naive-redis";
+import { createRedisRepository } from "@yingyeothon/repository-redis";
 
-const repo = new RedisRepository({
-  redisConnection: redisConnect({
+const repo = createRedisRepository({
+  redisConnection: createRedisConnection({
     host: "localhost",
     port: 6379,
     password: "optional-password",
@@ -33,7 +33,8 @@ await repo.set("hello", undefined); // same as repo.delete("hello")
 await repo.delete("hello");
 
 // Versioned documents from @yingyeothon/repository:
-const mapDoc = repo.getMapDocument<string>("map-doc");
+import { createMapDocument } from "@yingyeothon/repository";
+const mapDoc = createMapDocument<string>({ repository: repo, key: "map-doc" });
 await mapDoc.insertOrUpdate("key", "value");
 
 // Derive a repository that shares the connection/codec but uses another prefix:
@@ -43,28 +44,30 @@ const nested = repo.withPrefix("nested");
 CJS:
 
 ```js
-const { redisConnect } = require("@yingyeothon/naive-redis");
-const { RedisRepository } = require("@yingyeothon/repository-redis");
+const { createRedisConnection } = require("@yingyeothon/naive-redis");
+const { createRedisRepository } = require("@yingyeothon/repository-redis");
 
-const repo = new RedisRepository({
-  redisConnection: redisConnect({ host: "localhost" }),
+const repo = createRedisRepository({
+  redisConnection: createRedisConnection({ host: "localhost" }),
 });
 ```
 
 ## Public API
 
-- `RedisRepository` — `SimpleRepository` backed by Redis, implementing `ExpirableRepository`:
-  - `get<T>(key)` — reads and decodes the value; returns `undefined` when the key does not exist or has expired; a Redis/socket error is logged with `console.error` and also yields `undefined`.
+- `createRedisRepository(options)` — builds a `RedisRepository` backed by Redis:
+  - `get<T>(key)` — reads and decodes the value; returns `undefined` when the key does not exist or has expired; a Redis/socket error is logged via the injected `logger` and also yields `undefined`.
   - `set<T>(key, value)` — encodes and writes the value; `set(key, undefined)` deletes instead.
   - `setWithExpire<T>(key, value, expiresInMillis)` — like `set` but with a TTL (`SET ... PX`); throws when `expiresInMillis <= 0`; `undefined` deletes instead.
   - `delete(key)` — removes the key.
   - `withPrefix(prefix)` — new `RedisRepository` sharing the same connection and codec.
-  - `getListDocument<V>(key)` / `getMapDocument<V>(key)` — inherited versioned documents.
   - Key layout: `repo:<key>`, or `repo:<prefix>:<key>` when a prefix is set.
-- `RedisRepositoryArguments` — constructor options `{ redisConnection, prefix?, codec? }` (type)
+- `RedisRepository` — `ExpirableRepository` plus `withPrefix` (type)
+- `RedisRepositoryOptions` — factory options `{ redisConnection, prefix?, codec?, logger? }`; `logger` is a `Logger` from `@yingyeothon/logger` and defaults to `nullLogger` (type)
 
 ## Migrating from the legacy package
 
 - The package now ships dual ESM/CJS with types; deep imports (`@yingyeothon/repository-redis/lib/...`) are no longer supported — import everything from the package root.
-- `@yingyeothon/naive-redis` now exposes root named exports as well: use `import { redisConnect } from "@yingyeothon/naive-redis"` instead of `@yingyeothon/naive-redis/lib/connection`.
-- `RedisRepositoryArguments` is now exported (type-only). Behavior and the key layout are unchanged.
+- The `RedisRepository` class is gone: call `createRedisRepository(options)` instead of `new RedisRepository(args)`. The returned object implements `ExpirableRepository` and keeps `withPrefix`; `getListDocument`/`getMapDocument` moved to `createListDocument`/`createMapDocument` in `@yingyeothon/repository`.
+- `RedisRepositoryArguments` is now `RedisRepositoryOptions`.
+- `@yingyeothon/naive-redis` renamed `redisConnect` to `createRedisConnection`; import it from the package root instead of `@yingyeothon/naive-redis/lib/connection`.
+- Redis read errors are no longer reported with `console.error`; pass `logger` (from `@yingyeothon/logger`) in the options to observe them. Behavior and the key layout are unchanged.

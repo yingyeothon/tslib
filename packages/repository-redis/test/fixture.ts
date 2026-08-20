@@ -1,6 +1,9 @@
-import { redisConnect, type RedisConnection } from "@yingyeothon/naive-redis";
+import {
+  createRedisConnection,
+  type RedisConnection,
+} from "@yingyeothon/naive-redis";
 import { inject, test } from "vitest";
-import { RedisRepository } from "../src/index.js";
+import { createRedisRepository, type RedisRepository } from "../src/index.js";
 
 export function fixture(
   testName: string,
@@ -10,13 +13,13 @@ export function fixture(
   ) => Promise<void>,
 ): void {
   test(testName, async () => {
-    const connection = redisConnect({
+    const connection = createRedisConnection({
       host: inject("redisHost"),
       port: inject("redisPort"),
     });
     try {
       await repositoryWork(
-        new RedisRepository({ redisConnection: connection }),
+        createRedisRepository({ redisConnection: connection }),
         connection,
       );
     } finally {

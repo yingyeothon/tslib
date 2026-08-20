@@ -1,7 +1,9 @@
 import type { Codec } from "@yingyeothon/codec";
+import type { Logger } from "@yingyeothon/logger";
 import type { RedisConnection } from "@yingyeothon/naive-redis";
+import { createListDocument, createMapDocument } from "@yingyeothon/repository";
 import { describe, expect, it, vi } from "vitest";
-import { RedisRepository } from "../src/index.js";
+import { createRedisRepository } from "../src/index.js";
 
 interface FakeRedis {
   connection: RedisConnection;
@@ -72,16 +74,16 @@ function fakeRedis(): FakeRedis {
     disconnect: (): void => undefined,
   };
   fake.connection = {
-    socket: socket as unknown as RedisConnection["socket"],
+    socket: socket,
     timeoutMillis: 1000,
   };
   return fake;
 }
 
-describe("RedisRepository", () => {
+describe("createRedisRepository", () => {
   it("stores values under the 'repo:' key layout", async () => {
     const fake = fakeRedis();
-    const repo = new RedisRepository({ redisConnection: fake.connection });
+    const repo = createRedisRepository({ redisConnection: fake.connection });
 
     await repo.set("key1", { hello: "world" });
     expect(fake.store.get("repo:key1")).toEqual(
@@ -94,7 +96,7 @@ describe("RedisRepository", () => {
 
   it("prefixes keys as 'repo:<prefix>:<key>' when a prefix is given", async () => {
     const fake = fakeRedis();
-    const repo = new RedisRepository({
+    const repo = createRedisRepository({
       redisConnection: fake.connection,
       prefix: "session",
     });
@@ -109,13 +111,13 @@ describe("RedisRepository", () => {
 
   it("returns undefined for a missing key", async () => {
     const fake = fakeRedis();
-    const repo = new RedisRepository({ redisConnection: fake.connection });
+    const repo = createRedisRepository({ redisConnection: fake.connection });
     expect(await repo.get("missing")).toBeUndefined();
   });
 
   it("deletes the key when setting undefined", async () => {
     const fake = fakeRedis();
-    const repo = new RedisRepository({ redisConnection: fake.connection });
+    const repo = createRedisRepository({ redisConnection: fake.connection });
 
     await repo.set("key1", "value");
     await repo.set("key1", undefined);
@@ -128,7 +130,7 @@ describe("RedisRepository", () => {
 
   it("passes the expiration to redis in setWithExpire", async () => {
     const fake = fakeRedis();
-    const repo = new RedisRepository({ redisConnection: fake.connection });
+    const repo = createRedisRepository({ redisConnection: fake.connection });
 
     await repo.setWithExpire("key1", "value", 1234);
     expect(fake.store.has("repo:key1")).toEqual(true);
@@ -137,7 +139,7 @@ describe("RedisRepository", () => {
 
   it("throws when expiresInMillis is not positive", async () => {
     const fake = fakeRedis();
-    const repo = new RedisRepository({ redisConnection: fake.connection });
+    const repo = createRedisRepository({ redisConnection: fake.connection });
 
     await expect(repo.setWithExpire("key1", "value", 0)).rejects.toThrow(
       '"expiresInMillis" should be greater than 0.',
@@ -148,23 +150,39 @@ describe("RedisRepository", () => {
     expect(fake.store.size).toEqual(0);
   });
 
-  it("swallows get errors and returns undefined", async () => {
-    const consoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => undefined);
-    try {
-      const broken: RedisConnection = {
-        socket: {
-          send: () => Promise.reject(new Error("connection lost")),
-        } as unknown as RedisConnection["socket"],
-        timeoutMillis: 1000,
-      };
-      const repo = new RedisRepository({ redisConnection: broken });
-      expect(await repo.get("key1")).toBeUndefined();
-      expect(consoleError).toHaveBeenCalledOnce();
-    } finally {
-      consoleError.mockRestore();
-    }
+  it("swallows get errors and logs them via the injected logger", async () => {
+    const error = vi.fn();
+    const logger: Logger = {
+      severity: "error",
+      debug: vi.fn(),
+      info: vi.fn(),
+      warn: vi.fn(),
+      error,
+    };
+    const broken: RedisConnection = {
+      socket: {
+        send: () => Promise.reject(new Error("connection lost")),
+      } as unknown as RedisConnection["socket"],
+      timeoutMillis: 1000,
+    };
+    const repo = createRedisRepository({ redisConnection: broken, logger });
+    expect(await repo.get("key1")).toBeUndefined();
+    expect(error).toHaveBeenCalledOnce();
+    expect(error).toHaveBeenCalledWith("failed to read value", {
+      key: "key1",
+      error: new Error("connection lost"),
+    });
+  });
+
+  it("swallows get errors silently by default", async () => {
+    const broken: RedisConnection = {
+      socket: {
+        send: () => Promise.reject(new Error("connection lost")),
+      } as unknown as RedisConnection["socket"],
+      timeoutMillis: 1000,
+    };
+    const repo = createRedisRepository({ redisConnection: broken });
+    expect(await repo.get("key1")).toBeUndefined();
   });
 
   it("uses a custom codec when given", async () => {
@@ -174,7 +192,7 @@ describe("RedisRepository", () => {
       decode: <T>(encoded: string) =>
         JSON.parse(Buffer.from(encoded, "base64").toString("utf8")) as T,
     };
-    const repo = new RedisRepository({
+    const repo = createRedisRepository({
       redisConnection: fake.connection,
       codec: base64Codec,
     });
@@ -188,10 +206,9 @@ describe("RedisRepository", () => {
 
   it("derives a prefixed repository via withPrefix", async () => {
     const fake = fakeRedis();
-    const repo = new RedisRepository({ redisConnection: fake.connection });
+    const repo = createRedisRepository({ redisConnection: fake.connection });
     const prefixed = repo.withPrefix("nested");
 
-    expect(prefixed).toBeInstanceOf(RedisRepository);
     expect(prefixed).not.toBe(repo);
 
     await prefixed.set("key1", "value");
@@ -199,17 +216,23 @@ describe("RedisRepository", () => {
     expect(await repo.get("key1")).toBeUndefined();
   });
 
-  it("provides versioned documents through SimpleRepository", async () => {
+  it("backs versioned documents from @yingyeothon/repository", async () => {
     const fake = fakeRedis();
-    const repo = new RedisRepository({ redisConnection: fake.connection });
+    const repo = createRedisRepository({ redisConnection: fake.connection });
 
-    const mapDoc = repo.getMapDocument<string>("map-doc");
+    const mapDoc = createMapDocument<string>({
+      repository: repo,
+      key: "map-doc",
+    });
     await mapDoc.insertOrUpdate("hello", "world");
     const map = await mapDoc.read();
     expect(map.version).toEqual(1);
     expect(map.content).toEqual({ hello: "world" });
 
-    const listDoc = repo.getListDocument<string>("list-doc");
+    const listDoc = createListDocument<string>({
+      repository: repo,
+      key: "list-doc",
+    });
     await listDoc.insert("hello");
     const list = await listDoc.read();
     expect(list.version).toEqual(1);

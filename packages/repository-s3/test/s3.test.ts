@@ -6,9 +6,10 @@ import {
   type GetObjectCommandOutput,
 } from "@aws-sdk/client-s3";
 import type { Codec } from "@yingyeothon/codec";
+import { createListDocument, createMapDocument } from "@yingyeothon/repository";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { S3Repository } from "../src/index.js";
+import { createS3Repository } from "../src/index.js";
 
 const s3Mock = mockClient(S3);
 
@@ -61,10 +62,10 @@ interface Message {
   };
 }
 
-describe("S3Repository", () => {
+describe("createS3Repository", () => {
   it("supports the get/set/delete round-trip with a key prefix", async () => {
     const store = useInMemoryBucket();
-    const s3 = new S3Repository({
+    const s3 = createS3Repository({
       bucketName: "test-bucket",
       prefix: "__test__/",
     });
@@ -86,7 +87,7 @@ describe("S3Repository", () => {
 
   it("uses the bare key when no prefix is given", async () => {
     const store = useInMemoryBucket();
-    const s3 = new S3Repository({ bucketName: "test-bucket" });
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
 
     await s3.set("plain", 42);
     expect([...store.keys()]).toEqual(["plain"]);
@@ -95,7 +96,7 @@ describe("S3Repository", () => {
 
   it("sends Bucket and Key to every S3 call", async () => {
     useInMemoryBucket();
-    const s3 = new S3Repository({
+    const s3 = createS3Repository({
       bucketName: "test-bucket",
       prefix: "p/",
     });
@@ -127,7 +128,7 @@ describe("S3Repository", () => {
 
   it("returns undefined when getObject fails with NoSuchKey", async () => {
     s3Mock.on(GetObjectCommand).rejects(noSuchKey());
-    const s3 = new S3Repository({ bucketName: "test-bucket" });
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
 
     expect(await s3.get("missing")).toBeUndefined();
   });
@@ -136,7 +137,7 @@ describe("S3Repository", () => {
     s3Mock
       .on(GetObjectCommand)
       .rejects(new Error("The specified key does not exist."));
-    const s3 = new S3Repository({ bucketName: "test-bucket" });
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
 
     expect(await s3.get("missing")).toBeUndefined();
   });
@@ -147,21 +148,21 @@ describe("S3Repository", () => {
       .rejects(
         Object.assign(new Error("Access Denied"), { name: "AccessDenied" }),
       );
-    const s3 = new S3Repository({ bucketName: "test-bucket" });
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
 
     await expect(s3.get("forbidden")).rejects.toThrow("Access Denied");
   });
 
   it("returns undefined when the object has no body", async () => {
     s3Mock.on(GetObjectCommand).resolves({});
-    const s3 = new S3Repository({ bucketName: "test-bucket" });
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
 
     expect(await s3.get("empty")).toBeUndefined();
   });
 
   it("treats set(key, undefined) as a delete", async () => {
     const store = useInMemoryBucket();
-    const s3 = new S3Repository({ bucketName: "test-bucket" });
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
 
     await s3.set("gone", "value");
     expect(store.has("gone")).toBe(true);
@@ -174,7 +175,7 @@ describe("S3Repository", () => {
 
   it("accepts an injected S3 client", async () => {
     const store = useInMemoryBucket();
-    const s3 = new S3Repository({
+    const s3 = createS3Repository({
       bucketName: "test-bucket",
       s3: new S3({ region: "ap-northeast-2" }),
     });
@@ -191,7 +192,7 @@ describe("S3Repository", () => {
       decode: <T>(value: string) =>
         JSON.parse(Buffer.from(value, "base64").toString("utf-8")) as T,
     };
-    const s3 = new S3Repository({
+    const s3 = createS3Repository({
       bucketName: "test-bucket",
       codec: base64Codec,
     });
@@ -205,7 +206,7 @@ describe("S3Repository", () => {
 
   it("derives a repository with another prefix via withPrefix", async () => {
     const store = useInMemoryBucket();
-    const root = new S3Repository({
+    const root = createS3Repository({
       bucketName: "test-bucket",
       prefix: "a/",
     });
@@ -219,16 +220,19 @@ describe("S3Repository", () => {
   });
 });
 
-describe("S3Repository map document", () => {
+describe("createS3Repository map document", () => {
   it("supports insertOrUpdate/delete/truncate with versioning", async () => {
     useInMemoryBucket();
-    const s3 = new S3Repository({
+    const s3 = createS3Repository({
       bucketName: "test-bucket",
       prefix: "__test__/",
     });
 
     await s3.delete("map-doc");
-    const mapDoc = s3.getMapDocument<string>("map-doc");
+    const mapDoc = createMapDocument<string>({
+      repository: s3,
+      key: "map-doc",
+    });
 
     const empty = await mapDoc.read();
     expect(empty.version).toEqual(0);
@@ -261,7 +265,7 @@ describe("S3Repository map document", () => {
   });
 });
 
-describe("S3Repository list document", () => {
+describe("createS3Repository list document", () => {
   interface KeyValue {
     key: string;
     value: string;
@@ -269,13 +273,16 @@ describe("S3Repository list document", () => {
 
   it("supports insert/deleteIf/truncate with versioning", async () => {
     useInMemoryBucket();
-    const s3 = new S3Repository({
+    const s3 = createS3Repository({
       bucketName: "test-bucket",
       prefix: "__test__/",
     });
 
     await s3.delete("list-doc");
-    const listDoc = s3.getListDocument<KeyValue>("list-doc");
+    const listDoc = createListDocument<KeyValue>({
+      repository: s3,
+      key: "list-doc",
+    });
 
     const first = { key: "hello", value: "world" };
     const second = { key: "hi", value: "world" };

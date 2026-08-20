@@ -1,19 +1,19 @@
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import type { ActorProcessEnvironment } from "@yingyeothon/actor-system";
+import type { ActorProcessOptions } from "@yingyeothon/actor-system";
 import {
   enqueue,
-  InMemoryAwaiter,
-  InMemoryLock,
-  InMemoryQueue,
+  createInMemoryAwaiter,
+  createInMemoryLock,
+  createInMemoryQueue,
   singleConsumer,
 } from "@yingyeothon/actor-system";
 import type { Callback, Context } from "aws-lambda";
 import { mockClient } from "aws-sdk-client-mock";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  globalTimeline,
-  handleActorLambdaEvent,
-  shiftToNextLambda,
+  createActorLambdaEventHandler,
+  createLambdaShift,
+  createTimeline,
 } from "../src/index.js";
 
 interface AdderMessage {
@@ -39,9 +39,9 @@ class Adder {
 
 function newActorSubsys() {
   return {
-    queue: new InMemoryQueue(),
-    lock: new InMemoryLock(),
-    awaiter: new InMemoryAwaiter(),
+    queue: createInMemoryQueue(),
+    lock: createInMemoryLock(),
+    awaiter: createInMemoryAwaiter(),
   };
 }
 
@@ -62,7 +62,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("handleActorLambdaEvent", () => {
+describe("createActorLambdaEventHandler", () => {
   it("processes queued messages for the requested actor", async () => {
     const actorSubsys = newActorSubsys();
     const adder = new Adder("adder");
@@ -70,7 +70,7 @@ describe("handleActorLambdaEvent", () => {
       id: adder.id,
       queue: { push: actorSubsys.queue.push },
     };
-    const handle = handleActorLambdaEvent<AdderMessage>({
+    const handle = createActorLambdaEventHandler<AdderMessage>({
       newActorEnv: () => ({ ...singleConsumer, ...actorSubsys, ...adder }),
     });
 
@@ -89,40 +89,46 @@ describe("handleActorLambdaEvent", () => {
     expect(adder.state).toEqual("committed");
   });
 
-  it("resets the global timeline with the default lifetime", async () => {
+  it("resets the given timeline with the default lifetime", async () => {
     const actorSubsys = newActorSubsys();
     const adder = new Adder("adder");
-    const handle = handleActorLambdaEvent<AdderMessage>({
+    const timeline = createTimeline();
+    const handle = createActorLambdaEventHandler<AdderMessage>({
       newActorEnv: () => ({ ...singleConsumer, ...actorSubsys, ...adder }),
+      timeline,
     });
 
     await handle({ actorId: adder.id }, context, callback);
-    expect(globalTimeline.timeoutMillis).toEqual(870 * 1000);
+    expect(timeline.timeoutMillis).toEqual(870 * 1000);
   });
 
-  it("resets the global timeline with processOptions.aliveMillis", async () => {
+  it("resets the given timeline with processOptions.aliveMillis", async () => {
     const actorSubsys = newActorSubsys();
     const adder = new Adder("adder");
     const logs: string[] = [];
-    const handle = handleActorLambdaEvent<AdderMessage>({
+    const timeline = createTimeline();
+    const handle = createActorLambdaEventHandler<AdderMessage>({
       newActorEnv: () => ({ ...singleConsumer, ...actorSubsys, ...adder }),
       logger: {
-        debug: (...args: unknown[]) => logs.push(args.join(" ")),
+        severity: "debug",
+        debug: (...args: unknown[]) => logs.push(args.map(String).join(" ")),
         info: () => undefined,
+        warn: () => undefined,
         error: () => undefined,
       },
       processOptions: { aliveMillis: 1234, oneShot: true, shiftable: false },
+      timeline,
     });
 
     await handle({ actorId: adder.id }, context, callback);
-    expect(globalTimeline.timeoutMillis).toEqual(1234);
+    expect(timeline.timeoutMillis).toEqual(1234);
     expect(logs.length).toBeGreaterThan(0);
   });
 
   it("throws when newActorEnv returns nothing", async () => {
-    const handle = handleActorLambdaEvent<AdderMessage>({
+    const handle = createActorLambdaEventHandler<AdderMessage>({
       newActorEnv: () =>
-        undefined as unknown as ActorProcessEnvironment<AdderMessage>,
+        undefined as unknown as ActorProcessOptions<AdderMessage>,
     });
 
     await expect(
@@ -148,12 +154,12 @@ describe("handleActorLambdaEvent", () => {
         vi.advanceTimersByTime(200);
       },
     };
-    const handle = handleActorLambdaEvent<AdderMessage>({
+    const handle = createActorLambdaEventHandler<AdderMessage>({
       newActorEnv: () => ({
         ...singleConsumer,
         ...actorSubsys,
         ...slowAdder,
-        shift: shiftToNextLambda({ functionName: "next-actor" }),
+        shift: createLambdaShift({ functionName: "next-actor" }),
       }),
       processOptions: { aliveMillis: 100, oneShot: true, shiftable: true },
     });
@@ -179,10 +185,10 @@ describe("handleActorLambdaEvent", () => {
   });
 });
 
-describe("shiftToNextLambda", () => {
+describe("createLambdaShift", () => {
   it("invokes the target function with the default payload and qualifier", async () => {
     lambdaMock.on(InvokeCommand).resolves({ StatusCode: 202 });
-    const shift = shiftToNextLambda({ functionName: "my-function" });
+    const shift = createLambdaShift({ functionName: "my-function" });
 
     await shift("actor-1");
 
@@ -199,7 +205,7 @@ describe("shiftToNextLambda", () => {
 
   it("uses the given function version and payload builder", async () => {
     lambdaMock.on(InvokeCommand).resolves({ StatusCode: 202 });
-    const shift = shiftToNextLambda({
+    const shift = createLambdaShift({
       functionName: "my-function",
       functionVersion: "7",
       buildPayload: (actorId) => ({ id: actorId, kind: "shift" }),
@@ -217,7 +223,7 @@ describe("shiftToNextLambda", () => {
 
   it("propagates invocation errors", async () => {
     lambdaMock.on(InvokeCommand).rejects(new Error("lambda is down"));
-    const shift = shiftToNextLambda({ functionName: "my-function" });
+    const shift = createLambdaShift({ functionName: "my-function" });
 
     await expect(shift("actor-3")).rejects.toThrow("lambda is down");
   });

@@ -37,7 +37,7 @@
   },
   "dependencies": {
     "@yingyeothon/actor-system": "workspace:^",
-    "@yingyeothon/actor-system-redis-support": "workspace:^",
+    "@yingyeothon/actor-system-redis": "workspace:^",
     "@yingyeothon/logger": "workspace:^",
     "@yingyeothon/naive-redis": "workspace:^",
     "@types/aws-lambda": "^8.10.152"

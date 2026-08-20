@@ -1,15 +1,15 @@
-import type { ActorSendEnvironment } from "@yingyeothon/actor-system";
+import type { ActorSendOptions } from "@yingyeothon/actor-system";
 import {
   AwaitPolicy,
   enqueue,
-  InMemoryAwaiter,
-  InMemoryLock,
-  InMemoryQueue,
+  createInMemoryAwaiter,
+  createInMemoryLock,
+  createInMemoryQueue,
   singleConsumer,
 } from "@yingyeothon/actor-system";
 import type { APIGatewayProxyEvent, Callback, Context } from "aws-lambda";
 import { describe, expect, it } from "vitest";
-import { handleActorAPIEvent } from "../src/index.js";
+import { createActorAPIEventHandler } from "../src/index.js";
 
 interface AdderMessage {
   delta: number;
@@ -34,9 +34,9 @@ class Adder {
 
 function newActorSubsys() {
   return {
-    queue: new InMemoryQueue(),
-    lock: new InMemoryLock(),
-    awaiter: new InMemoryAwaiter(),
+    queue: createInMemoryQueue(),
+    lock: createInMemoryLock(),
+    awaiter: createInMemoryAwaiter(),
   };
 }
 
@@ -47,7 +47,7 @@ function apiEvent(body: string | null): APIGatewayProxyEvent {
   return { path: "/actor-id", body } as APIGatewayProxyEvent;
 }
 
-describe("handleActorAPIEvent", () => {
+describe("createActorAPIEventHandler", () => {
   it("processes queued messages inline with the send policy", async () => {
     const actorSubsys = newActorSubsys();
     const adder = new Adder("adder");
@@ -55,7 +55,7 @@ describe("handleActorAPIEvent", () => {
       id: adder.id,
       queue: { push: actorSubsys.queue.push },
     };
-    const handle = handleActorAPIEvent<AdderMessage>({
+    const handle = createActorAPIEventHandler<AdderMessage>({
       newActorEnv: () => ({ ...singleConsumer, ...actorSubsys, ...adder }),
       policy: { type: "send" },
     });
@@ -84,7 +84,7 @@ describe("handleActorAPIEvent", () => {
   it("honors explicit processOptions with the send policy", async () => {
     const actorSubsys = newActorSubsys();
     const adder = new Adder("adder");
-    const handle = handleActorAPIEvent<AdderMessage>({
+    const handle = createActorAPIEventHandler<AdderMessage>({
       newActorEnv: () => ({ ...singleConsumer, ...actorSubsys, ...adder }),
       policy: {
         type: "send",
@@ -104,7 +104,7 @@ describe("handleActorAPIEvent", () => {
       id: adder.id,
       queue: { push: actorSubsys.queue.push },
     };
-    const handle = handleActorAPIEvent<AdderMessage>({
+    const handle = createActorAPIEventHandler<AdderMessage>({
       newActorEnv: () => ({ ...singleConsumer, ...actorSubsys, ...adder }),
       policy: { type: "post" },
     });
@@ -128,13 +128,15 @@ describe("handleActorAPIEvent", () => {
   it("uses a custom parseMessage and logger", async () => {
     const logs: string[] = [];
     const logger = {
-      debug: (...args: unknown[]) => logs.push(args.join(" ")),
+      severity: "debug" as const,
+      debug: (...args: unknown[]) => logs.push(args.map(String).join(" ")),
       info: () => undefined,
-      error: (...args: unknown[]) => logs.push(args.join(" ")),
+      warn: () => undefined,
+      error: (...args: unknown[]) => logs.push(args.map(String).join(" ")),
     };
     const actorSubsys = newActorSubsys();
     const adder = new Adder("adder");
-    const handle = handleActorAPIEvent<AdderMessage>({
+    const handle = createActorAPIEventHandler<AdderMessage>({
       newActorEnv: () => ({ ...singleConsumer, ...actorSubsys, ...adder }),
       parseMessage: (body) => ({ delta: Number(body) }),
       logger,
@@ -147,9 +149,8 @@ describe("handleActorAPIEvent", () => {
   });
 
   it("throws when newActorEnv returns nothing", async () => {
-    const handle = handleActorAPIEvent<AdderMessage>({
-      newActorEnv: () =>
-        undefined as unknown as ActorSendEnvironment<AdderMessage>,
+    const handle = createActorAPIEventHandler<AdderMessage>({
+      newActorEnv: () => undefined as unknown as ActorSendOptions<AdderMessage>,
       policy: { type: "send" },
     });
 
@@ -161,7 +162,7 @@ describe("handleActorAPIEvent", () => {
   it("throws when the request has no body", async () => {
     const actorSubsys = newActorSubsys();
     const adder = new Adder("adder");
-    const handle = handleActorAPIEvent<AdderMessage>({
+    const handle = createActorAPIEventHandler<AdderMessage>({
       newActorEnv: () => ({ ...singleConsumer, ...actorSubsys, ...adder }),
       policy: { type: "post" },
     });
@@ -174,7 +175,7 @@ describe("handleActorAPIEvent", () => {
   it("throws when the parsed message is falsy", async () => {
     const actorSubsys = newActorSubsys();
     const adder = new Adder("adder");
-    const handle = handleActorAPIEvent<AdderMessage>({
+    const handle = createActorAPIEventHandler<AdderMessage>({
       newActorEnv: () => ({ ...singleConsumer, ...actorSubsys, ...adder }),
       policy: { type: "send" },
     });

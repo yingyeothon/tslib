@@ -1,9 +1,9 @@
 import { expect } from "vitest";
-import { RedisLock } from "../src/index.js";
+import { createRedisLock } from "../src/index.js";
 import { fixture } from "./fixture.js";
 
 fixture("lock acquire and release", async (connection) => {
-  const lock = new RedisLock({ connection });
+  const lock = createRedisLock({ connection });
   const actorId = "test-actor";
   await lock.release(actorId);
 
@@ -18,7 +18,7 @@ fixture("lock acquire and release", async (connection) => {
 });
 
 fixture("lock expires after lockTimeout", async (connection) => {
-  const lock = new RedisLock({
+  const lock = createRedisLock({
     connection,
     keyPrefix: "expiring:",
     lockTimeout: 100,
