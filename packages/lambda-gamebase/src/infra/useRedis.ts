@@ -1,5 +1,8 @@
-import { redisConnect, type RedisConnection } from "@yingyeothon/naive-redis";
-import { env } from "../env.js";
+import {
+  createRedisConnection,
+  type RedisConnection,
+  type RedisConnectionOptions,
+} from "@yingyeothon/naive-redis";
 
 /**
  * Opens a short-lived Redis connection, runs `work` with it, and always
@@ -8,12 +11,9 @@ import { env } from "../env.js";
  */
 export async function useRedis<R>(
   work: (connection: RedisConnection) => Promise<R>,
-  {
-    host = env.redisHost,
-    password = env.redisPassword,
-  }: { host?: string; password?: string } = {},
+  connectionOptions: RedisConnectionOptions,
 ): Promise<R> {
-  const redisConnection = redisConnect({ host, password });
+  const redisConnection = createRedisConnection(connectionOptions);
   try {
     return await work(redisConnection);
   } finally {

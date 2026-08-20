@@ -1,7 +1,10 @@
 import { DeleteConnectionCommand } from "@aws-sdk/client-apigatewaymanagementapi";
-import { getApiGatewayManagementClient } from "./apiGatewayManagementClient.js";
 import { fakeConnectionId } from "./fakeConnectionId.js";
-import { isGoneException, type NetworkOptions } from "./reply.js";
+import {
+  isGoneException,
+  resolveManagementClient,
+  type NetworkOptions,
+} from "./reply.js";
 
 /**
  * Forcefully closes one WebSocket connection. Returns true when the
@@ -9,13 +12,14 @@ import { isGoneException, type NetworkOptions } from "./reply.js";
  */
 export async function dropConnection(
   connectionId: string,
-  { client }: NetworkOptions = {},
+  options: NetworkOptions = {},
 ): Promise<boolean> {
   if (connectionId === fakeConnectionId) {
     return true;
   }
+  const client = resolveManagementClient("dropConnection", options);
   try {
-    await (client ?? getApiGatewayManagementClient()).send(
+    await client.send(
       new DeleteConnectionCommand({ ConnectionId: connectionId }),
     );
     return true;

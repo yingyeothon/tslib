@@ -6,19 +6,24 @@ import {
 } from "@aws-sdk/client-apigatewaymanagementapi";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
 import { mockClient } from "aws-sdk-client-mock";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   broadcast,
+  createGamebaseContext,
   dropConnection,
   fakeConnectionId,
-  getApiGatewayManagementClient,
   isGoneException,
   reply,
-  setApiGatewayManagementClient,
 } from "../src/index.js";
 
 const apiMock = mockClient(ApiGatewayManagementApiClient);
 const logger: Logger = { ...nullLogger, severity: "none" };
+
+function newContext() {
+  return createGamebaseContext({
+    webSocketEndpoint: "http://localhost:3001",
+  });
+}
 
 function goneException(): GoneException {
   return new GoneException({ $metadata: {}, message: "gone" });
@@ -26,14 +31,6 @@ function goneException(): GoneException {
 
 beforeEach(() => {
   apiMock.reset();
-  setApiGatewayManagementClient(
-    new ApiGatewayManagementApiClient({ endpoint: "http://localhost:3001" }),
-  );
-});
-
-afterEach(() => {
-  setApiGatewayManagementClient(undefined);
-  vi.unstubAllEnvs();
 });
 
 describe("reply", () => {
@@ -41,7 +38,9 @@ describe("reply", () => {
     apiMock.on(PostToConnectionCommand).resolves({});
 
     const response = { type: "hello", value: 42 };
-    expect(await reply("connection-1", response, { logger })).toBe(true);
+    expect(
+      await reply("connection-1", response, { context: newContext(), logger }),
+    ).toBe(true);
 
     const calls = apiMock.commandCalls(PostToConnectionCommand);
     expect(calls).toHaveLength(1);
@@ -59,12 +58,24 @@ describe("reply", () => {
 
   it("returns false when the connection is gone", async () => {
     apiMock.on(PostToConnectionCommand).rejects(goneException());
-    expect(await reply("gone-1", { type: "hello" }, { logger })).toBe(false);
+    expect(
+      await reply(
+        "gone-1",
+        { type: "hello" },
+        { context: newContext(), logger },
+      ),
+    ).toBe(false);
   });
 
   it("returns false on any other error", async () => {
     apiMock.on(PostToConnectionCommand).rejects(new Error("boom"));
-    expect(await reply("bad-1", { type: "hello" }, { logger })).toBe(false);
+    expect(
+      await reply(
+        "bad-1",
+        { type: "hello" },
+        { context: newContext(), logger },
+      ),
+    ).toBe(false);
   });
 
   it("uses an injected client", async () => {
@@ -75,12 +86,20 @@ describe("reply", () => {
     ).toBe(true);
     expect(send).toHaveBeenCalledOnce();
   });
+
+  it("fails fast without a client or context", async () => {
+    await expect(reply("connection-1", { type: "hi" })).rejects.toThrow(
+      "reply requires either client or context",
+    );
+  });
 });
 
 describe("dropConnection", () => {
   it("deletes the connection", async () => {
     apiMock.on(DeleteConnectionCommand).resolves({});
-    expect(await dropConnection("connection-1")).toBe(true);
+    expect(
+      await dropConnection("connection-1", { context: newContext() }),
+    ).toBe(true);
 
     const calls = apiMock.commandCalls(DeleteConnectionCommand);
     expect(calls).toHaveLength(1);
@@ -89,12 +108,16 @@ describe("dropConnection", () => {
 
   it("treats an already-gone connection as success", async () => {
     apiMock.on(DeleteConnectionCommand).rejects(goneException());
-    expect(await dropConnection("gone-1")).toBe(true);
+    expect(await dropConnection("gone-1", { context: newContext() })).toBe(
+      true,
+    );
   });
 
   it("returns false on any other error", async () => {
     apiMock.on(DeleteConnectionCommand).rejects(new Error("boom"));
-    expect(await dropConnection("bad-1")).toBe(false);
+    expect(await dropConnection("bad-1", { context: newContext() })).toBe(
+      false,
+    );
   });
 
   it("skips the network for the fake connection id", async () => {
@@ -117,7 +140,7 @@ describe("broadcast", () => {
     const result = await broadcast(
       ["connection-1", "gone-1", fakeConnectionId],
       { type: "stage" },
-      { logger },
+      { context: newContext(), logger },
     );
     expect(result).toEqual({
       "connection-1": true,
@@ -126,39 +149,15 @@ describe("broadcast", () => {
     });
   });
 
-  it("logs with the module logger when none is injected", async () => {
+  it("stays silent with the default null logger", async () => {
+    const send = vi.fn().mockResolvedValue({});
+    const client = { send } as unknown as ApiGatewayManagementApiClient;
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     try {
-      const send = vi.fn().mockResolvedValue({});
-      const client = { send } as unknown as ApiGatewayManagementApiClient;
       expect(
         await broadcast(["connection-1"], { type: "stage" }, { client }),
       ).toEqual({ "connection-1": true });
-      expect(info).toHaveBeenCalled();
-    } finally {
-      info.mockRestore();
-    }
-  });
-
-  it("uses an info-severity module logger in production", async () => {
-    vi.stubEnv("STAGE", "production");
-    vi.resetModules();
-    const { broadcast: productionBroadcast } =
-      await import("../src/network/broadcast.js");
-    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
-    try {
-      const send = vi.fn().mockResolvedValue({});
-      const client = { send } as unknown as ApiGatewayManagementApiClient;
-      expect(
-        await productionBroadcast(
-          ["connection-1"],
-          { type: "stage" },
-          {
-            client,
-          },
-        ),
-      ).toEqual({ "connection-1": true });
-      expect(info).toHaveBeenCalled();
+      expect(info).not.toHaveBeenCalled();
     } finally {
       info.mockRestore();
     }
@@ -176,27 +175,39 @@ describe("isGoneException", () => {
   });
 });
 
-describe("getApiGatewayManagementClient", () => {
-  it("creates the client lazily from env and caches it", async () => {
-    setApiGatewayManagementClient(undefined);
-    vi.stubEnv("IS_OFFLINE", "");
-    vi.stubEnv("WS_ENDPOINT", "https://example.com/ws");
+describe("createGamebaseContext management client", () => {
+  it("creates the client lazily from options and caches it", async () => {
+    const context = createGamebaseContext({
+      webSocketEndpoint: "https://example.com/ws",
+    });
 
-    const client = getApiGatewayManagementClient();
+    const client = context.getApiGatewayManagementClient();
     expect(await client.config.endpoint!()).toMatchObject({
       hostname: "example.com",
     });
-    expect(getApiGatewayManagementClient()).toBe(client);
+    expect(context.getApiGatewayManagementClient()).toBe(client);
   });
 
-  it("prefers the serverless-offline endpoint when IS_OFFLINE is set", async () => {
-    setApiGatewayManagementClient(undefined);
-    vi.stubEnv("IS_OFFLINE", "true");
+  it("prefers the serverless-offline endpoint when isOffline is set", async () => {
+    const context = createGamebaseContext({
+      isOffline: true,
+      webSocketEndpoint: "https://example.com/ws",
+    });
 
-    const client = getApiGatewayManagementClient();
+    const client = context.getApiGatewayManagementClient();
     expect(await client.config.endpoint!()).toMatchObject({
       hostname: "localhost",
       port: 3001,
     });
+  });
+
+  it("uses an injected client", () => {
+    const injected = new ApiGatewayManagementApiClient({
+      endpoint: "http://localhost:3001",
+    });
+    const context = createGamebaseContext({
+      apiGatewayManagementClient: injected,
+    });
+    expect(context.getApiGatewayManagementClient()).toBe(injected);
   });
 });

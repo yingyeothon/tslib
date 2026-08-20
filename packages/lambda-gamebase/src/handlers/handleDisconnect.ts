@@ -1,22 +1,23 @@
 import { enqueue } from "@yingyeothon/actor-system";
-import { RedisQueue } from "@yingyeothon/actor-system-redis-support";
-import { ConsoleLogger, type Logger } from "@yingyeothon/logger";
+import { createRedisQueue } from "@yingyeothon/actor-system-redis";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import {
   redisDel,
   redisGet,
   type RedisConnection,
 } from "@yingyeothon/naive-redis";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { requireRedisOptions, type GamebaseContext } from "../context.js";
 import { useRedis } from "../infra/useRedis.js";
 import { OK } from "./responses.js";
 
-const defaultLogger = new ConsoleLogger("debug");
-
-export interface HandleDisconnectArgs {
+export interface HandleDisconnectOptions {
   event: APIGatewayProxyEvent;
   connectionIdAndGameIdKeyPrefix: string;
   actorQueueKeyPrefix: string;
   logger?: Logger;
+  /** Supplies Redis options for a short-lived, per-invocation connection. */
+  context?: GamebaseContext;
   /** Overrides the per-invocation Redis connection, e.g. in tests. */
   redisConnection?: RedisConnection;
 }
@@ -29,9 +30,10 @@ export async function handleDisconnect({
   event,
   connectionIdAndGameIdKeyPrefix,
   actorQueueKeyPrefix,
-  logger = defaultLogger,
+  logger = nullLogger,
+  context,
   redisConnection,
-}: HandleDisconnectArgs): Promise<APIGatewayProxyResult> {
+}: HandleDisconnectOptions): Promise<APIGatewayProxyResult> {
   const { connectionId } = event.requestContext;
 
   async function withConnection(connection: RedisConnection): Promise<void> {
@@ -39,7 +41,7 @@ export async function handleDisconnect({
       connection,
       connectionIdAndGameIdKeyPrefix + connectionId,
     );
-    logger.info({ connectionId, gameId }, "Game id");
+    logger.info("game id", { connectionId, gameId });
 
     // Send a leave message to the actor queue and delete the mapping.
     if (!gameId) {
@@ -48,7 +50,7 @@ export async function handleDisconnect({
     await enqueue(
       {
         id: gameId,
-        queue: new RedisQueue({
+        queue: createRedisQueue({
           connection,
           keyPrefix: actorQueueKeyPrefix,
           logger,
@@ -58,11 +60,18 @@ export async function handleDisconnect({
       { item: { type: "leave", connectionId } },
     );
     await redisDel(connection, connectionIdAndGameIdKeyPrefix + connectionId);
-    logger.info({ connectionId, gameId }, "Cleanup and game leaved");
+    logger.info("cleanup and game leaved", { connectionId, gameId });
   }
 
-  await (redisConnection
-    ? withConnection(redisConnection)
-    : useRedis(withConnection));
+  if (redisConnection) {
+    await withConnection(redisConnection);
+    return OK;
+  }
+  if (!context) {
+    throw new Error(
+      "handleDisconnect requires either redisConnection or context",
+    );
+  }
+  await useRedis(withConnection, requireRedisOptions(context.options));
   return OK;
 }

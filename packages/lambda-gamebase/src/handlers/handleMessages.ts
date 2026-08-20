@@ -1,20 +1,20 @@
 import { enqueue } from "@yingyeothon/actor-system";
-import { RedisQueue } from "@yingyeothon/actor-system-redis-support";
-import { ConsoleLogger, type Logger } from "@yingyeothon/logger";
+import { createRedisQueue } from "@yingyeothon/actor-system-redis";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import { redisGet, type RedisConnection } from "@yingyeothon/naive-redis";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { getRedisConnection } from "../infra/redisConnection.js";
+import type { GamebaseContext } from "../context.js";
 import { NotFound, OK } from "./responses.js";
 
-const defaultLogger = new ConsoleLogger("debug");
-
-export interface HandleMessagesArgs<M> {
+export interface HandleMessagesOptions<M> {
   event: APIGatewayProxyEvent;
   connectionIdAndGameIdKeyPrefix: string;
   actorQueueKeyPrefix: string;
   validateMessage: (maybe: M) => boolean;
   logger?: Logger;
-  /** Overrides the shared Redis connection, e.g. in tests. */
+  /** Supplies the shared Redis connection when `redisConnection` is unset. */
+  context?: GamebaseContext;
+  /** Overrides the context's Redis connection, e.g. in tests. */
   redisConnection?: RedisConnection;
 }
 
@@ -28,9 +28,10 @@ export async function handleMessages<M>({
   connectionIdAndGameIdKeyPrefix,
   actorQueueKeyPrefix,
   validateMessage,
-  logger = defaultLogger,
+  logger = nullLogger,
+  context,
   redisConnection,
-}: HandleMessagesArgs<M>): Promise<APIGatewayProxyResult> {
+}: HandleMessagesOptions<M>): Promise<APIGatewayProxyResult> {
   if (!event.body) {
     return NotFound;
   }
@@ -42,24 +43,29 @@ export async function handleMessages<M>({
   try {
     request = JSON.parse(event.body) as M;
     if (!validateMessage(request)) {
-      logger.error({ connectionId, request }, "Invalid message");
+      logger.error("invalid message", { connectionId, request });
       return NotFound;
     }
   } catch (error) {
-    logger.error({ connectionId, error }, "Invalid message");
+    logger.error("invalid message", { connectionId, error });
     return NotFound;
   }
 
-  const connection = redisConnection ?? getRedisConnection();
+  const connection = redisConnection ?? context?.getRedisConnection();
+  if (!connection) {
+    throw new Error(
+      "handleMessages requires either redisConnection or context",
+    );
+  }
 
   // Read the gameId bound to this connectionId.
   const gameId = await redisGet(
     connection,
     connectionIdAndGameIdKeyPrefix + connectionId,
   );
-  logger.info({ connectionId, gameId }, "Game id");
+  logger.info("game id", { connectionId, gameId });
   if (!gameId) {
-    logger.error({ connectionId }, "No GameID for connection");
+    logger.error("no gameId for connection", { connectionId });
     return NotFound;
   }
 
@@ -67,7 +73,7 @@ export async function handleMessages<M>({
   await enqueue(
     {
       id: gameId,
-      queue: new RedisQueue({
+      queue: createRedisQueue({
         connection,
         keyPrefix: actorQueueKeyPrefix,
         logger,
@@ -76,6 +82,6 @@ export async function handleMessages<M>({
     },
     { item: { ...request, connectionId } },
   );
-  logger.info({ connectionId, gameId, request }, "Game message sent");
+  logger.info("game message sent", { connectionId, gameId, request });
   return OK;
 }

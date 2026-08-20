@@ -1,6 +1,6 @@
 import type { GameStartMember } from "./GameStartMember.js";
 
-export interface GameMainArguments<M> {
+export interface GameMainOptions<M> {
   gameId: string;
   members: GameStartMember[];
   pollMessages: () => Promise<M[]>;

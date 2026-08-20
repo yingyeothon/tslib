@@ -6,12 +6,13 @@ import type { APIGatewayProxyEvent, APIGatewayProxyEventV2 } from "aws-lambda";
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  getRedisConnection,
+  createActorSubsystem,
+  createGamebaseContext,
+  handleActor,
   handleConnect,
   handleDebugStart,
   handleDisconnect,
   handleMessages,
-  setRedisConnection,
   useRedis,
   type GameActorStartEvent,
 } from "../src/index.js";
@@ -39,7 +40,7 @@ vi.mock("@yingyeothon/naive-redis", () => {
     return value;
   };
   return {
-    redisConnect: vi.fn(() => {
+    createRedisConnection: vi.fn(() => {
       fake.state.connects++;
       return {
         socket: {
@@ -127,14 +128,16 @@ function queuedItems(keyPrefix: string, gameId: string): unknown[] {
   );
 }
 
+function newContext() {
+  return createGamebaseContext({ redis: { host: "localhost" } });
+}
+
 beforeEach(() => {
   fake.reset();
-  setRedisConnection(undefined);
-  vi.unstubAllEnvs();
 });
 
 describe("handleConnect", () => {
-  const args = {
+  const options = {
     connectionIdAndGameIdKeyPrefix: "conn:",
     actorEventKeyPrefix: "event:",
     actorQueueKeyPrefix: "queue:",
@@ -144,7 +147,7 @@ describe("handleConnect", () => {
 
   it("rejects a connection without game or member id", async () => {
     const result = await handleConnect({
-      ...args,
+      ...options,
       event: connectionEvent("c1", { "x-game-id": "game-1" }),
     });
     expect(result.statusCode).toBe(400);
@@ -152,7 +155,7 @@ describe("handleConnect", () => {
 
   it("rejects an unknown game", async () => {
     const result = await handleConnect({
-      ...args,
+      ...options,
       event: connectionEvent("c1", {
         "x-game-id": "game-x",
         "x-member-id": "m1",
@@ -164,7 +167,7 @@ describe("handleConnect", () => {
   it("rejects a member not registered to the game", async () => {
     fake.strings.set("event:game-1", JSON.stringify(startEvent));
     const result = await handleConnect({
-      ...args,
+      ...options,
       event: connectionEvent("c1", {
         "x-game-id": "game-1",
         "x-member-id": "intruder",
@@ -176,7 +179,7 @@ describe("handleConnect", () => {
   it("maps the connection and enqueues an enter message", async () => {
     fake.strings.set("event:game-1", JSON.stringify(startEvent));
     const result = await handleConnect({
-      ...args,
+      ...options,
       event: connectionEvent("c1", {
         "x-game-id": "game-1",
         "x-member-id": "m1",
@@ -195,16 +198,17 @@ describe("handleConnect", () => {
       ...connectionEvent("c2"),
       queryStringParameters: { "x-game-id": "game-1", "x-member-id": "m2" },
     } as unknown as APIGatewayProxyEvent;
-    const result = await handleConnect({ ...args, event });
+    const result = await handleConnect({ ...options, event });
     expect(result.statusCode).toBe(200);
     expect(fake.strings.get("conn:c2")).toBe("game-1");
   });
 
-  it("opens and closes a fresh connection when none is injected", async () => {
+  it("opens and closes a fresh connection from the context", async () => {
     fake.strings.set("event:game-1", JSON.stringify(startEvent));
-    const { redisConnection: _omitted, ...rest } = args;
+    const { redisConnection: _omitted, ...rest } = options;
     const result = await handleConnect({
       ...rest,
+      context: newContext(),
       event: connectionEvent("c1", {
         "x-game-id": "game-1",
         "x-member-id": "m1",
@@ -214,10 +218,23 @@ describe("handleConnect", () => {
     expect(fake.state.connects).toBe(1);
     expect(fake.state.disconnects).toBe(1);
   });
+
+  it("fails fast without a redisConnection or context", async () => {
+    const { redisConnection: _omitted, ...rest } = options;
+    await expect(
+      handleConnect({
+        ...rest,
+        event: connectionEvent("c1", {
+          "x-game-id": "game-1",
+          "x-member-id": "m1",
+        }),
+      }),
+    ).rejects.toThrow("requires either redisConnection or context");
+  });
 });
 
 describe("handleDisconnect", () => {
-  const args = {
+  const options = {
     connectionIdAndGameIdKeyPrefix: "conn:",
     actorQueueKeyPrefix: "queue:",
     logger,
@@ -226,7 +243,7 @@ describe("handleDisconnect", () => {
 
   it("ignores a connection with no game mapping", async () => {
     const result = await handleDisconnect({
-      ...args,
+      ...options,
       event: connectionEvent("c1"),
     });
     expect(result.statusCode).toBe(200);
@@ -236,7 +253,7 @@ describe("handleDisconnect", () => {
   it("enqueues a leave message and removes the mapping", async () => {
     fake.strings.set("conn:c1", "game-1");
     const result = await handleDisconnect({
-      ...args,
+      ...options,
       event: connectionEvent("c1"),
     });
     expect(result.statusCode).toBe(200);
@@ -246,11 +263,12 @@ describe("handleDisconnect", () => {
     expect(fake.strings.has("conn:c1")).toBe(false);
   });
 
-  it("opens and closes a fresh connection when none is injected", async () => {
+  it("opens and closes a fresh connection from the context", async () => {
     fake.strings.set("conn:c1", "game-1");
-    const { redisConnection: _omitted, ...rest } = args;
+    const { redisConnection: _omitted, ...rest } = options;
     const result = await handleDisconnect({
       ...rest,
+      context: newContext(),
       event: connectionEvent("c1"),
     });
     expect(result.statusCode).toBe(200);
@@ -260,7 +278,7 @@ describe("handleDisconnect", () => {
 });
 
 describe("handleMessages", () => {
-  const args = {
+  const options = {
     connectionIdAndGameIdKeyPrefix: "conn:",
     actorQueueKeyPrefix: "queue:",
     validateMessage: (maybe: { type: string }) => maybe.type !== "invalid",
@@ -270,7 +288,7 @@ describe("handleMessages", () => {
 
   it("answers 404 without a body", async () => {
     const result = await handleMessages({
-      ...args,
+      ...options,
       event: connectionEvent("c1"),
     });
     expect(result.statusCode).toBe(404);
@@ -278,7 +296,7 @@ describe("handleMessages", () => {
 
   it("answers 404 for malformed JSON", async () => {
     const result = await handleMessages({
-      ...args,
+      ...options,
       event: connectionEvent("c1", {}, "{broken"),
     });
     expect(result.statusCode).toBe(404);
@@ -286,7 +304,7 @@ describe("handleMessages", () => {
 
   it("answers 404 when validation fails", async () => {
     const result = await handleMessages({
-      ...args,
+      ...options,
       event: connectionEvent("c1", {}, JSON.stringify({ type: "invalid" })),
     });
     expect(result.statusCode).toBe(404);
@@ -294,7 +312,7 @@ describe("handleMessages", () => {
 
   it("answers 404 when the connection has no game", async () => {
     const result = await handleMessages({
-      ...args,
+      ...options,
       event: connectionEvent("c1", {}, JSON.stringify({ type: "move" })),
     });
     expect(result.statusCode).toBe(404);
@@ -303,7 +321,7 @@ describe("handleMessages", () => {
   it("enqueues the message stamped with the connection id", async () => {
     fake.strings.set("conn:c1", "game-1");
     const result = await handleMessages({
-      ...args,
+      ...options,
       event: connectionEvent(
         "c1",
         {},
@@ -316,14 +334,24 @@ describe("handleMessages", () => {
     ]);
   });
 
-  it("falls back to the shared connection when none is injected", async () => {
+  it("falls back to the context's shared connection when none is injected", async () => {
     fake.strings.set("conn:c1", "game-1");
-    const { redisConnection: _omitted, ...rest } = args;
+    const { redisConnection: _omitted, ...rest } = options;
+    const context = newContext();
     const result = await handleMessages({
       ...rest,
+      context,
       event: connectionEvent("c1", {}, JSON.stringify({ type: "move" })),
     });
     expect(result.statusCode).toBe(200);
+    expect(fake.state.connects).toBe(1);
+
+    // The context reuses the same connection on the next invocation.
+    await handleMessages({
+      ...rest,
+      context,
+      event: connectionEvent("c1", {}, JSON.stringify({ type: "move" })),
+    });
     expect(fake.state.connects).toBe(1);
   });
 });
@@ -341,17 +369,21 @@ describe("handleDebugStart", () => {
     } as unknown as APIGatewayProxyEventV2;
   }
 
+  const offlineContext = createGamebaseContext({
+    redis: { host: "localhost" },
+    isOffline: true,
+    gameActorLambdaName: "game-actor",
+  });
+
   beforeEach(() => {
     lambdaMock.reset();
-    vi.stubEnv("IS_OFFLINE", "true");
-    vi.stubEnv("GAME_ACTOR_LAMBDA_NAME", "game-actor");
   });
 
   it("answers 404 unless running offline", async () => {
-    vi.stubEnv("IS_OFFLINE", "");
     const result = await handleDebugStart({
       event: debugEvent(JSON.stringify(startEvent)),
       actorLockKeyPrefix: "lock:",
+      context: createGamebaseContext({ isOffline: false }),
       logger,
       redisConnection: fakeConnection,
     });
@@ -362,6 +394,7 @@ describe("handleDebugStart", () => {
     const result = await handleDebugStart({
       event: debugEvent(undefined),
       actorLockKeyPrefix: "lock:",
+      context: offlineContext,
       logger,
       redisConnection: fakeConnection,
     });
@@ -375,6 +408,7 @@ describe("handleDebugStart", () => {
     const result = await handleDebugStart({
       event: debugEvent(JSON.stringify(startEvent), true),
       actorLockKeyPrefix: "lock:",
+      context: offlineContext,
       logger,
       redisConnection: fakeConnection,
     });
@@ -399,6 +433,7 @@ describe("handleDebugStart", () => {
     const result = await handleDebugStart({
       event: debugEvent(JSON.stringify(startEvent)),
       actorLockKeyPrefix: "lock:",
+      context: offlineContext,
       logger: { ...logger, error: errorLog },
       redisConnection: fakeConnection,
     });
@@ -412,6 +447,7 @@ describe("handleDebugStart", () => {
       handleDebugStart({
         event: debugEvent(JSON.stringify(startEvent), true),
         actorLockKeyPrefix: "lock:",
+        context: offlineContext,
         logger,
         redisConnection: fakeConnection,
       }),
@@ -419,10 +455,9 @@ describe("handleDebugStart", () => {
   });
 });
 
-describe("newActorSubsys", () => {
+describe("createActorSubsystem", () => {
   it("builds a working queue, lock, and awaiter on one connection", async () => {
-    const { newActorSubsys } = await import("../src/index.js");
-    const subsys = newActorSubsys({
+    const subsystem = createActorSubsystem({
       awaiterKeyPrefix: "awaiter:",
       queueKeyPrefix: "queue:",
       lockKeyPrefix: "lock:",
@@ -431,25 +466,23 @@ describe("newActorSubsys", () => {
       logger,
     });
 
-    expect(await subsys.lock.tryAcquire("game-1")).toBe(true);
+    expect(await subsystem.lock.tryAcquire("game-1")).toBe(true);
     expect(fake.strings.has("lock:game-1")).toBe(true);
-    expect(await subsys.lock.release("game-1")).toBe(true);
+    expect(await subsystem.lock.release("game-1")).toBe(true);
     expect(fake.strings.has("lock:game-1")).toBe(false);
 
-    await subsys.queue.push("game-1", { value: 1 });
-    expect(await subsys.queue.size("game-1")).toBe(1);
-    expect(await subsys.queue.flush("game-1")).toEqual([{ value: 1 }]);
+    await subsystem.queue.push("game-1", { value: 1 });
+    expect(await subsystem.queue.size("game-1")).toBe(1);
+    expect(await subsystem.queue.flush("game-1")).toEqual([{ value: 1 }]);
 
-    expect(subsys.awaiter).toBeDefined();
-    expect(subsys.logger).toBe(logger);
+    expect(subsystem.awaiter).toBeDefined();
+    expect(subsystem.logger).toBe(logger);
   });
 });
 
 describe("handleActor with the default Redis subsystem", () => {
-  it("persists, runs, and clears the game using the shared connection", async () => {
-    const { handleActor } = await import("../src/index.js");
-    setRedisConnection(fakeConnection);
-
+  it("persists, runs, and clears the game using the context connection", async () => {
+    const context = newContext();
     const gameMain = vi.fn().mockResolvedValue(undefined);
     await handleActor({
       event: startEvent,
@@ -461,6 +494,7 @@ describe("handleActor with the default Redis subsystem", () => {
       gameMain,
       logger,
       actorLogger: logger,
+      context,
     });
 
     expect(gameMain).toHaveBeenCalledOnce();
@@ -473,8 +507,9 @@ describe("handleActor with the default Redis subsystem", () => {
 
 describe("infra", () => {
   it("useRedis always disconnects, even on failure", async () => {
-    vi.stubEnv("REDIS_HOST", "localhost");
-    const result = await useRedis(() => Promise.resolve("done"));
+    const result = await useRedis(() => Promise.resolve("done"), {
+      host: "localhost",
+    });
     expect(result).toBe("done");
     expect(fake.state.disconnects).toBe(1);
 
@@ -484,14 +519,23 @@ describe("infra", () => {
     expect(fake.state.disconnects).toBe(2);
   });
 
-  it("getRedisConnection caches the shared connection", () => {
-    vi.stubEnv("REDIS_HOST", "localhost");
-    setRedisConnection(undefined);
-    const first = getRedisConnection();
-    expect(getRedisConnection()).toBe(first);
+  it("createGamebaseContext caches the shared connection", () => {
+    const context = newContext();
+    const first = context.getRedisConnection();
+    expect(context.getRedisConnection()).toBe(first);
     expect(fake.state.connects).toBe(1);
+  });
 
-    setRedisConnection(fakeConnection);
-    expect(getRedisConnection()).toBe(fakeConnection);
+  it("createGamebaseContext uses an injected connection", () => {
+    const context = createGamebaseContext({ redisConnection: fakeConnection });
+    expect(context.getRedisConnection()).toBe(fakeConnection);
+    expect(fake.state.connects).toBe(0);
+  });
+
+  it("createGamebaseContext fails without redis options", () => {
+    const context = createGamebaseContext({});
+    expect(() => context.getRedisConnection()).toThrow(
+      "GamebaseOptions.redis is required",
+    );
   });
 });

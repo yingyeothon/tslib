@@ -1,7 +1,7 @@
 import {
+  createInMemoryLock,
+  createInMemoryQueue,
   enqueue,
-  InMemoryLock,
-  InMemoryQueue,
 } from "@yingyeothon/actor-system";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
 import type { RedisConnection } from "@yingyeothon/naive-redis";
@@ -20,15 +20,15 @@ const members = [
 ];
 const fakeConnection = {} as RedisConnection;
 
-function newSubsys() {
-  return { queue: new InMemoryQueue(), lock: new InMemoryLock(), logger };
+function newSubsystem() {
+  return { queue: createInMemoryQueue(), lock: createInMemoryLock(), logger };
 }
 
 describe("startActorLoop", () => {
   it("runs gameMain with polled messages and clears the start event", async () => {
-    const subsys = newSubsys();
+    const subsystem = newSubsystem();
     await enqueue(
-      { id: "game-1", queue: subsys.queue, logger },
+      { id: "game-1", queue: subsystem.queue, logger },
       { item: { type: "enter", connectionId: "c1", memberId: "m1" } },
     );
 
@@ -39,7 +39,7 @@ describe("startActorLoop", () => {
       members,
       eventKeyPrefix: "event:",
       logger,
-      subsys,
+      subsystem,
       redisConnection: fakeConnection,
       deleteStartEvent,
       gameMain: async ({ gameId, members: startMembers, pollMessages }) => {
@@ -65,7 +65,7 @@ describe("startActorLoop", () => {
       members,
       eventKeyPrefix: "event:",
       logger: { ...logger, error: errorLog },
-      subsys: newSubsys(),
+      subsystem: newSubsystem(),
       redisConnection: fakeConnection,
       deleteStartEvent,
       gameMain: () => Promise.reject(new Error("game crashed")),
@@ -76,8 +76,8 @@ describe("startActorLoop", () => {
   });
 
   it("does not run gameMain when the actor lock is already held", async () => {
-    const subsys = newSubsys();
-    await subsys.lock.tryAcquire("game-1");
+    const subsystem = newSubsystem();
+    await subsystem.lock.tryAcquire("game-1");
 
     const gameMain = vi.fn();
     const deleteStartEvent = vi.fn();
@@ -86,7 +86,7 @@ describe("startActorLoop", () => {
       members,
       eventKeyPrefix: "event:",
       logger,
-      subsys,
+      subsystem,
       redisConnection: fakeConnection,
       deleteStartEvent,
       gameMain,
@@ -97,20 +97,20 @@ describe("startActorLoop", () => {
   });
 
   it("releases the lock after the loop so a new game can start", async () => {
-    const subsys = newSubsys();
+    const subsystem = newSubsystem();
     const gameMain = vi.fn().mockResolvedValue(undefined);
-    const args = {
+    const options = {
       gameId: "game-1",
       members,
       eventKeyPrefix: "event:",
       logger,
-      subsys,
+      subsystem,
       redisConnection: fakeConnection,
       deleteStartEvent: () => Promise.resolve(1),
       gameMain,
     };
-    await startActorLoop(args);
-    await startActorLoop(args);
+    await startActorLoop(options);
+    await startActorLoop(options);
     expect(gameMain).toHaveBeenCalledTimes(2);
   });
 });
@@ -136,7 +136,7 @@ describe("handleActor", () => {
       logger,
       actorLogger: logger,
       redisConnection: fakeConnection,
-      subsys: newSubsys(),
+      subsystem: newSubsystem(),
       saveStartEvent: (key, value) => {
         store.set(key, value);
         return Promise.resolve(true);
@@ -169,7 +169,7 @@ describe("handleActor", () => {
       logger,
       actorLogger: logger,
       redisConnection: fakeConnection,
-      subsys: newSubsys(),
+      subsystem: newSubsystem(),
       saveStartEvent: () => Promise.resolve(true),
       deleteStartEvent: () => Promise.resolve(1),
     });
@@ -197,7 +197,7 @@ describe("handleActor", () => {
         logger,
         actorLogger: logger,
         redisConnection: fakeConnection,
-        subsys: newSubsys(),
+        subsystem: newSubsystem(),
         saveStartEvent: () => Promise.resolve(true),
         deleteStartEvent: () => Promise.resolve(1),
       }),
@@ -218,11 +218,25 @@ describe("handleActor", () => {
       logger,
       actorLogger: logger,
       redisConnection: fakeConnection,
-      subsys: newSubsys(),
+      subsystem: newSubsystem(),
       saveStartEvent,
       deleteStartEvent: () => Promise.resolve(1),
     });
     expect(gameMain).not.toHaveBeenCalled();
     expect(saveStartEvent).not.toHaveBeenCalled();
+  });
+
+  it("fails fast without a redisConnection or context", async () => {
+    await expect(
+      handleActor({
+        event: startEvent,
+        eventKeyPrefix: "event:",
+        awaiterKeyPrefix: "awaiter:",
+        queueKeyPrefix: "queue:",
+        lockKeyPrefix: "lock:",
+        lifetimeSeconds: 30,
+        gameMain: () => Promise.resolve(),
+      }),
+    ).rejects.toThrow("requires either redisConnection or context");
   });
 });

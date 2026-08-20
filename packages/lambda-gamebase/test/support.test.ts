@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  createTicker,
+  createTimeDelta,
   setupBaseGameContext,
   sleep,
-  Ticker,
-  TimeDelta,
 } from "../src/index.js";
 
 describe("sleep", () => {
@@ -23,12 +23,13 @@ describe("sleep", () => {
   });
 });
 
-describe("Ticker", () => {
+describe("createTicker", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
   it("ages by whole seconds and dies after aliveMillis", async () => {
-    const ticker = new Ticker("stage", 3000);
+    const ticker = createTicker({ stage: "stage", aliveMillis: 3000 });
+    expect(ticker.stage).toBe("stage");
     expect(ticker.age).toBe(0);
     expect(ticker.isAlive()).toBe(true);
 
@@ -41,7 +42,7 @@ describe("Ticker", () => {
   });
 
   it("notifies only when the age changes", async () => {
-    const ticker = new Ticker("running", 10_000);
+    const ticker = createTicker({ stage: "running", aliveMillis: 10_000 });
     const onChanged = vi.fn().mockResolvedValue(undefined);
 
     await ticker.checkAgeChanged(onChanged);
@@ -57,12 +58,12 @@ describe("Ticker", () => {
   });
 });
 
-describe("TimeDelta", () => {
+describe("createTimeDelta", () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
   it("returns elapsed seconds between calls", async () => {
-    const timeDelta = new TimeDelta();
+    const timeDelta = createTimeDelta();
     await vi.advanceTimersByTimeAsync(250);
     expect(timeDelta.getDelta()).toBeCloseTo(0.25);
 

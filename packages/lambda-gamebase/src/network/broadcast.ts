@@ -1,9 +1,5 @@
-import { ConsoleLogger } from "@yingyeothon/logger";
+import { nullLogger } from "@yingyeothon/logger";
 import { reply, type NetworkOptions } from "./reply.js";
-
-const logger = new ConsoleLogger(
-  process.env.STAGE === "production" ? "info" : "debug",
-);
 
 export interface RespondResult {
   [connectionId: string]: boolean;
@@ -29,9 +25,10 @@ export async function broadcast<T extends { type: string }>(
     (all, each) => Object.assign(all, each),
     {},
   );
-  (options.logger ?? logger).info(
-    { connectionIds, response, map },
-    "Broadcast",
-  );
+  (options.logger ?? nullLogger).info("broadcast", {
+    connectionIds,
+    response,
+    map,
+  });
   return map;
 }

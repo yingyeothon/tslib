@@ -1,18 +1,21 @@
 import {
-  RedisAwaiter,
-  RedisLock,
-  RedisQueue,
-} from "@yingyeothon/actor-system-redis-support";
-import type { Logger } from "@yingyeothon/logger";
+  createRedisAwaiter,
+  createRedisLock,
+  createRedisQueue,
+  type RedisAwaiter,
+  type RedisLock,
+  type RedisQueue,
+} from "@yingyeothon/actor-system-redis";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import type { RedisConnection } from "@yingyeothon/naive-redis";
 
-export interface NewActorSubsysArgs {
+export interface ActorSubsystemOptions {
   awaiterKeyPrefix: string;
   queueKeyPrefix: string;
   lockKeyPrefix: string;
   lockTimeoutSeconds: number;
   redisConnection: RedisConnection;
-  logger: Logger;
+  logger?: Logger;
 }
 
 export interface ActorSubsystem {
@@ -23,30 +26,30 @@ export interface ActorSubsystem {
 }
 
 /**
- * Builds the Redis-backed actor subsystem (queue, lock, awaiter) with
+ * Creates the Redis-backed actor subsystem (queue, lock, awaiter) with
  * separate key prefixes per component, matching the layout the API
  * handlers (`handleConnect`, ...) enqueue into.
  */
-export function newActorSubsys({
+export function createActorSubsystem({
   awaiterKeyPrefix,
   queueKeyPrefix,
   lockKeyPrefix,
   lockTimeoutSeconds,
   redisConnection,
-  logger,
-}: NewActorSubsysArgs): ActorSubsystem {
+  logger = nullLogger,
+}: ActorSubsystemOptions): ActorSubsystem {
   return {
-    awaiter: new RedisAwaiter({
+    awaiter: createRedisAwaiter({
       connection: redisConnection,
       keyPrefix: awaiterKeyPrefix,
       logger,
     }),
-    queue: new RedisQueue({
+    queue: createRedisQueue({
       connection: redisConnection,
       keyPrefix: queueKeyPrefix,
       logger,
     }),
-    lock: new RedisLock({
+    lock: createRedisLock({
       connection: redisConnection,
       keyPrefix: lockKeyPrefix,
       logger,

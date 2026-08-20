@@ -3,17 +3,27 @@ import {
   PostToConnectionCommand,
   type ApiGatewayManagementApiClient,
 } from "@aws-sdk/client-apigatewaymanagementapi";
-import { ConsoleLogger, type Logger } from "@yingyeothon/logger";
-import { getApiGatewayManagementClient } from "./apiGatewayManagementClient.js";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
+import type { GamebaseContext } from "../context.js";
 import { fakeConnectionId } from "./fakeConnectionId.js";
 
-const defaultLogger = new ConsoleLogger(
-  process.env.STAGE === "production" ? "info" : "debug",
-);
-
 export interface NetworkOptions {
+  /** Explicit API Gateway management client. */
   client?: ApiGatewayManagementApiClient;
+  /** Supplies the shared management client when `client` is unset. */
+  context?: GamebaseContext;
   logger?: Logger;
+}
+
+export function resolveManagementClient(
+  functionName: string,
+  { client, context }: NetworkOptions,
+): ApiGatewayManagementApiClient {
+  const resolved = client ?? context?.getApiGatewayManagementClient();
+  if (!resolved) {
+    throw new Error(`${functionName} requires either client or context`);
+  }
+  return resolved;
 }
 
 /**
@@ -24,25 +34,27 @@ export interface NetworkOptions {
 export async function reply<T extends { type: string }>(
   connectionId: string,
   response: T,
-  { client, logger = defaultLogger }: NetworkOptions = {},
+  options: NetworkOptions = {},
 ): Promise<boolean> {
+  const logger = options.logger ?? nullLogger;
   if (connectionId === fakeConnectionId) {
     return true;
   }
+  const client = resolveManagementClient("reply", options);
   try {
-    await (client ?? getApiGatewayManagementClient()).send(
+    await client.send(
       new PostToConnectionCommand({
         ConnectionId: connectionId,
         Data: JSON.stringify(response),
       }),
     );
-    logger.debug({ connectionId, response }, "Reply");
+    logger.debug("reply", { connectionId, response });
     return true;
   } catch (error) {
     if (isGoneException(error)) {
-      logger.debug({ connectionId }, "Connection is gone");
+      logger.debug("connection is gone", { connectionId });
     } else {
-      logger.error({ connectionId, response, error }, "Cannot reply to");
+      logger.error("cannot reply to", { connectionId, response, error });
     }
     return false;
   }

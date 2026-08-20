@@ -1,21 +1,21 @@
 import {
   eventLoop,
-  type ActorEventLoopEnvironment,
+  type ActorEventLoopOptions,
 } from "@yingyeothon/actor-system";
-import type { Logger } from "@yingyeothon/logger";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import { redisDel, type RedisConnection } from "@yingyeothon/naive-redis";
-import type { GameMainArguments } from "../models/GameMainArguments.js";
+import type { GameMainOptions } from "../models/GameMainOptions.js";
 import type { GameStartMember } from "../models/GameStartMember.js";
 import { clearActorStartEvent } from "./clearActorStartEvent.js";
 
-export interface StartActorLoopArgs<M> {
+export interface StartActorLoopOptions<M> {
   gameId: string;
   members: GameStartMember[];
   eventKeyPrefix: string;
-  logger: Logger;
-  subsys: Omit<ActorEventLoopEnvironment<M>, "id" | "loop">;
+  logger?: Logger;
+  subsystem: Omit<ActorEventLoopOptions<M>, "id" | "loop">;
   redisConnection: RedisConnection;
-  gameMain: (args: GameMainArguments<M>) => Promise<unknown>;
+  gameMain: (args: GameMainOptions<M>) => Promise<unknown>;
   /**
    * Deletes the persisted start event when the game ends. Defaults to
    * `redisDel` on `redisConnection`; override it in tests to avoid Redis.
@@ -31,22 +31,22 @@ export interface StartActorLoopArgs<M> {
 export async function startActorLoop<M>({
   gameId,
   members,
-  subsys,
-  logger,
+  subsystem,
+  logger = nullLogger,
   eventKeyPrefix,
   redisConnection,
   gameMain,
   deleteStartEvent = (key) => redisDel(redisConnection, key),
-}: StartActorLoopArgs<M>): Promise<void> {
+}: StartActorLoopOptions<M>): Promise<void> {
   await eventLoop<M>({
-    ...subsys,
+    ...subsystem,
     id: gameId,
     loop: async (poll) => {
-      logger.info({ gameId, members }, "Start a game with id");
+      logger.info("start a game with id", { gameId, members });
       async function pollMessages(): Promise<M[]> {
         const messages = await poll();
         if (messages.length > 0) {
-          logger.info({ messages }, "Process game messages");
+          logger.info("process game messages", { messages });
         }
         return messages;
       }
@@ -54,9 +54,9 @@ export async function startActorLoop<M>({
       try {
         await gameMain({ gameId, members, pollMessages });
       } catch (error) {
-        logger.error({ gameId, error }, "Unexpected error from game");
+        logger.error("unexpected error from game", { gameId, error });
       }
-      logger.info({ gameId, members }, "End of the game");
+      logger.info("end of the game", { gameId, members });
       await clearActorStartEvent({
         gameId,
         del: deleteStartEvent,

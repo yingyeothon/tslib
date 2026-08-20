@@ -1,6 +1,6 @@
 import { enqueue } from "@yingyeothon/actor-system";
-import { RedisQueue } from "@yingyeothon/actor-system-redis-support";
-import { ConsoleLogger, type Logger } from "@yingyeothon/logger";
+import { createRedisQueue } from "@yingyeothon/actor-system-redis";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import {
   redisGet,
   redisSet,
@@ -8,18 +8,20 @@ import {
 } from "@yingyeothon/naive-redis";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { loadActorStartEvent } from "../actor/loadActorStartEvent.js";
+import { requireRedisOptions, type GamebaseContext } from "../context.js";
 import { useRedis } from "../infra/useRedis.js";
 import { BadRequest, OK } from "./responses.js";
 
 const expirationMillis = 900 * 1000;
-const defaultLogger = new ConsoleLogger("debug");
 
-export interface HandleConnectArgs {
+export interface HandleConnectOptions {
   event: APIGatewayProxyEvent;
   connectionIdAndGameIdKeyPrefix: string;
   actorEventKeyPrefix: string;
   actorQueueKeyPrefix: string;
   logger?: Logger;
+  /** Supplies Redis options for a short-lived, per-invocation connection. */
+  context?: GamebaseContext;
   /** Overrides the per-invocation Redis connection, e.g. in tests. */
   redisConnection?: RedisConnection;
 }
@@ -34,9 +36,10 @@ export async function handleConnect({
   connectionIdAndGameIdKeyPrefix,
   actorEventKeyPrefix,
   actorQueueKeyPrefix,
-  logger = defaultLogger,
+  logger = nullLogger,
+  context,
   redisConnection,
-}: HandleConnectArgs): Promise<APIGatewayProxyResult> {
+}: HandleConnectOptions): Promise<APIGatewayProxyResult> {
   function getParameter(key: string): string | undefined {
     return event.headers[key] ?? (event.queryStringParameters ?? {})[key];
   }
@@ -48,7 +51,7 @@ export async function handleConnect({
 
   // Validate starting information.
   if (!gameId || !memberId) {
-    logger.error({ connectionId }, "Invalid gameId from connection");
+    logger.error("invalid gameId from connection", { connectionId });
     return BadRequest;
   }
   const checkedGameId: string = gameId;
@@ -62,11 +65,11 @@ export async function handleConnect({
       eventKeyPrefix: actorEventKeyPrefix,
     });
     if (startEvent === null) {
-      logger.error({ gameId }, "Invalid game context from gameId");
+      logger.error("invalid game context from gameId", { gameId });
       return BadRequest;
     }
     if (startEvent.members.every((m) => m.memberId !== memberId)) {
-      logger.error({ startEvent, memberId }, "Not registered member");
+      logger.error("not registered member", { startEvent, memberId });
       return BadRequest;
     }
 
@@ -80,7 +83,7 @@ export async function handleConnect({
     await enqueue(
       {
         id: checkedGameId,
-        queue: new RedisQueue({
+        queue: createRedisQueue({
           connection,
           keyPrefix: actorQueueKeyPrefix,
           logger,
@@ -89,11 +92,15 @@ export async function handleConnect({
       },
       { item: { type: "enter", connectionId, memberId } },
     );
-    logger.info({ gameId, connectionId }, "Game logged");
+    logger.info("game logged", { gameId, connectionId });
     return OK;
   }
 
-  return redisConnection
-    ? withConnection(redisConnection)
-    : useRedis(withConnection);
+  if (redisConnection) {
+    return withConnection(redisConnection);
+  }
+  if (!context) {
+    throw new Error("handleConnect requires either redisConnection or context");
+  }
+  return useRedis(withConnection, requireRedisOptions(context.options));
 }

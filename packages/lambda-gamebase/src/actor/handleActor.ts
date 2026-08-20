@@ -1,29 +1,34 @@
-import { ConsoleLogger, type Logger } from "@yingyeothon/logger";
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import { redisSet, type RedisConnection } from "@yingyeothon/naive-redis";
-import { getRedisConnection } from "../infra/redisConnection.js";
-import type { GameMainArguments } from "../models/GameMainArguments.js";
+import type { GamebaseContext } from "../context.js";
+import type { GameMainOptions } from "../models/GameMainOptions.js";
+import { createActorSubsystem } from "./createActorSubsystem.js";
 import { readyCall } from "./lobby/readyCall.js";
 import type { GameActorStartEvent } from "./models/GameActorStartEvent.js";
-import { newActorSubsys } from "./newActorSubsys.js";
 import { saveActorStartEvent } from "./saveActorStartEvent.js";
-import { startActorLoop, type StartActorLoopArgs } from "./startActorLoop.js";
+import {
+  startActorLoop,
+  type StartActorLoopOptions,
+} from "./startActorLoop.js";
 
 const aliveMarginSeconds = 10;
 
-export interface HandleActorArgs<M> {
+export interface HandleActorOptions<M> {
   event: GameActorStartEvent;
   eventKeyPrefix: string;
   awaiterKeyPrefix: string;
   queueKeyPrefix: string;
   lockKeyPrefix: string;
   lifetimeSeconds: number;
-  gameMain: (args: GameMainArguments<M>) => Promise<unknown>;
+  gameMain: (args: GameMainOptions<M>) => Promise<unknown>;
   logger?: Logger;
   actorLogger?: Logger;
-  /** Overrides the shared Redis connection, e.g. in tests. */
+  /** Supplies the shared Redis connection when `redisConnection` is unset. */
+  context?: GamebaseContext;
+  /** Overrides the context's Redis connection, e.g. in tests. */
   redisConnection?: RedisConnection;
   /** Overrides the Redis-backed actor subsystem, e.g. with in-memory ones. */
-  subsys?: StartActorLoopArgs<M>["subsys"];
+  subsystem?: StartActorLoopOptions<M>["subsystem"];
   /** Overrides how the start event is persisted, e.g. in tests. */
   saveStartEvent?: (key: string, value: string) => Promise<unknown>;
   /** Overrides how the start event is cleared when the game ends. */
@@ -43,23 +48,27 @@ export async function handleActor<M>({
   lockKeyPrefix,
   lifetimeSeconds,
   gameMain,
-  logger = new ConsoleLogger("debug"),
-  actorLogger = new ConsoleLogger("info"),
+  logger = nullLogger,
+  actorLogger = nullLogger,
+  context,
   redisConnection,
-  subsys,
+  subsystem,
   saveStartEvent,
   deleteStartEvent,
-}: HandleActorArgs<M>): Promise<void> {
-  logger.debug({ event }, "Start a new game lambda");
+}: HandleActorOptions<M>): Promise<void> {
+  logger.debug("start a new game lambda", { event });
 
   const { gameId, members } = event;
   if (!gameId) {
-    logger.error({ event }, "No gameId from payload");
+    logger.error("no gameId from payload", { event });
     return;
   }
 
   const aliveSeconds = lifetimeSeconds + aliveMarginSeconds;
-  const connection = redisConnection ?? getRedisConnection();
+  const connection = redisConnection ?? context?.getRedisConnection();
+  if (!connection) {
+    throw new Error("handleActor requires either redisConnection or context");
+  }
 
   // First, store the game context into Redis.
   await saveActorStartEvent({
@@ -76,7 +85,7 @@ export async function handleActor<M>({
   // Send the ready signal to the lobby.
   if (event.callbackUrl !== undefined) {
     const response = await readyCall(event.callbackUrl);
-    logger.debug({ response }, "Mark this game as ready");
+    logger.debug("mark this game as ready", { response });
   }
 
   await startActorLoop<M>({
@@ -84,9 +93,9 @@ export async function handleActor<M>({
     members,
     logger,
     eventKeyPrefix,
-    subsys:
-      subsys ??
-      newActorSubsys({
+    subsystem:
+      subsystem ??
+      createActorSubsystem({
         awaiterKeyPrefix,
         lockKeyPrefix,
         queueKeyPrefix,
