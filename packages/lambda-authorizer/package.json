@@ -1,7 +1,7 @@
 {
   "name": "@yingyeothon/lambda-authorizer",
   "version": "0.0.0",
-  "description": "Helpers for AWS API Gateway custom authorizers: policy builders, token parsers, and error handling.",
+  "description": "Helpers for AWS API Gateway TOKEN and REQUEST custom authorizers: identity sources, policy builders, credential parsing, and error handling.",
   "keywords": [
     "yyt",
     "yingyeothon"

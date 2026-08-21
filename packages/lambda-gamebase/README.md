@@ -33,6 +33,7 @@ import {
   type BaseGameRequest,
   type GameActorStartEvent,
 } from "@yingyeothon/lambda-gamebase";
+import type { APIGatewayProxyEvent } from "aws-lambda";
 
 // One context per Lambda container: it owns the lazily created shared
 // Redis connection and API Gateway management client.
@@ -60,16 +61,28 @@ export async function actor(event: GameActorStartEvent) {
   });
 }
 
-// WebSocket $connect handler.
-export const connect = (event) =>
+// WebSocket $connect handler. `resolveMemberId` and `selectSubprotocol`
+// are what make this safe to expose — see Security below.
+export const connect = (event: APIGatewayProxyEvent) =>
   handleConnect({
     event,
     context,
     connectionIdAndGameIdKeyPrefix: "game:conn:",
     actorEventKeyPrefix: "game:event:",
     actorQueueKeyPrefix: "game:queue:",
+    resolveMemberId: (connecting) => {
+      const memberId: unknown =
+        connecting.requestContext.authorizer?.["memberId"];
+      return typeof memberId === "string" ? memberId : undefined;
+    },
+    selectSubprotocol: (offered) =>
+      offered.includes("bearer") ? "bearer" : undefined,
   });
 ```
+
+Without `resolveMemberId` the member id is whatever the client put in
+`x-member-id`, which is not authentication. Read **Security** before
+deploying a `$connect` handler.
 
 CJS:
 

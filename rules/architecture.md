@@ -53,6 +53,35 @@ consequences of those rules.
   returns "a gateway was subscribed", not "the client received it", so
   policies keyed on delivery must not be pointed at it.
 
+## Option shapes
+
+- When a seam's whole space is closed and enumerable, make the option **data**,
+  not a callback. `AuthorizationSource` is a union of
+  `{from:"header"|"queryString"|"subprotocol", name?}` rather than a family of
+  reader factories: it is inspectable, trivially testable, has no naming
+  problem, and mirrors the vocabulary API Gateway already uses. Reach for a
+  callback only where the space is genuinely open (`resolveMemberId`,
+  `selectSubprotocol`, `buildContext`).
+- A type-level restriction on an options field is documentation, not
+  enforcement. `Omit<VerifyOptions, "complete">` only rejects an object
+  _literal_; a variable or a spread carries the key straight through to the
+  library underneath. If a field would break the contract, override it at
+  runtime as well and say why in a comment.
+- Adding an option must leave current behavior intact when it is unset, and
+  the default belongs in the destructuring so it reads next to the type.
+- Say what a callback receives when it is not obvious from the name.
+  `selectSubprotocol(offered)` is handed `["bearer", "<the raw JWT>"]` for the
+  arrangement the README recommends — a credential crossing an extension
+  point needs a warning at the extension point, not only in the docs.
+
+## Naming a factory that returns a handler
+
+`CONVENTIONS.md` reserves `create*Handler` for factories whose product is
+incidentally a handler. An authorizer _is_ the thing being constructed, so the
+family stays `createAuthorizer` / `createRequestAuthorizer` /
+`createJwtAuthorizer` / `createJwtRequestAuthorizer`, as fixed by the v2
+rename. Keep new authorizers in that shape; do not rename them to `*Handler`.
+
 ## Layering
 
 - Leaf packages (`codec`, `logger`, `repository`, `naive-socket`,

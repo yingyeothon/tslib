@@ -1,7 +1,7 @@
 {
   "name": "@yingyeothon/lambda-authorizer-jwt",
   "version": "0.0.0",
-  "description": "JWT-verifying AWS API Gateway custom authorizer built on @yingyeothon/lambda-authorizer.",
+  "description": "JWT-issuing and JWT-verifying AWS API Gateway custom authorizers, including the REQUEST authorizer a WebSocket $connect route requires.",
   "keywords": [
     "yyt",
     "yingyeothon"

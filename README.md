@@ -20,8 +20,8 @@ TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) 
 | [@yingyeothon/actor-system](packages/actor-system)                     | Lightweight actor system (queue/lock/awaiter)              |
 | [@yingyeothon/actor-system-redis](packages/actor-system-redis)         | Redis-backed actor system support                          |
 | [@yingyeothon/actor-system-lambda](packages/actor-system-lambda)       | AWS Lambda glue for the actor system                       |
-| [@yingyeothon/lambda-authorizer](packages/lambda-authorizer)           | API Gateway custom authorizer helpers                      |
-| [@yingyeothon/lambda-authorizer-jwt](packages/lambda-authorizer-jwt)   | JWT-verifying API Gateway authorizer                       |
+| [@yingyeothon/lambda-authorizer](packages/lambda-authorizer)           | API Gateway TOKEN and REQUEST authorizer helpers           |
+| [@yingyeothon/lambda-authorizer-jwt](packages/lambda-authorizer-jwt)   | JWT-issuing and JWT-verifying API Gateway authorizers      |
 | [@yingyeothon/lambda-gamebase](packages/lambda-gamebase)               | Serverless WebSocket game framework on AWS Lambda          |
 | [@yingyeothon/gamebase-all-together](packages/gamebase-all-together)   | Wait/running stage game loop plugin for lambda-gamebase    |
 
