@@ -28,9 +28,11 @@
 
 ## Redis integration tests
 
-- `naive-redis`, `repository-redis`, and `actor-system-redis` use
-  `@testcontainers/redis` via `test/global-setup.ts`, which provides
-  `redisHost`/`redisPort` through vitest's `ProvidedContext`.
+- `naive-redis`, `repository-redis`, `actor-system-redis`, and
+  `lambda-gamebase` use `@testcontainers/redis` via `test/global-setup.ts`,
+  which provides `redisHost`/`redisPort` through vitest's `ProvidedContext`.
+  `lambda-gamebase` needs it only for the Redis pub/sub transport, but a
+  `globalSetup` is per project, so its whole suite runs against a container.
 - Those packages pin `fileParallelism: false` + `pool: "forks"` +
   `singleFork: true` because all test files share one container and flush it
   between tests. Do not remove those settings or add concurrent tests there.
@@ -38,6 +40,17 @@
   container startup. Docker must be running locally.
 - The package's `tsconfig.json` `include` must list `vitest.config.ts`, or
   type-aware lint fails on it.
+
+## Prefer an injected seam to a module mock
+
+- `vi.mock` on a whole workspace package hides the seam and asserts call
+  counts instead of behavior. Injecting a fake (`NetworkOptions.transport`,
+  an in-memory queue, a capturing `Logger`) tests what the code actually
+  sent.
+- It also changes what is observable, so re-check assertions when switching:
+  a mocked `broadcast` records a call even with zero connections, while a
+  real transport sends nothing — assert through a hook when nobody is
+  connected.
 
 ## Assertions
 

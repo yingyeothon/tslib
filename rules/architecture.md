@@ -40,6 +40,19 @@ consequences of those rules.
 - Cross-package deps use `workspace:^` and must stay acyclic. Update the mermaid
   dependency graph in the root `README.md` when an edge changes.
 
+## Transport seams
+
+- Anything that talks to a specific cloud service belongs behind an
+  interface in the package that owns the abstraction, with the vendor call
+  in a `create*Transport` factory next to it (`lambda-gamebase`'s
+  `Transport`, `createApiGatewayTransport`, `createRedisPubSubTransport`).
+- Encoding belongs to the implementation, not the caller: `reply`/`broadcast`
+  hand over the value and never serialize, which is what lets a transport
+  pick JSON, a binary codec, or an envelope of its own.
+- Say what a boolean means per implementation. `createRedisPubSubTransport`
+  returns "a gateway was subscribed", not "the client received it", so
+  policies keyed on delivery must not be pointed at it.
+
 ## Layering
 
 - Leaf packages (`codec`, `logger`, `repository`, `naive-socket`,
