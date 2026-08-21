@@ -103,12 +103,17 @@ API Gateway handlers
 
 - `handleConnect` / `HandleConnectOptions` — validates `x-game-id` / `x-member-id`, maps the connection, enqueues `enter`
 - `handleDisconnect` / `HandleDisconnectOptions` — enqueues `leave` and removes the mapping
-- `handleMessages` / `HandleMessagesOptions` — validates the client message and enqueues it stamped with the connection id
+- `handleMessages` / `HandleMessagesOptions` — validates the client message and enqueues it stamped with the connection id. Messages whose `type` is reserved are refused with `400`
 - `handleDebugStart` / `HandleDebugStartOptions` — serverless-offline only: releases the actor lock and invokes the actor Lambda locally
 
 Networking
 
-- `reply`, `broadcast`, `dropConnection`, `fakeConnectionId`, `isGoneException`, `NetworkOptions` (type), `RespondResult` (type) — `NetworkOptions` takes an explicit `client` or a `context` supplying the shared management client
+- `reply`, `broadcast`, `dropConnection`, `fakeConnectionId`, `RespondResult` (type) — the calls a game loop makes; each resolves a `Transport` from its `NetworkOptions`
+- `Transport` (type) — `{ send(connectionId, message), drop(connectionId) }`. Encoding belongs to the implementation: `reply`/`broadcast` never serialize, so a transport may use JSON, a binary codec, or an envelope of its own
+- `NetworkOptions` (type) — `{ transport?, client?, context?, logger?, sendTimeoutMillis? }`; an explicit `transport` wins, otherwise the API Gateway transport is built from `client` or `context`
+- `resolveTransport(functionName, options)` — the resolution above, exposed for custom network helpers
+- `createApiGatewayTransport(options)` / `ApiGatewayTransportOptions` (type) / `isGoneException` — the default transport: JSON over `PostToConnection`, `DeleteConnection` to drop, and `sendTimeoutMillis` to abort a delivery so one unresponsive connection cannot stall a game tick
+- `createRedisPubSubTransport(options)` / `RedisPubSubTransportOptions` (type) / `GatewayCommand` (type) — publishes `{ op: "send" | "drop", ... }` on `{channelPrefix}{gameId}` for deployments that terminate WebSockets in their own gateway process. Subscribe with `createRedisSubscriber` from `@yingyeothon/naive-redis`. Its boolean means "a gateway was subscribed", not "the client received it", so do not pair it with `gamebase-all-together`'s `dropUndeliveredConnections` — a gateway restart would evict the whole party
 
 Infrastructure
 
@@ -120,10 +125,39 @@ Models and requests (types)
 
 - `BaseGameContext`, `BaseGameUser`, `BaseGameObserver`, `GameStartMember`, `GameMainOptions`
 - `BaseGameRequest`, `BaseGameEnterRequest`, `BaseGameLeaveRequest`, `BaseGameConnectionIdRequest`
+- `reservedRequestTypes` / `isReservedRequestType(type)` — `enter` and `leave` are produced by the connection handlers and decide which member a connection speaks for, so a client may never send them
 
 Support
 
 - `setupBaseGameContext`, `sleep`, `createTicker` / `Ticker` / `TickerOptions`, `createTimeDelta` / `TimeDelta`
+
+## Security
+
+`handleConnect` reads `memberId` from the client's `x-member-id` header or
+query string and only checks that it appears in the game's start event. It
+never sees an authenticated principal, so **anyone who knows another
+member's id can connect as that member** — and `gamebase-all-together`
+broadcasts every member id to every player by default. Put an API Gateway
+authorizer in front of `$connect` (see
+[`@yingyeothon/lambda-authorizer-jwt`](../lambda-authorizer-jwt)) and take
+the member id from its claims rather than from the request.
+
+`handleMessages` refuses `enter`/`leave` from a client so that `$default`
+cannot be used to rebind a connection to another member, but that closes
+one path, not the identity question above.
+
+## Behavior changes
+
+- **`Transport` seam.** `reply`/`broadcast`/`dropConnection` now go through a
+  `Transport` instead of calling the API Gateway SDK directly. Passing
+  `client` or `context` behaves exactly as before; `NetworkOptions.transport`
+  replaces it, and the "requires either client or context" error became
+  "requires either transport, client, or context".
+- **Reserved message types.** `handleMessages` answers `400` for a client
+  message whose `type` is `enter` or `leave`. Those are produced by
+  `handleConnect`/`handleDisconnect` and decide which member a connection is
+  bound to, so accepting one from a client let an authenticated member bind
+  another member's game slot to its own connection.
 
 ## Migrating from the legacy package
 

@@ -89,7 +89,7 @@ describe("reply", () => {
 
   it("fails fast without a client or context", async () => {
     await expect(reply("connection-1", { type: "hi" })).rejects.toThrow(
-      "reply requires either client or context",
+      "reply requires either transport, client, or context",
     );
   });
 });

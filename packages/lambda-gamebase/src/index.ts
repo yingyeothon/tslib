@@ -47,18 +47,30 @@ export type { GameMainOptions } from "./models/GameMainOptions.js";
 export type { GameStartMember } from "./models/GameStartMember.js";
 
 export { broadcast, type RespondResult } from "./network/broadcast.js";
+export {
+  createApiGatewayTransport,
+  isGoneException,
+  type ApiGatewayTransportOptions,
+} from "./network/createApiGatewayTransport.js";
+export {
+  createRedisPubSubTransport,
+  type GatewayCommand,
+  type RedisPubSubTransportOptions,
+} from "./network/createRedisPubSubTransport.js";
 export { dropConnection } from "./network/dropConnection.js";
 export { fakeConnectionId } from "./network/fakeConnectionId.js";
-export {
-  isGoneException,
-  reply,
-  type NetworkOptions,
-} from "./network/reply.js";
+export { reply } from "./network/reply.js";
+export { resolveTransport } from "./network/resolveTransport.js";
+export type { NetworkOptions, Transport } from "./network/transport.js";
 
 export type { BaseGameConnectionIdRequest } from "./requests/BaseGameConnectionIdRequest.js";
 export type { BaseGameEnterRequest } from "./requests/BaseGameEnterRequest.js";
 export type { BaseGameLeaveRequest } from "./requests/BaseGameLeaveRequest.js";
 export type { BaseGameRequest } from "./requests/BaseGameRequest.js";
+export {
+  isReservedRequestType,
+  reservedRequestTypes,
+} from "./requests/reserved.js";
 
 export { setupBaseGameContext } from "./support/setupBaseGameContext.js";
 export { sleep } from "./support/sleep.js";

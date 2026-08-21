@@ -1,5 +1,6 @@
 import { nullLogger } from "@yingyeothon/logger";
-import { reply, type NetworkOptions } from "./reply.js";
+import { reply } from "./reply.js";
+import type { NetworkOptions } from "./transport.js";
 
 export interface RespondResult {
   [connectionId: string]: boolean;

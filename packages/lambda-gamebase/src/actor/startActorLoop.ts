@@ -42,11 +42,18 @@ export async function startActorLoop<M>({
     ...subsystem,
     id: gameId,
     loop: async (poll) => {
-      logger.info("start a game with id", { gameId, members });
+      // `members` carries names and e-mail addresses.
+      logger.info("start a game with id", {
+        gameId,
+        memberCount: members.length,
+      });
       async function pollMessages(): Promise<M[]> {
         const messages = await poll();
         if (messages.length > 0) {
-          logger.info("process game messages", { messages });
+          logger.info("process game messages", {
+            actorId: gameId,
+            count: messages.length,
+          });
         }
         return messages;
       }
@@ -56,7 +63,7 @@ export async function startActorLoop<M>({
       } catch (error) {
         logger.error("unexpected error from game", { gameId, error });
       }
-      logger.info("end of the game", { gameId, members });
+      logger.info("end of the game", { gameId, memberCount: members.length });
       await clearActorStartEvent({
         gameId,
         del: deleteStartEvent,

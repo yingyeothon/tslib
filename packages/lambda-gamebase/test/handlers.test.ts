@@ -334,6 +334,41 @@ describe("handleMessages", () => {
     ]);
   });
 
+  it.each(["enter", "leave"])(
+    "refuses the reserved %s type from a client",
+    async (type) => {
+      fake.strings.set("conn:c1", "game-1");
+      const result = await handleMessages({
+        ...options,
+        event: connectionEvent(
+          "c1",
+          {},
+          // Forging an enter used to rebind another member's game slot
+          // to this connection.
+          JSON.stringify({ type, memberId: "victim" }),
+        ),
+      });
+      expect(result.statusCode).toBe(400);
+      expect(queuedItems("queue:", "game-1")).toEqual([]);
+    },
+  );
+
+  it("still accepts a game message that merely mentions a reserved type", async () => {
+    fake.strings.set("conn:c1", "game-1");
+    const result = await handleMessages({
+      ...options,
+      event: connectionEvent(
+        "c1",
+        {},
+        JSON.stringify({ type: "chat", text: "enter the dungeon" }),
+      ),
+    });
+    expect(result.statusCode).toBe(200);
+    expect(queuedItems("queue:", "game-1")).toEqual([
+      { type: "chat", text: "enter the dungeon", connectionId: "c1" },
+    ]);
+  });
+
   it("falls back to the context's shared connection when none is injected", async () => {
     fake.strings.set("conn:c1", "game-1");
     const { redisConnection: _omitted, ...rest } = options;
