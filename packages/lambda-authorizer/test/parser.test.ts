@@ -71,6 +71,26 @@ describe("createAuthorizer token parsing", () => {
 });
 
 describe("parseAuthorization edge cases", () => {
+  it("accepts a lowercase scheme, as RFC 7235 requires", () => {
+    expect(parseAuthorization("bearer a.b.c")).toEqual({
+      type: "Bearer",
+      token: "a.b.c",
+    });
+    const encoded = Buffer.from("id:password", "utf-8").toString("base64");
+    expect(parseAuthorization(`BASIC ${encoded}`)).toEqual({
+      type: "Basic",
+      credential: { id: "id", password: "password" },
+    });
+  });
+
+  it("reports an unknown scheme with the spelling the client used", () => {
+    expect(parseAuthorization("DiGeSt abc")).toEqual({
+      type: "Unknown",
+      scheme: "DiGeSt",
+      credential: "abc",
+    });
+  });
+
   it("treats a token without a space as Unknown with empty parts", () => {
     expect(parseAuthorization("Bearer")).toEqual({
       type: "Unknown",

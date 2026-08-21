@@ -49,7 +49,12 @@ export async function handleMessages<M>({
       return NotFound;
     }
   } catch (error) {
-    logger.error("invalid message", { connectionId, error });
+    // A JSON.parse failure names the input it choked on, and the body may
+    // hold PII, so only the error's name survives.
+    logger.error("invalid message", {
+      connectionId,
+      error: error instanceof Error ? error.name : "unknown",
+    });
     return NotFound;
   }
 

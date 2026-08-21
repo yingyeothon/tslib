@@ -23,10 +23,60 @@ real defects that shipped in the legacy code.
   `lambda-gamebase`, `enter`/`leave` decide which member a connection speaks
   for; `handleMessages` refuses them via `isReservedRequestType` at the one
   point client input enters the actor queue.
-- Refusing a message type is not authentication. `handleConnect` still takes
-  `memberId` from `x-member-id`, so identity has to come from an authorizer's
-  claims. When you close one path, say in the code what the remaining ones
-  are instead of claiming a "single choke point".
+- Refusing a message type is not authentication. Identity has to come from a
+  verified principal, which is why `handleConnect` takes `resolveMemberId`:
+  the default still reads `x-member-id`, and production passes a resolver over
+  `event.requestContext.authorizer`. When you close one path, say in the code
+  what the remaining ones are instead of claiming a "single choke point".
+- A resolver that returns `undefined` must reject. Fail closed: an identity
+  seam whose failure mode is "fall back to what the client said" is not a seam.
+- Check identity once, at the point the binding is made. `$default` routes by
+  `connectionId` alone, so re-checking a principal there adds surface, not
+  safety — the connection's member was decided at `$connect`.
+
+## API Gateway authorizers
+
+- WebSocket APIs accept a `REQUEST` authorizer on `$connect` and no other
+  _Lambda_ authorizer (`AWS_IAM` is separately available). A `TOKEN` authorizer
+  is REST-only; `createAuthorizer` cannot be attached to a WebSocket API, which
+  is why `createRequestAuthorizer` exists. Verify a claim like this against
+  current AWS docs before designing around it — and keep the qualifier, because
+  "no other authorizer type" is the version of the sentence that is false.
+- Identity sources are enforced only when authorizer caching is on: then every
+  declared source must be present and non-empty or API Gateway answers 401
+  without invoking the function. With caching off it invokes the function
+  regardless. So the TTL-0 recommendation and "declare only the source your
+  clients actually send" are the same decision seen twice.
+- The authorizer's context stays with the connection and reaches `$connect`,
+  `$default`, and `$disconnect` as `event.requestContext.authorizer`. It only
+  carries strings, numbers, and booleans, so claims must be flattened.
+- Keep that context narrow. `$context.authorizer.*` can be configured into
+  access logs, so a token or an email placed there is a token or an email in
+  the logs. Never echo a verified bearer token back into the context: the
+  caller already has it. A token the authorizer _issues_ is the one legitimate
+  exception (that is how the caller receives it) — say so where it happens, and
+  say that the context must then stay out of access logs.
+- Strip the context from a Deny. A refused request reaches the access log too,
+  and the reason an authorizer refused is usually more sensitive than the
+  reason it allowed.
+- Allowing without an identity is a fail-open. If the authorizer cannot name
+  the caller, deny; do not leave it to the integration to notice. And set
+  `principalId` — it defaults to a constant, so an integration reading it sees
+  every caller as the same one.
+- Require an expiry. A bearer token with no `exp` makes every "the allow cannot
+  outlive the credential" guarantee vacuous.
+- Set the result cache TTL to 0 on `$connect`. It runs once per connection, so
+  caching buys nothing and lets an allow outlive the credential's expiry.
+- An authorizer cannot revoke an established connection. Mid-session ejection
+  belongs to the application (`Transport.drop`).
+- A browser cannot set headers on a WebSocket handshake. The credential travels
+  as a query string (written to access logs) or as
+  `Sec-WebSocket-Protocol: bearer, <token>` — prefer the subprotocol, and
+  remember the `$connect` integration must echo the selected subprotocol back
+  or the browser aborts the handshake.
+- A valid signature proves who minted a token, not who it was minted for. Pin
+  `issuer` and `audience`. With a shared symmetric secret every holder can mint
+  any identity, so the secret is a signing capability, not a verification key.
 
 ## Logging secrets
 
@@ -38,8 +88,13 @@ real defects that shipped in the legacy code.
   (`describeGame`, `memberCount`) rather than the object, and log a message's
   `type` rather than the message.
 - Authorizers must not log raw authorization headers, issued JWTs, parsed
-  credentials, or Redis passwords. Redact at the call site, not in the writer —
-  consumers plug in real writers that persist logs indefinitely.
+  credentials, decoded claims, or Redis passwords. Redact at the call site, not
+  in the writer — consumers plug in real writers that persist logs indefinitely.
+  Log presence, scheme, and policy effect; that is enough to debug a 401.
+- The leak is usually one level up from the secret: logging a whole `Authorized`
+  or the finished policy prints the context, and logging a whole start event on
+  a membership failure prints every member's name and email. Log the decision,
+  not the object that carried it.
 
 ## Review habit
 

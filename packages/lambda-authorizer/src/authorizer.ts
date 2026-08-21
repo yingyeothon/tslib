@@ -1,12 +1,7 @@
 import { nullLogger, type Logger } from "@yingyeothon/logger";
-import type {
-  APIGatewayAuthorizerResult,
-  APIGatewayTokenAuthorizerHandler,
-} from "aws-lambda";
-import { parseAuthorization } from "./parse.js";
-import type { Authorized, Authorizer } from "./types.js";
-
-const http401Error = "Unauthorized";
+import type { APIGatewayTokenAuthorizerHandler } from "aws-lambda";
+import { authorizeRequest } from "./policy.js";
+import type { Authorizer } from "./types.js";
 
 export interface AuthorizerOptions {
   authorize: Authorizer;
@@ -14,62 +9,24 @@ export interface AuthorizerOptions {
   logger?: Logger;
 }
 
-function defaultErrorHandler(logger: Logger): (error: Error) => void {
-  return (error) => {
-    logger.error(error);
-    throw new Error(http401Error);
-  };
-}
-
-function asError(thrown: unknown): Error {
-  return thrown instanceof Error ? thrown : new Error(String(thrown));
-}
-
+/**
+ * Builds a TOKEN authorizer, which reads `event.authorizationToken`.
+ *
+ * API Gateway supports TOKEN authorizers on REST APIs only. A WebSocket
+ * API accepts a REQUEST authorizer on `$connect` and nothing else, so use
+ * {@link createRequestAuthorizer} there.
+ */
 export function createAuthorizer({
   authorize,
-  onError: maybeOnError,
+  onError,
   logger = nullLogger,
 }: AuthorizerOptions): APIGatewayTokenAuthorizerHandler {
-  return async (event) => {
-    let authorized: Authorized = { allow: false };
-
-    // Step 1. Authorize.
-    try {
-      // Never log the raw token: it is a credential.
-      logger.debug(
-        `authorizationToken`,
-        event.authorizationToken === undefined ? "absent" : "present",
-      );
-      if (event.authorizationToken === undefined) {
-        throw new Error(`No authorizationToken`);
-      }
-
-      const authorization = parseAuthorization(event.authorizationToken);
-      logger.debug(`authorization`, authorization.type);
-
-      authorized = await authorize(authorization);
-      logger.debug(`authorized`, authorized);
-    } catch (error) {
-      const onError = maybeOnError ?? defaultErrorHandler(logger);
-      onError(asError(error));
-    }
-
-    // Step 2. Build a policy to allow or deny.
-    const policy: APIGatewayAuthorizerResult = {
-      principalId: "user",
-      policyDocument: {
-        Version: "2012-10-17",
-        Statement: [
-          {
-            Action: "execute-api:Invoke",
-            Effect: authorized.allow ? "Allow" : "Deny",
-            Resource: event.methodArn,
-          },
-        ],
-      },
-      context: authorized.context,
-    };
-    logger.debug(`policy`, policy);
-    return policy;
-  };
+  return (event) =>
+    authorizeRequest({
+      rawAuthorization: event.authorizationToken,
+      methodArn: event.methodArn,
+      authorize,
+      onError,
+      logger,
+    });
 }

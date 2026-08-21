@@ -44,7 +44,12 @@ export async function handleDebugStart({
   }
 
   const startEvent = JSON.parse(event.body) as GameActorStartEvent;
-  logger.debug("start for debugging", { startEvent });
+  // The start event carries a name and an email per member, so only its
+  // size is logged.
+  logger.debug("start for debugging", {
+    gameId: startEvent.gameId,
+    memberCount: startEvent.members.length,
+  });
 
   async function releaseLock(connection: RedisConnection): Promise<void> {
     await createRedisLock({

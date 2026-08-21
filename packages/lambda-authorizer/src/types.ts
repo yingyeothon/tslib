@@ -27,6 +27,13 @@ export type Authorization =
 export interface Authorized {
   allow: boolean;
   context?: APIGatewayAuthorizerResultContext;
+  /**
+   * The caller's identity, surfaced as `$context.authorizer.principalId`.
+   * Defaults to `"user"`, so an authorizer that can name its caller should
+   * set this — otherwise every caller looks like the same one to any
+   * integration that reads `principalId`.
+   */
+  principalId?: string;
 }
 
 export type Authorizer = (authorization: Authorization) => Promise<Authorized>;

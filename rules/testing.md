@@ -52,8 +52,28 @@
   real transport sends nothing — assert through a hook when nobody is
   connected.
 
+## Asserting that something was NOT logged
+
+- A "never logs the secret" test needs a **positive control**. `expect(text)
+.not.toContain(secret)` passes just as well when nothing was logged at all,
+  so assert some expected line is present in the same breath.
+- Do not build the haystack with `JSON.stringify`: it renders an `Error` as
+  `{}`, and the uncontrolled log call is almost always `logger.error(error)`.
+  Flatten errors to `name + message + stack` in the capturing writer.
+- Assert against a fixture whose values cannot collide with unrelated log text
+  (`"NAME-ALPHA-9f2"`, not `"one"`), and assert each token _segment_ as well as
+  the whole token — a leak often prints only part of it.
+
 ## Assertions
 
 - Assert observable behavior of the public API, not internal call counts.
 - Cover the failure paths: timeouts, reconnects, auth errors, malformed
   protocol frames, and expiry — these are where past bugs actually lived.
+- A test that mocks the thing under test into an unreachable state proves
+  nothing. Mocking `jwt.verify` to return a string exercised a branch no real
+  token can reach, while the shapes that _do_ get through (a JSON array
+  payload, a `complete: true` envelope) stayed untested. Reach the state with
+  a real input, or the branch is not covered.
+- Type-level guards are not runtime guards. `Omit<T, "k">` only rejects an
+  object _literal_; a variable or a spread carries the key straight through.
+  Test the runtime override, not the type.

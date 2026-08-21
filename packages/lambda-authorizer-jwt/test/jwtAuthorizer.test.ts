@@ -73,11 +73,40 @@ describe("Basic authentication", () => {
 });
 
 describe("Bearer authentication", () => {
-  it("allows a valid JWT and echoes it in the context", async () => {
+  it("allows a valid JWT and publishes its subject, not the token", async () => {
     const token = jwt.sign({ id: "test" }, jwtSecret, { expiresIn: "30m" });
     const policy = await invoke(buildHandler(), `Bearer ${token}`);
     expect(policy.policyDocument.Statement[0]!.Effect).toEqual("Allow");
-    expect(policy.context).toEqual({ token });
+    expect(policy.context).toEqual({ memberId: "test" });
+    expect(JSON.stringify(policy.context)).not.toContain(token);
+  });
+
+  it("honors a custom context builder", async () => {
+    const token = jwt.sign({ sub: "test", role: "admin" }, jwtSecret, {
+      expiresIn: "30m",
+    });
+    const handler = createJwtAuthorizer({
+      jwtSecret,
+      buildContext: (claims) => ({ role: String(claims["role"]) }),
+      login: () => Promise.resolve(true),
+    });
+    const policy = await invoke(handler, `Bearer ${token}`);
+    expect(policy.context).toEqual({ role: "admin" });
+  });
+
+  it("rejects a JWT minted for another issuer", async () => {
+    const token = jwt.sign({ id: "test" }, jwtSecret, {
+      expiresIn: "30m",
+      issuer: "other",
+    });
+    const handler = createJwtAuthorizer({
+      jwtSecret,
+      verifyOptions: { issuer: "expected" },
+      login: () => Promise.resolve(true),
+    });
+    await expect(invoke(handler, `Bearer ${token}`)).rejects.toThrow(
+      "Unauthorized",
+    );
   });
 
   it("rejects an expired JWT with Unauthorized", async () => {

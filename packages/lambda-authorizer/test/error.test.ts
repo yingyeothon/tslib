@@ -70,7 +70,7 @@ describe("createAuthorizer error handling", () => {
     expect(policy.policyDocument.Statement[0]!.Effect).toEqual("Deny");
   });
 
-  it("throws Unauthorized by default and logs the original error", async () => {
+  it("throws Unauthorized by default and logs the error's name only", async () => {
     const error = vi.fn();
     const logger: Logger = {
       severity: "error",
@@ -79,7 +79,9 @@ describe("createAuthorizer error handling", () => {
       warn: vi.fn(),
       error,
     };
-    const cause = new Error("bad credentials");
+    // Whatever `authorize` throws is uncontrolled: a consumer's `login`
+    // callback may echo a query, and a parse failure names its input.
+    const cause = new TypeError("password=hunter2 rejected by the database");
     await expect(
       invoke(
         createAuthorizer({
@@ -88,7 +90,24 @@ describe("createAuthorizer error handling", () => {
         }),
       ),
     ).rejects.toThrow("Unauthorized");
-    expect(error).toHaveBeenCalledWith(cause);
+    expect(error).toHaveBeenCalledWith("authorization failed", {
+      name: "TypeError",
+    });
+    expect(JSON.stringify(error.mock.calls)).not.toContain("hunter2");
+  });
+
+  it("hands the whole error to onError, which is the seam for detail", async () => {
+    const seen: Error[] = [];
+    const cause = new Error("bad credentials");
+    await invoke(
+      createAuthorizer({
+        authorize: () => Promise.reject(cause),
+        onError: (error) => {
+          seen.push(error);
+        },
+      }),
+    );
+    expect(seen).toEqual([cause]);
   });
 
   it("throws Unauthorized by default when the authorizationToken is missing", async () => {

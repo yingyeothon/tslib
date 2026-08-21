@@ -99,6 +99,44 @@ vi.mock("@yingyeothon/naive-redis", () => {
 });
 
 const logger: Logger = { ...nullLogger, severity: "none" };
+
+/**
+ * Captures every log line as text. Errors are flattened because
+ * `JSON.stringify(new Error("secret"))` is `{}`, which would hide a leak.
+ */
+function capturingLogger(): { logger: Logger; text: () => string } {
+  const lines: string[] = [];
+  const capture = (...args: unknown[]): void => {
+    lines.push(
+      args
+        .map((arg) =>
+          arg instanceof Error
+            ? `${arg.name}: ${arg.message} ${arg.stack ?? ""}`
+            : JSON.stringify(arg),
+        )
+        .join(" "),
+    );
+  };
+  return {
+    logger: {
+      severity: "debug",
+      debug: capture,
+      info: capture,
+      warn: capture,
+      error: capture,
+    },
+    text: () => lines.join("\n"),
+  };
+}
+
+/** Members whose name and email cannot collide with unrelated log text. */
+const piiStartEvent: GameActorStartEvent = {
+  gameId: "game-pii",
+  members: [
+    { memberId: "m1", name: "NAME-ALPHA-9f2", email: "alpha-9f2@yyt.life" },
+    { memberId: "m2", name: "NAME-BETA-7c4", email: "beta-7c4@yyt.life" },
+  ],
+};
 const fakeConnection = {} as RedisConnection;
 
 const startEvent: GameActorStartEvent = {
@@ -230,6 +268,198 @@ describe("handleConnect", () => {
         }),
       }),
     ).rejects.toThrow("requires either redisConnection or context");
+  });
+
+  it("takes the member id from resolveMemberId instead of the header", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    const event = {
+      ...connectionEvent("c1", { "x-game-id": "game-1", "x-member-id": "m2" }),
+      requestContext: { connectionId: "c1", authorizer: { memberId: "m1" } },
+    } as unknown as APIGatewayProxyEvent;
+    const result = await handleConnect({
+      ...options,
+      event,
+      resolveMemberId: (e) => {
+        const memberId = e.requestContext.authorizer?.["memberId"] as unknown;
+        return typeof memberId === "string" ? memberId : undefined;
+      },
+    });
+    expect(result.statusCode).toBe(200);
+    // The forged "m2" header must not decide which slot the connection binds.
+    expect(queuedItems("queue:", "game-1")).toEqual([
+      { type: "enter", connectionId: "c1", memberId: "m1" },
+    ]);
+  });
+
+  it("rejects the connection when resolveMemberId finds no identity", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    const result = await handleConnect({
+      ...options,
+      event: connectionEvent("c1", {
+        "x-game-id": "game-1",
+        "x-member-id": "m1",
+      }),
+      resolveMemberId: () => undefined,
+    });
+    expect(result.statusCode).toBe(400);
+    expect(queuedItems("queue:", "game-1")).toEqual([]);
+  });
+
+  it("reads headers case-insensitively", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    const result = await handleConnect({
+      ...options,
+      event: connectionEvent("c1", {
+        "X-GAME-ID": "game-1",
+        "X-Member-Id": "m1",
+      }),
+    });
+    expect(result.statusCode).toBe(200);
+    expect(fake.strings.get("conn:c1")).toBe("game-1");
+  });
+
+  it("echoes the selected subprotocol so a browser handshake completes", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    const offeredTo: string[][] = [];
+    const result = await handleConnect({
+      ...options,
+      event: connectionEvent("c1", {
+        "x-game-id": "game-1",
+        "x-member-id": "m1",
+        "Sec-WebSocket-Protocol": "bearer, a.b.c",
+      }),
+      selectSubprotocol: (offered) => {
+        offeredTo.push([...offered]);
+        return offered.includes("bearer") ? "bearer" : undefined;
+      },
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.headers).toEqual({ "Sec-WebSocket-Protocol": "bearer" });
+    expect(offeredTo).toEqual([["bearer", "a.b.c"]]);
+  });
+
+  it("omits the subprotocol header when nothing is selected", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    const result = await handleConnect({
+      ...options,
+      event: connectionEvent("c1", {
+        "x-game-id": "game-1",
+        "x-member-id": "m1",
+      }),
+      selectSubprotocol: (offered) =>
+        offered.includes("bearer") ? "bearer" : undefined,
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.headers).toBeUndefined();
+  });
+
+  it("names the member but not the start event when one is not registered", async () => {
+    fake.strings.set("event:game-pii", JSON.stringify(piiStartEvent));
+    const { logger: capturing, text } = capturingLogger();
+    const result = await handleConnect({
+      ...options,
+      logger: capturing,
+      event: connectionEvent("c1", {
+        "x-game-id": "game-pii",
+        "x-member-id": "intruder",
+      }),
+    });
+    expect(result.statusCode).toBe(400);
+    const logged = text();
+    // Positive control: the rejection was logged at all.
+    expect(logged).toContain("not registered member");
+    for (const member of piiStartEvent.members) {
+      expect(logged).not.toContain(member.name);
+      expect(logged).not.toContain(member.email);
+    }
+    // The probing principal must stay attributable.
+    expect(logged).toContain("intruder");
+    expect(logged).toContain("c1");
+  });
+
+  it("ignores the authorizer context while resolveMemberId is unset", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    const event = {
+      ...connectionEvent("c1", { "x-game-id": "game-1", "x-member-id": "m1" }),
+      requestContext: { connectionId: "c1", authorizer: { memberId: "m2" } },
+    } as unknown as APIGatewayProxyEvent;
+    const result = await handleConnect({ ...options, event });
+    expect(result.statusCode).toBe(200);
+    // No precedence flip: the default resolver still reads the header.
+    expect(queuedItems("queue:", "game-1")).toEqual([
+      { type: "enter", connectionId: "c1", memberId: "m1" },
+    ]);
+  });
+
+  it("rejects an authenticated member for a game it is not a member of", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    fake.strings.set(
+      "event:game-2",
+      JSON.stringify({ gameId: "game-2", members: [{ memberId: "m9" }] }),
+    );
+    const event = {
+      ...connectionEvent("c1", { "x-game-id": "game-2" }),
+      requestContext: { connectionId: "c1", authorizer: { memberId: "m1" } },
+    } as unknown as APIGatewayProxyEvent;
+    const result = await handleConnect({
+      ...options,
+      event,
+      resolveMemberId: () => "m1",
+    });
+    // x-game-id is the one input still under the client's control.
+    expect(result.statusCode).toBe(400);
+    expect(queuedItems("queue:", "game-2")).toEqual([]);
+  });
+
+  it("refuses a subprotocol the client did not offer", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    const { logger: capturing, text } = capturingLogger();
+    const result = await handleConnect({
+      ...options,
+      logger: capturing,
+      event: connectionEvent("c1", {
+        "x-game-id": "game-1",
+        "x-member-id": "m1",
+        "Sec-WebSocket-Protocol": "bearer, a.secret.jwt",
+      }),
+      selectSubprotocol: () => "something-else",
+    });
+    expect(result.statusCode).toBe(200);
+    expect(result.headers).toBeUndefined();
+    const logged = text();
+    expect(logged).toContain("selected subprotocol was not offered");
+    // The offered list carries the credential; it must not reach the log.
+    expect(logged).not.toContain("a.secret.jwt");
+  });
+
+  it("sends no subprotocol header on a refused handshake", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    const result = await handleConnect({
+      ...options,
+      event: connectionEvent("c1", {
+        "x-game-id": "game-1",
+        "x-member-id": "intruder",
+        "Sec-WebSocket-Protocol": "bearer, a.b.c",
+      }),
+      selectSubprotocol: (offered) =>
+        offered.includes("bearer") ? "bearer" : undefined,
+    });
+    expect(result.statusCode).toBe(400);
+    expect(result).not.toHaveProperty("headers");
+  });
+
+  it("returns a fresh response object each time", async () => {
+    fake.strings.set("event:game-1", JSON.stringify(startEvent));
+    const event = connectionEvent("c1", {
+      "x-game-id": "game-1",
+      "x-member-id": "m1",
+    });
+    const first = await handleConnect({ ...options, event });
+    // A middy-style wrapper mutating the result must not poison the next
+    // invocation in a warm container.
+    (first as { headers?: Record<string, string> }).headers = { a: "b" };
+    const second = await handleConnect({ ...options, event });
+    expect(second).not.toHaveProperty("headers");
   });
 });
 

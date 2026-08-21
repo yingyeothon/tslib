@@ -101,7 +101,7 @@ Actor loop
 
 API Gateway handlers
 
-- `handleConnect` / `HandleConnectOptions` — validates `x-game-id` / `x-member-id`, maps the connection, enqueues `enter`
+- `handleConnect` / `HandleConnectOptions` — resolves the member id (`resolveMemberId`, default `x-member-id`), validates it against `x-game-id`'s start event, maps the connection, enqueues `enter`, and optionally echoes a `Sec-WebSocket-Protocol` (`selectSubprotocol`)
 - `handleDisconnect` / `HandleDisconnectOptions` — enqueues `leave` and removes the mapping
 - `handleMessages` / `HandleMessagesOptions` — validates the client message and enqueues it stamped with the connection id. Messages whose `type` is reserved are refused with `400`
 - `handleDebugStart` / `HandleDebugStartOptions` — serverless-offline only: releases the actor lock and invokes the actor Lambda locally
@@ -133,18 +133,68 @@ Support
 
 ## Security
 
-`handleConnect` reads `memberId` from the client's `x-member-id` header or
-query string and only checks that it appears in the game's start event. It
-never sees an authenticated principal, so **anyone who knows another
-member's id can connect as that member** — and `gamebase-all-together`
-broadcasts every member id to every player by default. Put an API Gateway
-authorizer in front of `$connect` (see
-[`@yingyeothon/lambda-authorizer-jwt`](../lambda-authorizer-jwt)) and take
-the member id from its claims rather than from the request.
+By default `handleConnect` reads `memberId` from the client's `x-member-id`
+header or query string and only checks that it appears in the game's start
+event. That is not authentication: **anyone who knows another member's id
+can connect as that member** — and `gamebase-all-together` broadcasts every
+member id to every player by default, so ids are not secret.
+
+Close it with `resolveMemberId`. Put a REQUEST authorizer on `$connect`
+(see [`@yingyeothon/lambda-authorizer-jwt`](../lambda-authorizer-jwt) —
+a WebSocket API supports no other _Lambda_ authorizer type) and read the
+verified identity from its context:
+
+```ts
+await handleConnect({
+  event,
+  ...prefixes,
+  resolveMemberId: (event) => {
+    const memberId: unknown = event.requestContext.authorizer?.["memberId"];
+    return typeof memberId === "string" ? memberId : undefined;
+  },
+  selectSubprotocol: (offered) =>
+    offered.includes("bearer") ? "bearer" : undefined,
+  context,
+});
+```
+
+`resolveMemberId` returning `undefined` rejects the connection, so the
+authenticated path fails closed. The `x-member-id` header is then ignored
+entirely; only `x-game-id` still comes from the client, and membership is
+still checked against the start event, so a verified member can only enter
+a game it was actually invited to.
+
+`selectSubprotocol` echoes the `Sec-WebSocket-Protocol` value the server
+selected. A browser cannot set headers on a WebSocket handshake, so a token
+usually travels as `new WebSocket(url, ["bearer", token])`; the browser
+then aborts the handshake unless the server names the subprotocol it chose.
+A selection the client did not offer is dropped and logged rather than
+sent, because a browser would abort on that too.
+
+Note what the callback receives: with the arrangement above the `offered`
+array is `["bearer", "<the raw JWT>"]`. **It carries the credential — never
+log it.**
 
 `handleMessages` refuses `enter`/`leave` from a client so that `$default`
-cannot be used to rebind a connection to another member, but that closes
-one path, not the identity question above.
+cannot be used to rebind a connection to another member. It otherwise
+routes purely by `connectionId`, and the member that connection speaks for
+was decided at `$connect`.
+
+Two things this does **not** close, because neither is an identity
+question:
+
+- **A member may hold several connections at once.** Nothing caps them, and
+  each `$connect` enqueues an `enter`, whose default `onMemberEntered`
+  broadcasts to everyone. Rate-limit connections per member upstream.
+- **A superseded connection keeps its mapping.** When a member reconnects,
+  `processEnter` rebinds the game slot to the new connection id, but the
+  old connection's `connectionId` → `gameId` entry lives until it
+  disconnects or the entry expires, so `$default` still accepts messages
+  from it. Close the old socket, or have the game ignore a message whose
+  connection is no longer the member's current one.
+
+Once a connection is established no authorizer can revoke it. Dropping a
+player mid-game is the game loop's job, through `Transport.drop`.
 
 ## Behavior changes
 
@@ -158,6 +208,28 @@ one path, not the identity question above.
   `handleConnect`/`handleDisconnect` and decide which member a connection is
   bound to, so accepting one from a client let an authenticated member bind
   another member's game slot to its own connection.
+- **Authenticated identity.** `handleConnect` takes `resolveMemberId`, which
+  defaults to today's `x-member-id` header or query string read, so unset it
+  behaves exactly as before. Pass a resolver reading the authorizer's context
+  to close the identity gap described under Security.
+- **Subprotocol echo.** `handleConnect` takes `selectSubprotocol`, and returns
+  a `Sec-WebSocket-Protocol` response header when it selects one. Unset, the
+  response is unchanged.
+- **Case-insensitive headers.** `x-game-id` and `x-member-id` are now matched
+  regardless of header casing; a client sending `X-GAME-ID` used to be
+  rejected. Query string lookup is still exact. A header present but empty
+  now falls through to the query string, where it used to win and fail the
+  request; and `event.headers` being absent no longer throws. Two headers
+  differing only in case resolve to the first one declared.
+- **Less in the logs.** Neither `handleConnect` nor `handleDebugStart` logs a
+  whole start event any more — it carries every member's name and email.
+  `handleMessages` logs a parse failure's `Error.name` rather than the error,
+  whose message quotes the body it choked on. The membership rejection still
+  names the member and the connection, which under `resolveMemberId` is a
+  verified principal and the only way to attribute a probe.
+- **Distinct refusal messages.** A missing member id (which is what a
+  `resolveMemberId` finding no identity produces) and a missing game id are
+  now logged apart, instead of both as "invalid gameId".
 
 ## Migrating from the legacy package
 
