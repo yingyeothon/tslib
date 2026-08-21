@@ -1,12 +1,25 @@
 export { GameStage } from "./models/GameStage.js";
+export type { GameEndReason, GameTickPolicy } from "./models/GameTickPolicy.js";
+export type {
+  GameEndOptions,
+  GameHooks,
+  MemberEnteredOptions,
+  SnapshotOptions,
+  StageChangedOptions,
+} from "./models/hooks.js";
 export {
   runGameAllTogether,
   type RunGameAllTogetherOptions,
 } from "./runGameAllTogether.js";
 export {
   broadcastStage,
-  type BroadcastStageOptions,
+  pruneUndeliveredUsers,
+  type PruneUndeliveredUsersOptions,
 } from "./services/broadcastStage.js";
+export {
+  createStageAnnouncer,
+  type StageAnnouncerOptions,
+} from "./services/createStageAnnouncer.js";
 export {
   doInStageRunning,
   type DoInStageRunningOptions,
@@ -18,6 +31,7 @@ export {
   type DoInStageWaitOptions,
 } from "./services/doInStageWait.js";
 export {
+  broadcastMemberEntered,
   processEnter,
   type ProcessEnterOptions,
 } from "./services/processEnter.js";
