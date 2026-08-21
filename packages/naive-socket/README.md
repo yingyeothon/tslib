@@ -47,6 +47,33 @@ const custom = await socket.send({
 socket.disconnect();
 ```
 
+Server-push protocols (Redis pub/sub, for example) deliver data that no
+request asked for. Pass `onUnsolicitedData` to consume it, and send the
+command that starts the stream with `expectResponse: false` so it does not
+wait for a response of its own:
+
+```ts
+const subscriber = createNaiveSocket({
+  host: "localhost",
+  port: 6379,
+  // Return how many characters were consumed; `<= 0` waits for more.
+  onUnsolicitedData: (buffer) => {
+    const end = buffer.indexOf("\r\n");
+    if (end < 0) {
+      return -1;
+    }
+    console.log(buffer.slice(0, end));
+    return end + 2;
+  },
+});
+
+// Its reply arrives on the push stream, not as this request's response.
+await subscriber.send({ message: "SUBSCRIBE room\r\n", expectResponse: false });
+```
+
+Setting `onUnsolicitedData` also keeps the socket reconnecting while the
+request queue is empty, which a subscriber's is by design.
+
 CJS:
 
 ```js
@@ -64,9 +91,10 @@ Requests are written one at a time: the next queued message is sent only after t
 
 - `createNaiveSocket(options)` — create a `NaiveSocket` client
 - `NaiveSocket` — the client; `send(request)` returns `Promise<string>`, `disconnect()` rejects all pending requests with `DeadSocket` (type)
-- `NaiveSocketOptions` — `{ host, port, connectionRetryInterval?, logger?, onConnectionStateChanged? }`; `logger` is a `Logger` from `@yingyeothon/logger` and defaults to `nullLogger` (type)
-- `SendRequest` — `{ message, fulfill?, timeoutMillis?, urgent? }` (type)
+- `NaiveSocketOptions` — `{ host, port, connectionRetryInterval?, logger?, onConnectionStateChanged?, onUnsolicitedData? }`; `logger` is a `Logger` from `@yingyeothon/logger` and defaults to `nullLogger` (type)
+- `SendRequest` — `{ message, fulfill?, timeoutMillis?, urgent?, expectResponse? }` (type)
 - `Fulfill` — `((buffer: string) => number) | RegExp | number` (type)
+- `UnsolicitedDataConsumer` — `(buffer: string) => number`, the `onUnsolicitedData` callback (type)
 - `ConnectionState` — `Connecting | Connected | Disconnected` (enum)
 - `ConnectionStateListener` — callback for `onConnectionStateChanged` (type)
 - `createTextMatch(buffer)` — create a `TextMatch` scanner over a buffer

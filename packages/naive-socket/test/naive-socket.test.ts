@@ -472,3 +472,188 @@ describe("NaiveSocket", () => {
     }
   });
 });
+
+describe("NaiveSocket unsolicited data", () => {
+  /** Consumes one `|`-terminated frame, recording it without the mark. */
+  function pipeFrameConsumer(received: string[]): (buffer: string) => number {
+    return (buffer) => {
+      const index = buffer.indexOf("|");
+      if (index < 0) {
+        return -1;
+      }
+      received.push(buffer.slice(0, index));
+      return index + 1;
+    };
+  }
+
+  it("hands data with no pending request to the consumer", async () => {
+    const received: string[] = [];
+    const server = await startServer((message, client) => {
+      if (message === "SUB|") {
+        client.write("push-one|push-two|");
+      }
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, {
+      onUnsolicitedData: pipeFrameConsumer(received),
+    });
+
+    await expect(
+      ns.send({ message: "SUB|", expectResponse: false }),
+    ).resolves.toBe("");
+    await vi.waitFor(() => expect(received).toEqual(["push-one", "push-two"]));
+  });
+
+  it("waits for more data while the consumer takes nothing", async () => {
+    const received: string[] = [];
+    const server = await startServer((message, client) => {
+      if (message === "SUB|") {
+        client.write("part");
+        setTimeout(() => client.write("ial|"), 20);
+      }
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, {
+      onUnsolicitedData: pipeFrameConsumer(received),
+    });
+
+    await ns.send({ message: "SUB|", expectResponse: false });
+    await vi.waitFor(() => expect(received).toEqual(["partial"]));
+  });
+
+  it("decodes a multi-byte character split across two chunks", async () => {
+    const text = "안녕하세요";
+    const encoded = Buffer.from(`${text}|`, "utf-8");
+    // Byte 4 falls inside the second syllable, so a per-chunk toString()
+    // would corrupt it.
+    const received: string[] = [];
+    const server = await startServer((message, client) => {
+      if (message === "SUB|") {
+        client.write(encoded.subarray(0, 4));
+        setTimeout(() => client.write(encoded.subarray(4)), 20);
+      }
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, {
+      onUnsolicitedData: pipeFrameConsumer(received),
+    });
+
+    await ns.send({ message: "SUB|", expectResponse: false });
+    await vi.waitFor(() => expect(received).toEqual([text]));
+  });
+
+  it("resolves a response-less request and keeps serving the queue", async () => {
+    const received: string[] = [];
+    const server = await echoServer();
+    const ns = newSocket(server.port, {
+      onUnsolicitedData: pipeFrameConsumer(received),
+    });
+
+    await expect(
+      ns.send({ message: "FIRE|", expectResponse: false }),
+    ).resolves.toBe("");
+    await vi.waitFor(() => expect(received).toEqual(["FIRE"]));
+
+    const response = await ns.send({
+      message: "NEXT|",
+      fulfill: "NEXT|".length,
+    });
+    expect(response).toBe("NEXT|");
+  });
+
+  it("routes the remainder after a claimed response to the consumer", async () => {
+    const received: string[] = [];
+    const server = await startServer((message, client) => {
+      if (message === "AUTH|") {
+        client.write("OK|push|");
+      }
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, {
+      onUnsolicitedData: pipeFrameConsumer(received),
+    });
+
+    await expect(
+      ns.send({ message: "AUTH|", fulfill: "OK|".length }),
+    ).resolves.toBe("OK|");
+    await vi.waitFor(() => expect(received).toEqual(["push"]));
+  });
+
+  it("reconnects with an empty queue while a consumer is set", async () => {
+    const received: string[] = [];
+    const server = await startServer((message, client) => {
+      if (message === "SUB|") {
+        client.write("hello|");
+      }
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, {
+      connectionRetryInterval: 20,
+      onUnsolicitedData: pipeFrameConsumer(received),
+    });
+
+    await ns.send({ message: "SUB|", expectResponse: false });
+    await vi.waitFor(() => expect(received).toEqual(["hello"]));
+
+    // Nothing is pending, which used to stop the reconnect entirely.
+    server.clients[0]?.destroy();
+    await vi.waitFor(() => expect(server.clients).toHaveLength(2), {
+      timeout: 2000,
+    });
+  });
+
+  it("writes the queue head once per connection", async () => {
+    const received: string[] = [];
+    const server = await startServer((message, client) => {
+      for (const _ of message.matchAll(/SUB\|/g)) {
+        client.write("ok|");
+      }
+    });
+    cleanups.push(server.close);
+
+    const ns: NaiveSocket = newSocket(server.port, {
+      connectionRetryInterval: 20,
+      onUnsolicitedData: pipeFrameConsumer(received),
+      onConnectionStateChanged: ({ state }) => {
+        if (state === ConnectionState.Connected) {
+          // Replaying a subscription on reconnect: this runs inside
+          // onConnect, which then resumes the queue itself.
+          void ns.send({ message: "SUB|", expectResponse: false });
+        }
+      },
+    });
+
+    await ns.send({ message: "SUB|", expectResponse: false });
+    await vi.waitFor(() => expect(received).toHaveLength(2));
+
+    // Reconnect with an empty queue, which is a subscriber's normal state.
+    server.clients[0]?.destroy();
+    await vi.waitFor(() => expect(server.clients).toHaveLength(2), {
+      timeout: 2000,
+    });
+    await vi.waitFor(() => expect(received).toHaveLength(3));
+
+    // Two on the first connection (explicit + replay), one on the second.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(server.messages.join("").match(/SUB\|/g)).toHaveLength(3);
+  });
+
+  it("logs and clears the buffer when the consumer throws", async () => {
+    const errorLog = vi.fn();
+    const server = await startServer((message, client) => {
+      if (message === "SUB|") {
+        client.write("boom|");
+      }
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, {
+      logger: { ...nullLogger, error: errorLog },
+      onUnsolicitedData: () => {
+        throw new Error("bad frame");
+      },
+    });
+
+    await ns.send({ message: "SUB|", expectResponse: false });
+    await vi.waitFor(() => expect(errorLog).toHaveBeenCalled());
+  });
+});

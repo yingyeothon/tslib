@@ -1,4 +1,5 @@
 import { Socket } from "node:net";
+import { StringDecoder } from "node:string_decoder";
 
 import { nullLogger, type Logger } from "@yingyeothon/logger";
 
@@ -26,7 +27,25 @@ export interface NaiveSocketOptions {
   connectionRetryInterval?: number;
   logger?: Logger;
   onConnectionStateChanged?: ConnectionStateListener;
+
+  /**
+   * Consumes data that no pending request claims, which is how a
+   * server-push protocol (Redis pub/sub, for example) delivers messages.
+   * It receives the whole unclaimed buffer and returns the number of
+   * characters it consumed; `<= 0` leaves the buffer for the next chunk.
+   *
+   * Setting it also keeps the socket reconnecting while the request queue
+   * is empty, because a subscriber has nothing pending by design.
+   * Without it, unclaimed data is logged and discarded.
+   */
+  onUnsolicitedData?: UnsolicitedDataConsumer;
 }
+
+/**
+ * Consumes the unclaimed receive buffer and returns how many characters
+ * it took; `<= 0` means "wait for more data".
+ */
+export type UnsolicitedDataConsumer = (buffer: string) => number;
 
 /**
  * Decides whether the accumulated response buffer fulfills a request:
@@ -48,6 +67,16 @@ export interface SendRequest {
 
   /** Put this request at the front of the queue instead of the back. */
   urgent?: boolean;
+
+  /**
+   * Whether a response belongs to this request. Default: `true`.
+   *
+   * Set it to `false` for commands whose reply is not addressed to the
+   * caller — a Redis `SUBSCRIBE`, for example, is answered on the push
+   * stream. Such a request resolves with an empty string as soon as it is
+   * written, and every byte it triggers goes to `onUnsolicitedData`.
+   */
+  expectResponse?: boolean;
 }
 
 /**
@@ -66,8 +95,11 @@ interface SendWork {
   message: string;
   fulfill: Fulfill;
   timeoutMillis: number;
+  expectResponse: boolean;
   dPromise: DecomposedPromise<string>;
   timer: NodeJS.Timeout | null;
+  /** Already handed to the current socket; cleared when that socket dies. */
+  written: boolean;
 }
 
 const noListener = (): void => undefined;
@@ -78,8 +110,12 @@ class NaiveSocketImpl implements NaiveSocket {
   private readonly logger: Logger;
   private readonly onConnectionStateChanged: ConnectionStateListener;
   private readonly connectionRetryInterval: number;
+  private readonly onUnsolicitedData: UnsolicitedDataConsumer | undefined;
 
   private readonly sendWorks: SendWork[] = [];
+  // Decodes UTF-8 across chunk boundaries: a multi-byte character split
+  // between two TCP chunks would be corrupted by a per-chunk toString().
+  private decoder = new StringDecoder("utf-8");
   private currentBuffer = "";
   private connectionState: ConnectionState = ConnectionState.Disconnected;
   private socket: Socket | null = null;
@@ -91,12 +127,14 @@ class NaiveSocketImpl implements NaiveSocket {
     connectionRetryInterval = 5000,
     logger = nullLogger,
     onConnectionStateChanged = noListener,
+    onUnsolicitedData,
   }: NaiveSocketOptions) {
     this.host = host;
     this.port = port;
     this.connectionRetryInterval = connectionRetryInterval;
     this.logger = logger;
     this.onConnectionStateChanged = onConnectionStateChanged;
+    this.onUnsolicitedData = onUnsolicitedData;
   }
 
   public send = (request: SendRequest): Promise<string> => {
@@ -131,13 +169,16 @@ class NaiveSocketImpl implements NaiveSocket {
     message,
     fulfill = (buffer) => buffer.length,
     timeoutMillis = 0,
+    expectResponse = true,
   }: SendRequest): SendWork => {
     const newWork: SendWork = {
       message,
       fulfill,
       timeoutMillis,
+      expectResponse,
       dPromise: decomposePromise<string>(),
       timer: null,
+      written: false,
     };
     if (timeoutMillis > 0) {
       newWork.timer = setTimeout(() => {
@@ -176,6 +217,14 @@ class NaiveSocketImpl implements NaiveSocket {
         );
       }
     }
+    // A half-received frame cannot be completed by the next connection,
+    // and the decoder may hold a partial multi-byte character.
+    this.decoder = new StringDecoder("utf-8");
+    this.currentBuffer = "";
+    // Whatever reached the dead socket has to be written again.
+    for (const work of this.sendWorks) {
+      work.written = false;
+    }
     this.changeConnectionState(ConnectionState.Disconnected);
     this.socket = null;
   };
@@ -194,7 +243,9 @@ class NaiveSocketImpl implements NaiveSocket {
 
   private retryToConnect = () => {
     this.doDisconnect();
-    if (this.sendWorks.length === 0) {
+    // A push consumer has no pending work by design, so an empty queue
+    // must not stop it from reconnecting.
+    if (this.sendWorks.length === 0 && this.onUnsolicitedData === undefined) {
       return;
     }
     if (this.connectionRetryInterval < 0) {
@@ -232,15 +283,13 @@ class NaiveSocketImpl implements NaiveSocket {
   };
 
   private onData = (data: Buffer) => {
-    this.currentBuffer += data.toString("utf-8");
-    const work = this.sendWorks[0];
+    this.currentBuffer += this.decoder.write(data);
+    const head = this.sendWorks[0];
+    // A request that expects no response never claims incoming bytes, so
+    // they belong to the push stream just like an empty queue's do.
+    const work = head?.expectResponse === true ? head : undefined;
     if (!work) {
-      this.logger.error(
-        `[NaiveSocket]`,
-        `No work but more response`,
-        this.currentBuffer,
-      );
-      this.currentBuffer = "";
+      this.consumeUnsolicitedData();
       return;
     }
 
@@ -262,9 +311,57 @@ class NaiveSocketImpl implements NaiveSocket {
     this.currentBuffer = this.currentBuffer.substring(length);
     this.sendWorks.shift();
     this.doNextSendWork();
+
+    // Whatever is left over belongs to the push stream unless the next
+    // request claims it.
+    if (
+      this.currentBuffer.length > 0 &&
+      this.sendWorks[0]?.expectResponse !== true
+    ) {
+      this.consumeUnsolicitedData();
+    }
+  };
+
+  private consumeUnsolicitedData = () => {
+    const consume = this.onUnsolicitedData;
+    if (consume === undefined) {
+      this.logger.error(
+        `[NaiveSocket]`,
+        `No work but more response`,
+        this.currentBuffer,
+      );
+      this.currentBuffer = "";
+      return;
+    }
+
+    // One chunk can carry several frames, so keep feeding the consumer
+    // until it stops taking bytes.
+    while (this.currentBuffer.length > 0) {
+      let length: number;
+      try {
+        length = consume(this.currentBuffer);
+      } catch (error) {
+        this.logger.error(
+          `[NaiveSocket]`,
+          `Unsolicited data consumer failed`,
+          error,
+        );
+        this.currentBuffer = "";
+        return;
+      }
+      if (length <= 0) {
+        return;
+      }
+      this.currentBuffer = this.currentBuffer.substring(length);
+    }
   };
 
   private doNextSendWork = () => {
+    if (this.connectionState === ConnectionState.Connecting) {
+      // `onConnect` resumes the queue; starting a second socket here would
+      // orphan this one and let both feed the shared receive buffer.
+      return;
+    }
     if (
       this.socket === null ||
       this.connectionState !== ConnectionState.Connected
@@ -279,20 +376,41 @@ class NaiveSocketImpl implements NaiveSocket {
     }
 
     const firstWork = this.sendWorks[0];
-    if (!firstWork) {
+    if (!firstWork || firstWork.written) {
+      // `onConnect` both notifies its listener — which may enqueue and
+      // write from inside that callback — and resumes the queue itself, so
+      // the head can be reached twice for one connection.
       return;
     }
+    firstWork.written = true;
     this.socket.write(firstWork.message, (error?: Error | null) => {
-      if (!error) {
+      if (error) {
+        if (this.sendWorks[0] === firstWork) {
+          this.sendWorks.shift();
+        }
+        firstWork.dPromise.reject(error);
+        if (firstWork.timer !== null) {
+          clearTimeout(firstWork.timer);
+        }
+
+        this.retryToConnect();
         return;
       }
-      this.sendWorks.shift();
-      firstWork.dPromise.reject(error);
+
+      if (firstWork.expectResponse) {
+        return;
+      }
+
+      // Nothing will claim a response for this work, so retiring it here
+      // is what keeps the queue moving.
+      firstWork.dPromise.resolve("");
       if (firstWork.timer !== null) {
         clearTimeout(firstWork.timer);
       }
-
-      this.retryToConnect();
+      if (this.sendWorks[0] === firstWork) {
+        this.sendWorks.shift();
+        this.doNextSendWork();
+      }
     });
   };
 }
