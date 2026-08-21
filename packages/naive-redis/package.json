@@ -36,6 +36,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@yingyeothon/logger": "workspace:^",
     "@yingyeothon/naive-socket": "workspace:^"
   },
   "publishConfig": {

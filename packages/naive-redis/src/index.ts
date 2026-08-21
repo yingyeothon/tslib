@@ -12,6 +12,8 @@ export { redisDel } from "./del.js";
 export { redisExists } from "./exists.js";
 export { redisIncr } from "./incr.js";
 
+export { redisPublish } from "./publish.js";
+
 export { redisRpush } from "./rpush.js";
 export { redisLpop } from "./lpop.js";
 export { redisLrange } from "./lrange.js";
@@ -35,3 +37,15 @@ export {
   type RedisSimple,
   type RedisSimpleOptions,
 } from "./simple/redis-simple.js";
+
+export {
+  createRedisSubscriber,
+  type RedisSubscriber,
+  type RedisSubscriberOptions,
+} from "./subscriber/createRedisSubscriber.js";
+export {
+  incompletePushFrame,
+  parsePushFrame,
+  type PushFrame,
+  type PushFrameResult,
+} from "./subscriber/pushFrame.js";

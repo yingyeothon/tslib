@@ -180,6 +180,9 @@ importers:
 
   packages/naive-redis:
     dependencies:
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
       "@yingyeothon/naive-socket":
         specifier: workspace:^
         version: link:../naive-socket

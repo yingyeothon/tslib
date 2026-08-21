@@ -1,6 +1,6 @@
 # @yingyeothon/naive-redis
 
-Minimal Redis client built on [`@yingyeothon/naive-socket`](../naive-socket): strings, lists, sets, INCR, and a "simple" layer that opens a connection per operation and adds JSON-encoded caching helpers. It speaks a small subset of the RESP protocol directly, so it stays tiny enough for serverless bundles.
+Minimal Redis client built on [`@yingyeothon/naive-socket`](../naive-socket): strings, lists, sets, INCR, pub/sub, and a "simple" layer that opens a connection per operation and adds JSON-encoded caching helpers. It speaks a small subset of the RESP protocol directly, so it stays tiny enough for serverless bundles.
 
 ## Install
 
@@ -70,6 +70,34 @@ await cachedAnswer.refresh("universe"); // recompute and store
 await cachedAnswer.clear("universe"); // drop the cached entry
 ```
 
+### Pub/sub
+
+Publishing uses an ordinary connection; subscribing needs its own, because
+the server pushes messages with no request to attribute them to.
+
+```ts
+import {
+  createRedisConnection,
+  createRedisSubscriber,
+  redisPublish,
+} from "@yingyeothon/naive-redis";
+
+const subscriber = createRedisSubscriber({
+  host: "localhost",
+  onMessage: ({ channel, message }) => console.log(channel, message),
+});
+await subscriber.subscribe("room:1"); // resolves once Redis confirms it
+
+const publisher = createRedisConnection({ host: "localhost" });
+await redisPublish(publisher, "room:1", "hello"); // → 1 subscriber
+
+subscriber.disconnect();
+```
+
+A payload may contain any UTF-8 text, including `\r\n` and multi-byte
+characters: bulk lengths are resolved as byte counts. Channel patterns
+(`PSUBSCRIBE`) are not supported.
+
 ## Public API
 
 - `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set
@@ -80,6 +108,9 @@ await cachedAnswer.clear("universe"); // drop the cached entry
 - `redisDel(connection, ...keys)` — delete keys
 - `redisExists(connection, key)` — key existence check
 - `redisIncr(connection, key)` — atomic increment
+- `redisPublish(connection, channel, message)` — publish to a channel; resolves with the number of subscribers that received it
+- `createRedisSubscriber(options)` — a connection dedicated to subscriber mode: `subscribe(channel)`, `unsubscribe(channel)`, `disconnect()`. Both commands resolve only once Redis confirms them, so a message published right after `subscribe` cannot be missed. It re-authenticates and re-subscribes after a reconnect
+- `parsePushFrame(buffer)` — reads one complete reply from a subscriber stream; `incompletePushFrame` (`-1`) means "wait for more"
 - `redisRpush(connection, key, ...values)` — append to a list
 - `redisLpop(connection, key)` — pop the head of a list
 - `redisLrange(connection, key, start, stop)` — read a list range
@@ -92,7 +123,7 @@ await cachedAnswer.clear("universe"); // drop the cached entry
 - `createRedisSimple(options)` — returns a `RedisSimple` (`get`/`set`/`del`/`cache` with a shared `keyPrefix` and codec)
 - `redisSimpleWork(options, work)` — connect, run `work`, always disconnect
 - `redisSimpleCache(fn, options)` — cache an async function's result in Redis (with `peek`/`refresh`/`clear` friends)
-- Types: `RedisConnection`, `RedisConnectionOptions`, `RedisSendOptions`, `RedisSetOptions`, `RedisSimple`, `RedisSimpleFn`, `RedisSimpleCacheFriends`, `RedisSimpleCacheOptions`, `RedisSimpleOptions`
+- Types: `RedisConnection`, `RedisConnectionOptions`, `RedisSendOptions`, `RedisSetOptions`, `RedisSimple`, `RedisSimpleFn`, `RedisSimpleCacheFriends`, `RedisSimpleCacheOptions`, `RedisSimpleOptions`, `RedisSubscriber`, `RedisSubscriberOptions`, `PushFrame`, `PushFrameResult`
 
 ## Migrating from the legacy package
 
