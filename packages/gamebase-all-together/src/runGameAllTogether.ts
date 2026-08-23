@@ -1,6 +1,7 @@
 import {
   dropConnection,
   setupBaseGameContext,
+  sleep,
   type GameMainOptions,
   type NetworkOptions,
 } from "@yingyeothon/lambda-gamebase";
@@ -16,6 +17,8 @@ import {
   type GameMessageBase,
 } from "./services/doInStageRunning.js";
 import { doInStageWait } from "./services/doInStageWait.js";
+
+const defaultEndDropDelayMillis = 1000;
 
 export type RunGameAllTogetherOptions<M extends GameMessageBase> =
   GameMainOptions<M> & {
@@ -44,6 +47,13 @@ export type RunGameAllTogetherOptions<M extends GameMessageBase> =
      * instead.
      */
     dropUndeliveredConnections?: boolean;
+    /**
+     * Milliseconds between the end-stage announcement and dropping the
+     * connections. API Gateway can lose a frame posted right before
+     * `DeleteConnection`, which would swallow the result and the end stage;
+     * the pause lets them flush. Default 1000; `0` drops immediately.
+     */
+    endDropDelayMillis?: number;
     logger?: Logger;
     /**
      * Network options for broadcasts and connection drops: pass the
@@ -71,6 +81,7 @@ export async function runGameAllTogether<M extends GameMessageBase>({
   snapshotIntervalMillis,
   minPlayers,
   dropUndeliveredConnections,
+  endDropDelayMillis = defaultEndDropDelayMillis,
   isGameOver,
   processMessage,
   updateTimeDelta,
@@ -150,6 +161,9 @@ export async function runGameAllTogether<M extends GameMessageBase>({
     stage: GameStage.End,
     network,
   });
+  if (endDropDelayMillis > 0) {
+    await sleep(endDropDelayMillis);
+  }
   await Promise.all(
     Object.keys(context.connectedUsers).map((connectionId) =>
       dropConnection(connectionId, network),

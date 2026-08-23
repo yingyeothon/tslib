@@ -143,6 +143,11 @@ and paces itself by `intervalMillis`.
 
 ## Behavior changes
 
+- **Connections are dropped `endDropDelayMillis` (default 1 s) after the
+  end stage.** API Gateway can lose a frame posted immediately before
+  `DeleteConnection`, so dropping right after the result broadcast sometimes
+  swallowed the result; pass `endDropDelayMillis: 0` for the old behavior.
+
 - **`updateTimeDelta` moved out of the message loop.** It used to be called
   from inside the per-message loop, so a game with no traffic did not
   simulate at all. It is now driven by the tick policy above; `perMessage`

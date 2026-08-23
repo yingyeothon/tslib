@@ -757,6 +757,8 @@ describe("runGameAllTogether", () => {
       pollIntervalMillis: 50,
       isGameOver: () => false,
       processMessage: () => Promise.resolve(),
+      // The production default pauses before dropping; tests opt in explicitly.
+      endDropDelayMillis: 0,
       logger,
       network: net.network,
       ...overrides,
@@ -786,6 +788,32 @@ describe("runGameAllTogether", () => {
 
     expect(processed).toEqual([{ type: "move", connectionId: "c1", x: 1 }]);
     expect(net.stages()).toContainEqual({ stage: GameStage.End, age: 30 });
+    expect([...net.dropped].sort()).toEqual(["c1", "c2"]);
+  });
+
+  it("waits endDropDelayMillis after the end stage before dropping", async () => {
+    let gameOver = false;
+    const { net, promise } = fullRun({
+      pollMessages: scriptedPoll<GameMessage>([
+        [{ type: "enter", connectionId: "c1", memberId: "m1" }],
+        [{ type: "enter", connectionId: "c2", memberId: "m2" }],
+        [{ type: "move", connectionId: "c1", x: 1 }],
+      ]),
+      isGameOver: () => gameOver,
+      processMessage: () => {
+        gameOver = true;
+        return Promise.resolve();
+      },
+      endDropDelayMillis: 5000,
+    });
+
+    // Enough for the loop to finish and announce the end, not for the delay.
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(net.stages()).toContainEqual({ stage: GameStage.End, age: 30 });
+    expect(net.dropped).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(5000);
+    await promise;
     expect([...net.dropped].sort()).toEqual(["c1", "c2"]);
   });
 
