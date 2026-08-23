@@ -29,7 +29,7 @@ describe("gamebaseOptionsFromEnv", () => {
   it("omits port and username when unset", () => {
     vi.stubEnv("REDIS_HOST", "redis.yyt.life");
     vi.stubEnv("REDIS_PORT", "");
-    vi.stubEnv("REDIS_USER", undefined);
+    vi.stubEnv("REDIS_USER", "");
     expect(gamebaseOptionsFromEnv().redis).toEqual({
       host: "redis.yyt.life",
       port: undefined,

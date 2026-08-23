@@ -30,7 +30,8 @@ export function gamebaseOptionsFromEnv(): GamebaseOptions {
           port: process.env.REDIS_PORT
             ? Number(process.env.REDIS_PORT)
             : undefined,
-          username: process.env.REDIS_USER,
+          // An empty REDIS_USER must not become `AUTH "" <password>`.
+          username: process.env.REDIS_USER || undefined,
           password: process.env.REDIS_PASSWORD,
         }
       : undefined,
