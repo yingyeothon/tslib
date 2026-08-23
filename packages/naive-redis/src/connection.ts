@@ -8,6 +8,8 @@ import { redisAuth } from "./auth.js";
 export interface RedisConnectionOptions {
   host: string;
   port?: number;
+  /** ACL user name; sent as `AUTH <username> <password>` when set. */
+  username?: string;
   password?: string;
   timeoutMillis?: number;
 }
@@ -21,6 +23,7 @@ export interface RedisConnection {
 export function createRedisConnection({
   host,
   port = 6379,
+  username,
   password,
   timeoutMillis = 1000,
 }: RedisConnectionOptions): RedisConnection {
@@ -29,7 +32,7 @@ export function createRedisConnection({
     port,
     onConnectionStateChanged: ({ state }) => {
       if (password && state === ConnectionState.Connected) {
-        const authenticated = redisAuth(connection, password);
+        const authenticated = redisAuth(connection, password, { username });
         // Keep a failed authentication from surfacing as an unhandled
         // rejection; callers still observe it through `redisSend`.
         authenticated.catch(() => undefined);

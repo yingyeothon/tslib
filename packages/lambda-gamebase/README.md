@@ -14,7 +14,7 @@ AWS SDK v3 clients are peer dependencies:
 npm install @aws-sdk/client-apigatewaymanagementapi @aws-sdk/client-lambda
 ```
 
-Library code never reads `process.env`. Configuration is injected as a `GamebaseOptions` object; the `gamebaseOptionsFromEnv()` helper reads the documented variables (`REDIS_HOST`, `REDIS_PASSWORD` (optional), `WS_ENDPOINT` (API Gateway management endpoint), `GAME_ACTOR_LAMBDA_NAME`, and `IS_OFFLINE` for serverless-offline development) if you want to keep configuring via environment.
+Library code never reads `process.env`. Configuration is injected as a `GamebaseOptions` object; the `gamebaseOptionsFromEnv()` helper reads the documented variables (`REDIS_HOST`, `REDIS_PORT`, `REDIS_USER` (ACL user, optional), `REDIS_PASSWORD` (optional), `WS_ENDPOINT` (API Gateway management endpoint), `GAME_ACTOR_LAMBDA_NAME`, and `IS_OFFLINE` for serverless-offline development) if you want to keep configuring via environment.
 
 ## Usage
 

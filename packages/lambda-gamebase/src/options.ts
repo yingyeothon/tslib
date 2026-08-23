@@ -17,8 +17,9 @@ export interface GamebaseOptions {
 }
 
 /**
- * Reads the documented environment variables (`REDIS_HOST`,
- * `REDIS_PASSWORD`, `GAME_ACTOR_LAMBDA_NAME`, `IS_OFFLINE`, `WS_ENDPOINT`)
+ * Reads the documented environment variables (`REDIS_HOST`, `REDIS_PORT`,
+ * `REDIS_USER`, `REDIS_PASSWORD`, `GAME_ACTOR_LAMBDA_NAME`, `IS_OFFLINE`,
+ * `WS_ENDPOINT`)
  * and returns a `GamebaseOptions`. Calling it is the caller's choice.
  */
 export function gamebaseOptionsFromEnv(): GamebaseOptions {
@@ -26,6 +27,10 @@ export function gamebaseOptionsFromEnv(): GamebaseOptions {
     redis: process.env.REDIS_HOST
       ? {
           host: process.env.REDIS_HOST,
+          port: process.env.REDIS_PORT
+            ? Number(process.env.REDIS_PORT)
+            : undefined,
+          username: process.env.REDIS_USER,
           password: process.env.REDIS_PASSWORD,
         }
       : undefined,

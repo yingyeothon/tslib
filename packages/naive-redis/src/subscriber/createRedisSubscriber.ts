@@ -10,6 +10,8 @@ const newline = "\r\n";
 export interface RedisSubscriberOptions {
   host: string;
   port?: number;
+  /** ACL user name; sent as `AUTH <username> <password>` when set. */
+  username?: string;
   password?: string;
   /** Timeout for the `AUTH` exchange. Default: 1000. */
   timeoutMillis?: number;
@@ -41,6 +43,7 @@ export interface RedisSubscriber {
 export function createRedisSubscriber({
   host,
   port = 6379,
+  username,
   password,
   timeoutMillis = 1000,
   connectionRetryInterval,
@@ -140,7 +143,7 @@ export function createRedisSubscriber({
   async function restore(reconnected: boolean): Promise<void> {
     if (password !== undefined) {
       // `redisAuth` sends urgently, so it precedes any queued subscribe.
-      const authenticated = await redisAuth(connection, password);
+      const authenticated = await redisAuth(connection, password, { username });
       if (!authenticated) {
         throw new Error("Invalid password");
       }

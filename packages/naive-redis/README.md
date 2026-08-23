@@ -100,8 +100,8 @@ characters: bulk lengths are resolved as byte counts. Channel patterns
 
 ## Public API
 
-- `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set
-- `redisAuth(connection, password)` — send `AUTH` explicitly
+- `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set (`AUTH <username> <password>` when `username` — a Redis 6 ACL user — is set too)
+- `redisAuth(connection, password, { username? })` — send `AUTH` explicitly
 - `redisSend({ connection, commands, match, transform, urgent? })` — low-level RESP exchange for commands not covered below
 - `redisGet(connection, key)` — read a string value (`null` when missing)
 - `redisSet(connection, key, value, options?)` — write a string value; `RedisSetOptions`: `expirationMillis`, `onlySet: "nx" | "xx"`

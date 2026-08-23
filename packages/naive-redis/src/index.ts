@@ -3,7 +3,7 @@ export {
   type RedisConnectionOptions,
   type RedisConnection,
 } from "./connection.js";
-export { redisAuth } from "./auth.js";
+export { redisAuth, type RedisAuthOptions } from "./auth.js";
 export { redisSend, type RedisSendOptions } from "./send.js";
 
 export { redisGet } from "./get.js";
