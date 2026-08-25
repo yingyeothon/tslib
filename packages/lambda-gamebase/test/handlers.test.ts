@@ -25,14 +25,23 @@ const fake = vi.hoisted(() => {
   const lists = new Map<string, string[]>();
   const expires: Array<{ key: string; seconds: number }> = [];
   const state = { disconnects: 0, connects: 0 };
+  const self = {
+    strings,
+    lists,
+    expires,
+    state,
+    failNextExpire: false,
+    reset,
+  };
   function reset(): void {
     strings.clear();
     lists.clear();
     expires.length = 0;
+    self.failNextExpire = false;
     state.disconnects = 0;
     state.connects = 0;
   }
-  return { strings, lists, expires, state, reset };
+  return self;
 });
 
 vi.mock("@yingyeothon/naive-redis", () => {
@@ -97,6 +106,10 @@ vi.mock("@yingyeothon/naive-redis", () => {
       Promise.resolve(list(key)[index] ?? null),
     ),
     redisExpire: vi.fn((_c: unknown, key: string, seconds: number) => {
+      if (fake.failNextExpire) {
+        fake.failNextExpire = false;
+        return Promise.reject(new Error("connection reset"));
+      }
       fake.expires.push({ key, seconds });
       return Promise.resolve(fake.strings.has(key) || fake.lists.has(key));
     }),
@@ -918,6 +931,29 @@ describe("connection mapping lifetime", () => {
     });
 
     expect(fake.expires).toEqual([{ key: "c2g:c1", seconds: 2 }]);
+  });
+
+  it("delivers the message even when the refresh fails", async () => {
+    fake.strings.set("event:game-ttl", JSON.stringify(startEvent));
+    fake.strings.set("c2g:c1", "game-ttl");
+    const { logger: capturing, text } = capturingLogger();
+    fake.failNextExpire = true;
+
+    const result = await handleMessages<{ type: string }>({
+      event: connectionEvent("c1", {}, JSON.stringify({ type: "move" })),
+      connectionIdAndGameIdKeyPrefix: "c2g:",
+      actorQueueKeyPrefix: "queue:",
+      validateMessage: () => true,
+      logger: capturing,
+      redisConnection: fakeConnection,
+    });
+
+    // Housekeeping must not cost the player their message.
+    expect(result.statusCode).toBe(200);
+    expect(queuedItems("queue:", "game-ttl")).toEqual([
+      { type: "move", connectionId: "c1" },
+    ]);
+    expect(text()).toContain("cannot refresh the connection mapping");
   });
 
   it("applies the queue ttl on the push, which is the only place it can be", async () => {

@@ -90,7 +90,7 @@ const { queue, lock, awaiter } = createRedisSubsystem({
   `lockTimeout` (milliseconds) is **required**: a lock that never expires deadlocks its actor forever when the holder crashes, so no-expiry has to be an explicit choice — pass a non-positive value to make it
 - `RedisLock` — the return type of `createRedisLock` (type)
 - `RedisLockOptions` — `{ connection, keyPrefix?, logger?, lockTimeout }` (type)
-- `createRedisAwaiter` — creates an awaiter implementing `AwaiterResolve` and `AwaiterWait`; `resolve` writes a 1-second `actorId/messageId` marker key and `wait` polls it every 50ms until it appears or the timeout elapses (`resolve` swallows Redis errors; `wait` propagates them). **Short in-request waits only**: the marker lives 1 second, so a resolver that fires while a slow waiter is between polls can be missed entirely
+- `createRedisAwaiter` — creates an awaiter implementing `AwaiterResolve` and `AwaiterWait`; `resolve` writes a 1-second `actorId/messageId` marker key and `wait` polls it every 50ms until it appears or the timeout elapses (`resolve` swallows Redis errors; `wait` propagates them). **Short in-request waits only**: the marker lives 1 second, so a resolver that fires while a slow waiter is between polls can be missed entirely. A failed poll is not an answer — `wait` keeps polling until its deadline and rejects only if it never reached Redis once, so a blip inside the deadline does not end the wait early
 - `RedisAwaiter` — the return type of `createRedisAwaiter` (type)
 - `RedisAwaiterOptions` — `{ connection, keyPrefix?, logger? }` (type)
 - `createRedisSubsystem` — builds `{ queue, lock, awaiter }` sharing one connection, appending `queue:`, `lock:`, and `awaiter:` to the given key prefix

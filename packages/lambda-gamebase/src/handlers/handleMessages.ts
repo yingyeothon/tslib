@@ -106,14 +106,6 @@ export async function handleMessages<M>({
     return NotFound;
   }
 
-  // Keep the routing entry alive for as long as the connection is used;
-  // without this a session outliving the mapping stops resolving its game.
-  await redisExpire(
-    connection,
-    mappingKey,
-    Math.ceil(connectionMappingTtlMillis / 1000),
-  );
-
   // Encode the game message and send it to the actor queue.
   await enqueue(
     {
@@ -130,6 +122,25 @@ export async function handleMessages<M>({
     },
     { item: { ...request, connectionId } },
   );
+
+  // Keep the routing entry alive for as long as the connection is used;
+  // without this a session outliving the mapping stops resolving its game.
+  //
+  // Housekeeping, so it runs after the delivery and cannot prevent one: a
+  // blip here would otherwise drop the player's message on the floor, and
+  // the next message refreshes the mapping anyway.
+  try {
+    await redisExpire(
+      connection,
+      mappingKey,
+      Math.ceil(connectionMappingTtlMillis / 1000),
+    );
+  } catch (error) {
+    logger.warn("cannot refresh the connection mapping", {
+      connectionId,
+      error,
+    });
+  }
   logger.info("game message sent", {
     connectionId,
     gameId,

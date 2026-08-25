@@ -54,17 +54,33 @@ export function createRedisAwaiter({
       const redisKey = asRedisKey(keyPrefix, actorId, messageId);
       const start = Date.now();
       let remainMillis = 0;
+      let answered = false;
+      let lastError: Error | undefined;
       do {
-        const value = await redisGet(connection, redisKey);
-        remainMillis = start + timeoutMillis - Date.now();
-
-        logger.debug("redis-awaiter polled", { redisKey, value, remainMillis });
-        if (value === resolvedValue) {
-          return true;
+        try {
+          const value = await redisGet(connection, redisKey);
+          answered = true;
+          if (value === resolvedValue) {
+            return true;
+          }
+        } catch (error) {
+          // A failed poll is not an answer. The deadline is what bounds
+          // this wait, and the work may well have completed meanwhile, so
+          // a blip must not end the wait early.
+          lastError = error instanceof Error ? error : new Error(String(error));
+          logger.debug("redis-awaiter poll failed", { redisKey, error });
         }
+        remainMillis = start + timeoutMillis - Date.now();
+        logger.debug("redis-awaiter polled", { redisKey, remainMillis });
 
         await sleep(Math.max(0, Math.min(sleepIntervalMillis, remainMillis)));
       } while (remainMillis > 0);
+
+      if (!answered && lastError !== undefined) {
+        // Never once reached Redis: that is a broken connection, not a
+        // message that failed to arrive, and it must not read as a timeout.
+        throw lastError;
+      }
       return false;
     },
     resolve: async (actorId: string, messageId: string): Promise<void> => {

@@ -69,13 +69,38 @@ describe("createRedisAwaiter with a fake connection", () => {
     expect(messages[0]).toContain('GET "p:actor/message"');
   });
 
-  it("propagates redis errors from wait", async () => {
+  it("reports a connection it never once reached", async () => {
     const { connection } = fakeRedis([new Error("connection reset")]);
     const awaiter = createRedisAwaiter({ connection });
 
-    await expect(awaiter.wait("actor", "message", 1000)).rejects.toThrow(
+    // Every poll failed, so this is a broken connection rather than a
+    // message that never arrived, and it must not read as a timeout.
+    await expect(awaiter.wait("actor", "message", 200)).rejects.toThrow(
       "connection reset",
     );
+  });
+
+  it("rides out a failed poll and still sees the resolution", async () => {
+    const { connection } = fakeRedis([
+      new Error("connection reset"),
+      "$1\r\n1\r\n",
+    ]);
+    const awaiter = createRedisAwaiter({ connection });
+
+    // The deadline is what bounds the wait; a blip inside it must not end
+    // it early, because the work may well have completed meanwhile.
+    expect(await awaiter.wait("actor", "message", 1000)).toBe(true);
+  });
+
+  it("times out normally when a poll failed but the store answered later", async () => {
+    const { connection } = fakeRedis([
+      new Error("connection reset"),
+      "$-1\r\n",
+    ]);
+    const awaiter = createRedisAwaiter({ connection });
+
+    // It did reach Redis, so "not resolved" is the honest answer.
+    expect(await awaiter.wait("actor", "message", 200)).toBe(false);
   });
 
   it("resolve sets a short-lived key", async () => {

@@ -250,4 +250,77 @@ describe("lock ownership across drain cycles", () => {
     // whole of `aliveMillis`, while holding the lock.
     expect(sizeCalls).toBeLessThan(50);
   });
+
+  it("keeps draining when its lease lapsed but nobody took the actor", async () => {
+    const events: Event[] = [];
+    const { env, lock } = newEnv(events, "lapsed");
+    await post(env, { item: { delta: 1 } });
+
+    const drained: number[] = [];
+    const lapsing = {
+      ...env,
+      lock: {
+        ...env.lock,
+        // The lease lapses; the key is free because no successor wanted it.
+        renew: async (actorId: string) => {
+          await lock.release(actorId);
+          return false;
+        },
+      },
+      onMessage: ({ delta }: AdderMessage) => {
+        drained.push(delta);
+      },
+    };
+
+    const metas = await tryToProcess(lapsing, {
+      aliveMillis: 300,
+      idleIntervalMillis: 20,
+      lockRenewIntervalMillis: 40,
+    });
+
+    // A store outage longer than the lease must not cost this call its work.
+    expect(drained).toEqual([1]);
+    expect(metas).toHaveLength(1);
+  });
+
+  it("stops draining once a successor holds the actor", async () => {
+    const events: Event[] = [];
+    const { env, lock } = newEnv(events, "handed-over");
+    for (const delta of [1, 2, 3]) {
+      await post(env, { item: { delta } });
+    }
+
+    const drained: number[] = [];
+    let acquired = false;
+    const losing = {
+      ...env,
+      lock: {
+        release: (actorId: string) => lock.release(actorId),
+        // The first acquire is this call's own; a successor owns it by the
+        // time the heartbeat tries again.
+        tryAcquire: async (actorId: string) => {
+          if (acquired) {
+            return false;
+          }
+          acquired = await lock.tryAcquire(actorId);
+          return acquired;
+        },
+        renew: () => Promise.resolve(false),
+      },
+      onMessage: async ({ delta }: AdderMessage) => {
+        drained.push(delta);
+        await new Promise((resolve) => setTimeout(resolve, 40));
+      },
+    };
+
+    await tryToProcess(losing, {
+      aliveMillis: 2000,
+      idleIntervalMillis: 20,
+      lockRenewIntervalMillis: 30,
+    });
+
+    // It gave up mid-drain rather than consuming the successor's messages.
+    expect(drained.length).toBeLessThan(3);
+    expect(await env.queue.size("handed-over")).toBeGreaterThan(0);
+  });
 });

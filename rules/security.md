@@ -51,6 +51,11 @@ real defects that shipped in the legacy code.
   re-acquisition means someone else took it. Without that distinction a
   short lease turns every store outage longer than it into a lost session,
   which is how a safety mechanism becomes the outage.
+- The same question applies to every timeout in the package, not only the
+  lock. Ask of each one: _is a failed attempt an answer?_ For a poll bounded
+  by a deadline it is not — keep polling, and report the connection only if
+  it was never reached once. For a piece of housekeeping it is not either —
+  it must run after the work it accompanies and must not be able to fail it.
 
 ## Trusting client-supplied identity
 
