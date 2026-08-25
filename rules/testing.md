@@ -64,6 +64,29 @@
   (`"NAME-ALPHA-9f2"`, not `"one"`), and assert each token _segment_ as well as
   the whole token — a leak often prints only part of it.
 
+## Ordering is the behavior, so assert the order
+
+- For lock ownership, hand-off, and lifecycle, a count proves nothing — the bug
+  is always a sequence. Wrap the double in a recorder that appends one event
+  per call (`acquire`, `message:1`, `release`, `shift`) and assert the whole
+  array. That is what pins "released before shifting" and "not released between
+  drain cycles", which `toHaveBeenCalledTimes` cannot express.
+- Reach the interleaving with a real one. Two lock instances sharing a key,
+  with a short `lockTimeout` and a real sleep, is how "a stalled holder does not
+  delete its successor's lock" gets tested; a mock cannot produce that state.
+
+## A test that cannot fail is not coverage
+
+- Before adding a test, ask what implementation it rejects. "A queue with no
+  TTL still exists after a second" passes under every implementation; the
+  same pair of keys, one option apart, rejects both "always expires" and
+  "never expires".
+- Deduplicating the assertion deletes the behavior. `[...new Set(dropped)]`
+  cannot tell one drop from three.
+- When ordering is the point, assert the interleaving. "Every end frame
+  precedes every drop" is what separates announce-then-drop from a repeated
+  announce/drop pair; counting each in isolation does not.
+
 ## Assertions
 
 - Assert observable behavior of the public API, not internal call counts.

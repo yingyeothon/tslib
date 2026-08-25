@@ -14,8 +14,37 @@ real defects that shipped in the legacy code.
   injects arbitrary Redis commands (`SET k v\r\nFLUSHALL`).
 - RESP bulk lengths are **byte** counts, not string lengths, or multi-byte UTF-8
   arguments desynchronize the stream.
+- **Both** quote characters break the inline form. Redis's inline parser
+  treats `'` as a delimiter anywhere in a token, so `SET k v'` is answered
+  with "unbalanced quotes" and the connection is closed — and `SET k' v'`
+  merges two arguments into one without any error at all.
+- A reply matcher must consume the **whole** reply, not the shape you
+  expected. A one-line matcher pointed at a command whose reply can be a
+  bulk string or an array leaves the tail in the receive buffer, and the
+  next command on that connection resolves with a fragment of this one —
+  silently. Frame first, then reject the shape you cannot use.
 - The same reasoning applies to any new text protocol: escape at a single
   choke-point helper, and add a protocol test for the escaping.
+
+## Distributed locks
+
+- A lock's value must be a per-acquisition random token, and `release` must be
+  a Lua compare-and-delete. A bare `DEL` deletes whatever is there — including
+  the lock a _new_ owner took after this holder's lease expired — and then two
+  actors simulate the same game. `renew` compares the same way before
+  extending, and its `false` means "someone else owns this now".
+- A holder that cannot prove ownership must refuse rather than force. A forced
+  break of a stale lock is a different, deliberate operation: do it with a
+  direct `DEL` at the one place that means it (`handleDebugStart`), and say so
+  in a comment.
+- The token is a credential. It must never reach a log line, at any level.
+- Drop the token **after** the release command comes back, not before: a
+  release that failed on a broken connection has to stay retryable, or the
+  lock is held until it expires — forever, if it has no expiry.
+- Detecting the loss is half the fix. A heartbeat that only logs "lost the
+  lock" leaves both owners running; the loser must stop consuming, which is
+  why `eventLoop`'s `poll` rejects from that moment and `tryToProcess` ends
+  its drain loop.
 
 ## Trusting client-supplied identity
 
@@ -80,9 +109,16 @@ real defects that shipped in the legacy code.
 
 ## Logging secrets
 
+- Never log a raw receive buffer. It is whatever the peer just sent — a
+  stored value, a credential echo, a game payload. Report its size.
 - Never log an entire request event. `APIGatewayProxyEvent` carries `headers`
   (`Authorization`, `Cookie`, `X-Api-Key`) and a body that may hold PII.
 - Log non-sensitive descriptors only: path, request id, actor id, error name.
+- Payloads are secrets too, and `debug` is not a free pass: a queue that logs
+  its item, a broadcast that logs its response body, or an actor that logs its
+  whole start event puts game state and member e-mail addresses into whatever
+  writer the consumer plugged in. Log the routing facts — key, `messageId`,
+  `type`, counts — never the thing being routed.
 - Domain objects hide PII too: `GameStartMember` carries `name` and `email`,
   and a game context carries every member and connection id. Log counts
   (`describeGame`, `memberCount`) rather than the object, and log a message's

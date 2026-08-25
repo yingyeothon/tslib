@@ -189,6 +189,9 @@ importers:
 
   packages/naive-socket:
     dependencies:
+      "@types/node":
+        specifier: ^24.3.0
+        version: 24.13.3
       "@yingyeothon/logger":
         specifier: workspace:*
         version: link:../logger

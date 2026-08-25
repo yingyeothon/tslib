@@ -5,3 +5,7 @@ coverage/
 *.tsbuildinfo
 *.tgz
 .DS_Store
+
+# Cross-repo planning notes, mirroring service/todo/. Not a tracking
+# document in the repo root: see rules/documentation.md.
+/todo-fix.md

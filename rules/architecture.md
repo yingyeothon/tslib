@@ -53,6 +53,29 @@ consequences of those rules.
   returns "a gateway was subscribed", not "the client received it", so
   policies keyed on delivery must not be pointed at it.
 
+## Widening a seam without breaking it
+
+- An optional capability on an interface needs a fallback at the call site, not
+  a second interface. `Transport.sendMany` is optional and `broadcast` prefers
+  it when present, so a transport with no cheaper multi-target form simply
+  omits it and nothing else changes.
+- Keep the result shape identical across both paths. `broadcast` returns the
+  same `RespondResult` whether it fanned out in one call or looped, so callers
+  never learn which happened.
+- A union that is not discriminable by its tag needs the fields spelled out
+  as `never` on the other members. `GatewayCommand`'s two `send` shapes both
+  answer to `op: "send"`, so each denies the other's field and a consumer
+  narrows with a plain property check.
+- A configuration knob must be wired where it can act. `queueTtlSeconds` on
+  the actor's own subsystem is dead: only a _producer_ pushes, so only a
+  producer can re-apply a TTL. Trace an option to the call it changes before
+  documenting it as a safeguard.
+- A default that is unsafe should not exist. `RedisLockOptions.lockTimeout` is
+  **required** rather than defaulting to "no expiry": a lock that never expires
+  deadlocks its actor forever when the holder crashes, so that has to be a
+  choice someone typed. Requiring the field is the enforcement; a doc comment
+  is not.
+
 ## Option shapes
 
 - When a seam's whole space is closed and enumerable, make the option **data**,

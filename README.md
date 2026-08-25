@@ -11,7 +11,7 @@ TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) 
 | [@yingyeothon/event-broker](packages/event-broker)                     | Type-safe async event broker                               |
 | [@yingyeothon/logger-slack](packages/logger-slack)                     | Slack-webhook log writer for @yingyeothon/logger           |
 | [@yingyeothon/logger-s3](packages/logger-s3)                           | Buffered log writer flushing into S3 via s3-cache-bridge   |
-| [@yingyeothon/naive-socket](packages/naive-socket)                     | Minimal TCP client with queueing and reconnect             |
+| [@yingyeothon/naive-socket](packages/naive-socket)                     | Minimal TCP/TLS client with queueing and reconnect         |
 | [@yingyeothon/naive-redis](packages/naive-redis)                       | Minimal Redis client built on naive-socket (incl. pub/sub) |
 | [@yingyeothon/s3-cache-bridge-client](packages/s3-cache-bridge-client) | HTTP client for the s3-cache-bridge server                 |
 | [@yingyeothon/repository](packages/repository)                         | Key-value repository abstractions + in-memory impl         |
