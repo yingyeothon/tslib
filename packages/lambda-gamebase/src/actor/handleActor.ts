@@ -12,6 +12,7 @@ import {
 } from "./startActorLoop.js";
 
 const aliveMarginSeconds = 10;
+const defaultLockTimeoutSeconds = 30;
 
 export interface HandleActorOptions<M> {
   event: GameActorStartEvent;
@@ -20,6 +21,15 @@ export interface HandleActorOptions<M> {
   queueKeyPrefix: string;
   lockKeyPrefix: string;
   lifetimeSeconds: number;
+  /**
+   * Lock lease in seconds, refreshed by a heartbeat while the game runs.
+   *
+   * It is deliberately far shorter than the game: a lease as long as the
+   * game means a crash at t=30s leaves the `gameId` unstartable for the
+   * remaining minutes, because nothing detects the crash and nothing
+   * shortens the lease. Default: 30.
+   */
+  lockTimeoutSeconds?: number;
   gameMain: (args: GameMainOptions<M>) => Promise<unknown>;
   logger?: Logger;
   actorLogger?: Logger;
@@ -47,6 +57,7 @@ export async function handleActor<M>({
   queueKeyPrefix,
   lockKeyPrefix,
   lifetimeSeconds,
+  lockTimeoutSeconds = defaultLockTimeoutSeconds,
   gameMain,
   logger = nullLogger,
   actorLogger = nullLogger,
@@ -56,11 +67,16 @@ export async function handleActor<M>({
   saveStartEvent,
   deleteStartEvent,
 }: HandleActorOptions<M>): Promise<void> {
-  logger.debug("start a new game lambda", { event });
-
   const { gameId, members } = event;
+  // The start event carries a name and an email per member.
+  logger.debug("start a new game lambda", {
+    gameId,
+    memberCount: members?.length ?? 0,
+  });
   if (!gameId) {
-    logger.error("no gameId from payload", { event });
+    logger.error("no gameId from payload", {
+      memberCount: members?.length ?? 0,
+    });
     return;
   }
 
@@ -82,12 +98,7 @@ export async function handleActor<M>({
     eventKeyPrefix,
   });
 
-  // Send the ready signal to the lobby.
-  if (event.callbackUrl !== undefined) {
-    const response = await readyCall(event.callbackUrl);
-    logger.debug("mark this game as ready", { response });
-  }
-
+  const { callbackUrl } = event;
   await startActorLoop<M>({
     gameId,
     members,
@@ -99,12 +110,28 @@ export async function handleActor<M>({
         awaiterKeyPrefix,
         lockKeyPrefix,
         queueKeyPrefix,
-        lockTimeoutSeconds: aliveSeconds,
+        lockTimeoutSeconds,
         logger: actorLogger,
         redisConnection: connection,
       }),
+    // A third of the lease, so one lost heartbeat is not a lost lock.
+    lockRenewIntervalMillis: Math.max(
+      1000,
+      Math.floor((lockTimeoutSeconds * 1000) / 3),
+    ),
     redisConnection: connection,
     ...(deleteStartEvent ? { deleteStartEvent } : {}),
+    // Signal the lobby only once this invocation owns the game. Fired
+    // before the lock, a duplicate invocation announces "ready" too, and
+    // the lobby hands clients a game that this call will never run.
+    ...(callbackUrl !== undefined
+      ? {
+          onReady: async () => {
+            await readyCall(callbackUrl);
+            logger.debug("mark this game as ready", { gameId });
+          },
+        }
+      : {}),
     gameMain,
   });
 }

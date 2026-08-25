@@ -20,6 +20,13 @@ export interface HandleDisconnectOptions {
   context?: GamebaseContext;
   /** Overrides the per-invocation Redis connection, e.g. in tests. */
   redisConnection?: RedisConnection;
+  /**
+   * TTL re-applied to the actor's queue key on every push, so a queue
+   * nobody drains disappears instead of growing forever behind a dead
+   * actor. The producer is the only party that can set it — the actor
+   * itself never pushes.
+   */
+  queueTtlSeconds?: number;
 }
 
 /**
@@ -33,6 +40,7 @@ export async function handleDisconnect({
   logger = nullLogger,
   context,
   redisConnection,
+  queueTtlSeconds,
 }: HandleDisconnectOptions): Promise<APIGatewayProxyResult> {
   const { connectionId } = event.requestContext;
 
@@ -54,6 +62,9 @@ export async function handleDisconnect({
           connection,
           keyPrefix: actorQueueKeyPrefix,
           logger,
+          ...(queueTtlSeconds !== undefined
+            ? { ttlSeconds: queueTtlSeconds }
+            : {}),
         }),
         logger,
       },

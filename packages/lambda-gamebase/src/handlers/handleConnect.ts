@@ -7,12 +7,19 @@ import {
   type RedisConnection,
 } from "@yingyeothon/naive-redis";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
-import { loadActorStartEvent } from "../actor/loadActorStartEvent.js";
+import { authorizeGameConnection } from "../actor/authorizeGameConnection.js";
 import { requireRedisOptions, type GamebaseContext } from "../context.js";
 import { useRedis } from "../infra/useRedis.js";
 import { BadRequest, OK } from "./responses.js";
 
-const expirationMillis = 900 * 1000;
+/**
+ * How long a `connectionId -> gameId` mapping survives without traffic.
+ *
+ * It matches API Gateway's 900s idle timeout only by coincidence today;
+ * `handleMessages` refreshes it on every inbound message so a longer
+ * session cannot lose its routing entry.
+ */
+export const defaultConnectionMappingTtlMillis = 900 * 1000;
 const subprotocolHeader = "sec-websocket-protocol";
 
 export interface HandleConnectOptions {
@@ -69,6 +76,19 @@ export interface HandleConnectOptions {
   context?: GamebaseContext;
   /** Overrides the per-invocation Redis connection, e.g. in tests. */
   redisConnection?: RedisConnection;
+  /**
+   * Lifetime of the `connectionId -> gameId` mapping. `handleMessages`
+   * refreshes it, so it bounds idle time rather than session length.
+   * Default: 900000.
+   */
+  connectionMappingTtlMillis?: number;
+  /**
+   * TTL re-applied to the actor's queue key on every push, so a queue
+   * nobody drains disappears instead of growing forever behind a dead
+   * actor. The producer is the only party that can set it — the actor
+   * itself never pushes.
+   */
+  queueTtlSeconds?: number;
 }
 
 /** Reads a header case-insensitively; clients control header casing. */
@@ -146,6 +166,8 @@ export async function handleConnect({
   selectSubprotocol,
   context,
   redisConnection,
+  connectionMappingTtlMillis = defaultConnectionMappingTtlMillis,
+  queueTtlSeconds,
 }: HandleConnectOptions): Promise<APIGatewayProxyResult> {
   const { connectionId } = event.requestContext;
   // A client should send a "X-GAME-ID" via HTTP header.
@@ -164,30 +186,24 @@ export async function handleConnect({
     return BadRequest;
   }
   const checkedGameId: string = gameId;
+  const checkedMemberId: string = memberId;
 
   const accepted = accept(event, selectSubprotocol, logger);
 
   async function withConnection(
     connection: RedisConnection,
   ): Promise<APIGatewayProxyResult> {
-    const startEvent = await loadActorStartEvent({
+    // The same check a custom gateway must perform; it is exported so both
+    // sides run one implementation rather than two.
+    const authorization = await authorizeGameConnection({
       gameId: checkedGameId,
-      get: (key) => redisGet(connection, key),
+      memberId: checkedMemberId,
       eventKeyPrefix: actorEventKeyPrefix,
+      get: (key) => redisGet(connection, key),
+      ...(connectionId !== undefined ? { connectionId } : {}),
+      logger,
     });
-    if (startEvent === null) {
-      logger.error("invalid game context from gameId", { gameId });
-      return BadRequest;
-    }
-    if (startEvent.members.every((m) => m.memberId !== memberId)) {
-      // The start event carries a name and an email per member, so only
-      // its size is logged.
-      logger.error("not registered member", {
-        gameId,
-        memberId,
-        connectionId,
-        memberCount: startEvent.members.length,
-      });
+    if (!authorization.authorized) {
       return BadRequest;
     }
 
@@ -196,7 +212,7 @@ export async function handleConnect({
       connection,
       connectionIdAndGameIdKeyPrefix + connectionId,
       checkedGameId,
-      { expirationMillis },
+      { expirationMillis: connectionMappingTtlMillis },
     );
     await enqueue(
       {
@@ -205,6 +221,9 @@ export async function handleConnect({
           connection,
           keyPrefix: actorQueueKeyPrefix,
           logger,
+          ...(queueTtlSeconds !== undefined
+            ? { ttlSeconds: queueTtlSeconds }
+            : {}),
         }),
         logger,
       },

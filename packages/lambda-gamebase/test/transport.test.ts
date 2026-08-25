@@ -5,6 +5,7 @@ import {
   PostToConnectionCommand,
 } from "@aws-sdk/client-apigatewaymanagementapi";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
+import { capturingLogger } from "./capturingLogger.js";
 import {
   createRedisConnection,
   createRedisSubscriber,
@@ -113,6 +114,97 @@ describe("reply and dropConnection over an injected transport", () => {
       broadcast(["c1", "c2"], { type: "stage" }, { transport }),
     ).resolves.toEqual({ c1: true, c2: true });
     expect(transport.sent.map((s) => s.connectionId)).toEqual(["c1", "c2"]);
+  });
+});
+
+/** A transport that can fan out in one call, like the pub/sub one. */
+function fanOutTransport(delivered = true): Transport & {
+  batches: Array<{ connectionIds: string[]; message: unknown }>;
+  sent: string[];
+} {
+  const batches: Array<{ connectionIds: string[]; message: unknown }> = [];
+  const sent: string[] = [];
+  return {
+    batches,
+    sent,
+    send: (connectionId) => {
+      sent.push(connectionId);
+      return Promise.resolve(true);
+    },
+    sendMany: (connectionIds, message) => {
+      batches.push({ connectionIds, message });
+      return Promise.resolve(delivered);
+    },
+    drop: () => Promise.resolve(true),
+  };
+}
+
+describe("broadcast fan-out", () => {
+  it("prefers sendMany over one send per connection", async () => {
+    const transport = fanOutTransport();
+    const message = { type: "stage" };
+
+    await expect(
+      broadcast(["c1", "c2", "c3"], message, { transport }),
+    ).resolves.toEqual({ c1: true, c2: true, c3: true });
+
+    expect(transport.batches).toEqual([
+      { connectionIds: ["c1", "c2", "c3"], message },
+    ]);
+    expect(transport.sent).toEqual([]);
+  });
+
+  it("reports a failed fan-out for every connection in it", async () => {
+    const transport = fanOutTransport(false);
+    await expect(
+      broadcast(["c1", "c2"], { type: "stage" }, { transport }),
+    ).resolves.toEqual({ c1: false, c2: false });
+  });
+
+  it("keeps fake connections out of the fan-out", async () => {
+    const transport = fanOutTransport();
+    await expect(
+      broadcast([fakeConnectionId, "c1"], { type: "stage" }, { transport }),
+    ).resolves.toEqual({ [fakeConnectionId]: true, c1: true });
+
+    expect(transport.batches).toEqual([
+      { connectionIds: ["c1"], message: { type: "stage" } },
+    ]);
+  });
+
+  it("touches no transport when every connection is simulated", async () => {
+    const transport = fanOutTransport();
+    await expect(
+      broadcast([fakeConnectionId], { type: "stage" }, { transport }),
+    ).resolves.toEqual({ [fakeConnectionId]: true });
+    expect(transport.batches).toEqual([]);
+    expect(transport.sent).toEqual([]);
+  });
+
+  it("resolves nothing to send without a transport at all", async () => {
+    await expect(broadcast([], { type: "stage" })).resolves.toEqual({});
+  });
+
+  it("logs counts, never connection ids or the payload", async () => {
+    const { logger: capturing, text: logged } = capturingLogger();
+    const transport = fanOutTransport();
+
+    await broadcast(
+      ["CONN-ALPHA-9f2", "CONN-BETA-4c1"],
+      { type: "stage", payload: { secret: "HP-GAMMA-7d3" } },
+      { transport, logger: capturing },
+    );
+
+    const text = logged();
+    // Positive control: it did log, and it named the message type.
+    expect(text).toContain("broadcast");
+    expect(text).toContain('"type":"stage"');
+    expect(text).toContain('"total":2');
+    expect(text).toContain('"delivered":2');
+    expect(text).not.toContain("CONN-ALPHA-9f2");
+    expect(text).not.toContain("ALPHA");
+    expect(text).not.toContain("HP-GAMMA-7d3");
+    expect(text).not.toContain("GAMMA");
   });
 });
 
@@ -305,7 +397,37 @@ describe("createRedisPubSubTransport", () => {
     await expect(transport.drop("c1")).resolves.toBe(false);
   });
 
-  it("drives a game broadcast end to end", async () => {
+  it("warns with a target count, never the connection ids", async () => {
+    const { logger: capturing, text } = capturingLogger();
+    const connection = createRedisConnection(redisOptions());
+    cleanups.push(() => connection.socket.disconnect());
+    const transport = createRedisPubSubTransport({
+      connection,
+      channelPrefix: "game:out:",
+      gameId: "game-unheard",
+      logger: capturing,
+    });
+
+    // Nobody is subscribed to this channel.
+    await expect(
+      broadcast(
+        ["CONN-ALPHA-9f2", "CONN-BETA-4c1"],
+        { type: "t" },
+        {
+          transport,
+        },
+      ),
+    ).resolves.toEqual({ "CONN-ALPHA-9f2": false, "CONN-BETA-4c1": false });
+
+    const logged = text();
+    // Positive control: the missing gateway was reported, with a count.
+    expect(logged).toContain("no gateway is listening");
+    expect(logged).toContain('"targets":2');
+    expect(logged).not.toContain("CONN-ALPHA-9f2");
+    expect(logged).not.toContain("ALPHA");
+  });
+
+  it("drives a game broadcast end to end in one publish", async () => {
     const received: GatewayCommand[] = [];
     const subscriber = newSubscriber(received);
     await subscriber.subscribe("game:out:game-3");
@@ -315,13 +437,36 @@ describe("createRedisPubSubTransport", () => {
       broadcast(["c1", "c2"], { type: "stage" }, { transport }),
     ).resolves.toEqual({ c1: true, c2: true });
 
-    await vi.waitFor(() => expect(received).toHaveLength(2), {
+    await vi.waitFor(() => expect(received).toHaveLength(1), {
       timeout: 10_000,
       interval: 20,
     });
-    expect(received.map((command) => command.connectionId).sort()).toEqual([
-      "c1",
-      "c2",
-    ]);
+    // The whole party rides one PUBLISH; the gateway does the fan-out.
+    const command = received[0];
+    expect(command?.op).toBe("send");
+    expect(
+      command && "connectionIds" in command ? command.connectionIds : [],
+    ).toEqual(["c1", "c2"]);
+  });
+
+  it("still sends one command per connection through reply", async () => {
+    const received: GatewayCommand[] = [];
+    const subscriber = newSubscriber(received);
+    await subscriber.subscribe("game:out:game-4");
+
+    const transport = newTransport("game-4");
+    await expect(reply("c1", { type: "hi" }, { transport })).resolves.toBe(
+      true,
+    );
+
+    await vi.waitFor(() => expect(received).toHaveLength(1), {
+      timeout: 10_000,
+      interval: 20,
+    });
+    expect(received[0]).toMatchObject({
+      op: "send",
+      connectionId: "c1",
+      message: { type: "hi" },
+    });
   });
 });

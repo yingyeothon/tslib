@@ -5,6 +5,7 @@ import type { RedisConnection } from "@yingyeothon/naive-redis";
 import type { APIGatewayProxyEvent, APIGatewayProxyEventV2 } from "aws-lambda";
 import { mockClient } from "aws-sdk-client-mock";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { capturingLogger } from "./capturingLogger.js";
 import {
   createActorSubsystem,
   createGamebaseContext,
@@ -14,20 +15,24 @@ import {
   handleDisconnect,
   handleMessages,
   useRedis,
+  authorizeGameConnection,
+  defaultConnectionMappingTtlMillis,
   type GameActorStartEvent,
 } from "../src/index.js";
 
 const fake = vi.hoisted(() => {
   const strings = new Map<string, string>();
   const lists = new Map<string, string[]>();
+  const expires: Array<{ key: string; seconds: number }> = [];
   const state = { disconnects: 0, connects: 0 };
   function reset(): void {
     strings.clear();
     lists.clear();
+    expires.length = 0;
     state.disconnects = 0;
     state.connects = 0;
   }
-  return { strings, lists, state, reset };
+  return { strings, lists, expires, state, reset };
 });
 
 vi.mock("@yingyeothon/naive-redis", () => {
@@ -91,6 +96,28 @@ vi.mock("@yingyeothon/naive-redis", () => {
     redisLindex: vi.fn((_c: unknown, key: string, index: number) =>
       Promise.resolve(list(key)[index] ?? null),
     ),
+    redisExpire: vi.fn((_c: unknown, key: string, seconds: number) => {
+      fake.expires.push({ key, seconds });
+      return Promise.resolve(fake.strings.has(key) || fake.lists.has(key));
+    }),
+    // A tiny stand-in for the two compare-and-swap scripts the actor lock
+    // uses: compare the stored value with ARGV[1], then delete or extend.
+    redisEval: vi.fn(
+      (
+        _c: unknown,
+        script: string,
+        { keys = [], args = [] }: { keys?: string[]; args?: string[] } = {},
+      ) => {
+        const key = keys[0] ?? "";
+        if (fake.strings.get(key) !== args[0]) {
+          return Promise.resolve(0);
+        }
+        if (script.includes("DEL")) {
+          fake.strings.delete(key);
+        }
+        return Promise.resolve(1);
+      },
+    ),
     redisExists: vi.fn(() => Promise.resolve(false)),
     redisIncr: vi.fn(() => Promise.resolve(1)),
     redisAuth: vi.fn(() => Promise.resolve(true)),
@@ -99,35 +126,6 @@ vi.mock("@yingyeothon/naive-redis", () => {
 });
 
 const logger: Logger = { ...nullLogger, severity: "none" };
-
-/**
- * Captures every log line as text. Errors are flattened because
- * `JSON.stringify(new Error("secret"))` is `{}`, which would hide a leak.
- */
-function capturingLogger(): { logger: Logger; text: () => string } {
-  const lines: string[] = [];
-  const capture = (...args: unknown[]): void => {
-    lines.push(
-      args
-        .map((arg) =>
-          arg instanceof Error
-            ? `${arg.name}: ${arg.message} ${arg.stack ?? ""}`
-            : JSON.stringify(arg),
-        )
-        .join(" "),
-    );
-  };
-  return {
-    logger: {
-      severity: "debug",
-      debug: capture,
-      info: capture,
-      warn: capture,
-      error: capture,
-    },
-    text: () => lines.join("\n"),
-  };
-}
 
 /** Members whose name and email cannot collide with unrelated log text. */
 const piiStartEvent: GameActorStartEvent = {
@@ -802,5 +800,161 @@ describe("infra", () => {
     expect(() => context.getRedisConnection()).toThrow(
       "GamebaseOptions.redis is required",
     );
+  });
+});
+
+describe("authorizeGameConnection", () => {
+  const startEvent: GameActorStartEvent = {
+    gameId: "game-auth",
+    members: [
+      { memberId: "m1", name: "NAME-ALPHA-9f2", email: "MAIL-BETA-4c1@x.io" },
+    ],
+  };
+  const get = (key: string): Promise<string | null> =>
+    Promise.resolve(fake.strings.get(key) ?? null);
+
+  it("authorizes a listed member and hands back the start event", async () => {
+    fake.strings.set("event:game-auth", JSON.stringify(startEvent));
+
+    const result = await authorizeGameConnection({
+      gameId: "game-auth",
+      memberId: "m1",
+      eventKeyPrefix: "event:",
+      get,
+    });
+
+    expect(result.authorized).toBe(true);
+    expect(result.authorized && result.startEvent.gameId).toBe("game-auth");
+  });
+
+  it("refuses a gameId with no start event", async () => {
+    const result = await authorizeGameConnection({
+      gameId: "never-started",
+      memberId: "m1",
+      eventKeyPrefix: "event:",
+      get,
+    });
+
+    expect(result).toEqual({ authorized: false, reason: "unknownGame" });
+  });
+
+  it("refuses a member the start event does not list", async () => {
+    fake.strings.set("event:game-auth", JSON.stringify(startEvent));
+
+    const result = await authorizeGameConnection({
+      gameId: "game-auth",
+      memberId: "intruder",
+      eventKeyPrefix: "event:",
+      get,
+    });
+
+    expect(result).toEqual({ authorized: false, reason: "notAMember" });
+  });
+
+  it("refuses a malformed start event rather than trusting it", async () => {
+    fake.strings.set("event:game-auth", "{ not json");
+
+    const result = await authorizeGameConnection({
+      gameId: "game-auth",
+      memberId: "m1",
+      eventKeyPrefix: "event:",
+      get,
+    });
+
+    expect(result).toEqual({ authorized: false, reason: "unknownGame" });
+  });
+
+  it("names the refused member and connection, never the roster", async () => {
+    fake.strings.set("event:game-auth", JSON.stringify(startEvent));
+    const { logger: capturing, text } = capturingLogger();
+
+    await authorizeGameConnection({
+      gameId: "game-auth",
+      memberId: "intruder",
+      eventKeyPrefix: "event:",
+      get,
+      connectionId: "c-99",
+      logger: capturing,
+    });
+
+    const logged = text();
+    // Positive control: the refusal was logged, and stays attributable.
+    expect(logged).toContain("not registered member");
+    expect(logged).toContain("intruder");
+    expect(logged).toContain("c-99");
+    expect(logged).toContain("memberCount");
+    for (const member of startEvent.members) {
+      expect(logged).not.toContain(member.name);
+      expect(logged).not.toContain(member.email);
+    }
+    expect(logged).not.toContain("ALPHA");
+    expect(logged).not.toContain("BETA");
+  });
+});
+
+describe("connection mapping lifetime", () => {
+  const startEvent: GameActorStartEvent = {
+    gameId: "game-ttl",
+    members: [{ memberId: "m1", name: "one", email: "one@yyt.life" }],
+  };
+
+  it("uses the documented default when unset", () => {
+    expect(defaultConnectionMappingTtlMillis).toBe(900 * 1000);
+  });
+
+  it("refreshes the mapping in whole seconds on every inbound message", async () => {
+    fake.strings.set("event:game-ttl", JSON.stringify(startEvent));
+    fake.strings.set("c2g:c1", "game-ttl");
+
+    await handleMessages<{ type: string }>({
+      event: connectionEvent("c1", {}, JSON.stringify({ type: "move" })),
+      connectionIdAndGameIdKeyPrefix: "c2g:",
+      actorQueueKeyPrefix: "queue:",
+      validateMessage: () => true,
+      logger,
+      redisConnection: fakeConnection,
+      // A millisecond value that must not reach EXPIRE unrounded.
+      connectionMappingTtlMillis: 1500,
+    });
+
+    expect(fake.expires).toEqual([{ key: "c2g:c1", seconds: 2 }]);
+  });
+
+  it("applies the queue ttl on the push, which is the only place it can be", async () => {
+    fake.strings.set("event:game-ttl", JSON.stringify(startEvent));
+    fake.strings.set("c2g:c1", "game-ttl");
+
+    await handleMessages<{ type: string }>({
+      event: connectionEvent("c1", {}, JSON.stringify({ type: "move" })),
+      connectionIdAndGameIdKeyPrefix: "c2g:",
+      actorQueueKeyPrefix: "queue:",
+      validateMessage: () => true,
+      logger,
+      redisConnection: fakeConnection,
+      queueTtlSeconds: 930,
+    });
+
+    // The actor never pushes, so a TTL configured on its own subsystem
+    // would never be applied to the queue key at all.
+    expect(fake.expires).toContainEqual({
+      key: "queue:game-ttl",
+      seconds: 930,
+    });
+  });
+
+  it("sets no queue ttl when the producer does not ask for one", async () => {
+    fake.strings.set("event:game-ttl", JSON.stringify(startEvent));
+    fake.strings.set("c2g:c1", "game-ttl");
+
+    await handleMessages<{ type: string }>({
+      event: connectionEvent("c1", {}, JSON.stringify({ type: "move" })),
+      connectionIdAndGameIdKeyPrefix: "c2g:",
+      actorQueueKeyPrefix: "queue:",
+      validateMessage: () => true,
+      logger,
+      redisConnection: fakeConnection,
+    });
+
+    expect(fake.expires.some((e) => e.key === "queue:game-ttl")).toBe(false);
   });
 });

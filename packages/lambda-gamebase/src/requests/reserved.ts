@@ -11,10 +11,10 @@
  * connection as that member. Pass `handleConnect` a `resolveMemberId` that
  * reads a REQUEST authorizer's context to close that.
  *
- * Two things stay open even then, because neither is an identity question:
- * a member may hold several connections at once, and a connection that a
- * later `enter` superseded keeps its `connectionId` -> `gameId` mapping
- * until it disconnects or the mapping expires.
+ * One thing stays open even then, because it is not an identity question:
+ * a member may hold several connections at once. A connection superseded by
+ * a later `enter` is closed by `gamebase-all-together`'s `processEnter`, so
+ * its stale `connectionId` -> `gameId` mapping outlives nothing usable.
  */
 export const reservedRequestTypes: readonly string[] = ["enter", "leave"];
 

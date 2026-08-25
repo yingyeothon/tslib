@@ -15,6 +15,20 @@ import type { GamebaseContext } from "../context.js";
 export interface Transport {
   /** Returns false when the message could not be delivered. */
   send: (connectionId: string, message: unknown) => Promise<boolean>;
+  /**
+   * Optional one-call fan-out of the same message to many connections.
+   *
+   * `broadcast` prefers it when present and falls back to a `send` per
+   * connection otherwise, so a transport that has no cheaper multi-target
+   * form simply omits it. It exists because a transport that publishes to
+   * a gateway pays a round trip per call: at 8 players and a fixed tick,
+   * one publish per recipient is the difference between a tick that fits
+   * its budget and one that does not.
+   *
+   * The boolean covers the whole fan-out, so it can only be as precise as
+   * the underlying implementation — see each transport's own wording.
+   */
+  sendMany?: (connectionIds: string[], message: unknown) => Promise<boolean>;
   /** Returns true when the connection is closed or already gone. */
   drop: (connectionId: string) => Promise<boolean>;
 }

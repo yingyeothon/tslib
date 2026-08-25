@@ -1,10 +1,15 @@
 import { enqueue } from "@yingyeothon/actor-system";
 import { createRedisQueue } from "@yingyeothon/actor-system-redis";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
-import { redisGet, type RedisConnection } from "@yingyeothon/naive-redis";
+import {
+  redisExpire,
+  redisGet,
+  type RedisConnection,
+} from "@yingyeothon/naive-redis";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import type { GamebaseContext } from "../context.js";
 import { isReservedRequestType } from "../requests/reserved.js";
+import { defaultConnectionMappingTtlMillis } from "./handleConnect.js";
 import { BadRequest, NotFound, OK } from "./responses.js";
 
 export interface HandleMessagesOptions<M> {
@@ -17,6 +22,18 @@ export interface HandleMessagesOptions<M> {
   context?: GamebaseContext;
   /** Overrides the context's Redis connection, e.g. in tests. */
   redisConnection?: RedisConnection;
+  /**
+   * Lifetime the `connectionId -> gameId` mapping is refreshed to on every
+   * inbound message. Must match `handleConnect`'s. Default: 900000.
+   */
+  connectionMappingTtlMillis?: number;
+  /**
+   * TTL re-applied to the actor's queue key on every push, so a queue
+   * nobody drains disappears instead of growing forever behind a dead
+   * actor. The producer is the only party that can set it — the actor
+   * itself never pushes.
+   */
+  queueTtlSeconds?: number;
 }
 
 /**
@@ -32,6 +49,8 @@ export async function handleMessages<M>({
   logger = nullLogger,
   context,
   redisConnection,
+  connectionMappingTtlMillis = defaultConnectionMappingTtlMillis,
+  queueTtlSeconds,
 }: HandleMessagesOptions<M>): Promise<APIGatewayProxyResult> {
   if (!event.body) {
     return NotFound;
@@ -79,15 +98,21 @@ export async function handleMessages<M>({
   }
 
   // Read the gameId bound to this connectionId.
-  const gameId = await redisGet(
-    connection,
-    connectionIdAndGameIdKeyPrefix + connectionId,
-  );
+  const mappingKey = connectionIdAndGameIdKeyPrefix + connectionId;
+  const gameId = await redisGet(connection, mappingKey);
   logger.info("game id", { connectionId, gameId });
   if (!gameId) {
     logger.error("no gameId for connection", { connectionId });
     return NotFound;
   }
+
+  // Keep the routing entry alive for as long as the connection is used;
+  // without this a session outliving the mapping stops resolving its game.
+  await redisExpire(
+    connection,
+    mappingKey,
+    Math.ceil(connectionMappingTtlMillis / 1000),
+  );
 
   // Encode the game message and send it to the actor queue.
   await enqueue(
@@ -97,6 +122,9 @@ export async function handleMessages<M>({
         connection,
         keyPrefix: actorQueueKeyPrefix,
         logger,
+        ...(queueTtlSeconds !== undefined
+          ? { ttlSeconds: queueTtlSeconds }
+          : {}),
       }),
       logger,
     },

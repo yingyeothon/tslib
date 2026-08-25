@@ -1,7 +1,6 @@
 import { InvokeCommand, LambdaClient } from "@aws-sdk/client-lambda";
-import { createRedisLock } from "@yingyeothon/actor-system-redis";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
-import type { RedisConnection } from "@yingyeothon/naive-redis";
+import { redisDel, type RedisConnection } from "@yingyeothon/naive-redis";
 import type {
   APIGatewayProxyEventV2,
   APIGatewayProxyResultV2,
@@ -27,8 +26,8 @@ export interface HandleDebugStartOptions {
 }
 
 /**
- * Debug-only handler for serverless-offline: releases the actor lock of
- * the posted game and invokes the game actor Lambda locally. It answers
+ * Debug-only handler for serverless-offline: breaks the actor lock of the
+ * posted game and invokes the game actor Lambda locally. It answers
  * 404 unless `context.options.isOffline` is set.
  */
 export async function handleDebugStart({
@@ -51,17 +50,16 @@ export async function handleDebugStart({
     memberCount: startEvent.members.length,
   });
 
-  async function releaseLock(connection: RedisConnection): Promise<void> {
-    await createRedisLock({
-      connection,
-      keyPrefix: actorLockKeyPrefix,
-      logger,
-    }).release(startEvent.gameId);
+  async function breakLock(connection: RedisConnection): Promise<void> {
+    // A forced break, not a release: this process never acquired the lock,
+    // so the token-checked `release` would correctly refuse. Breaking a
+    // stale lock by hand is the whole point of this offline-only handler.
+    await redisDel(connection, actorLockKeyPrefix + startEvent.gameId);
   }
   await (redisConnection
-    ? releaseLock(redisConnection)
-    : useRedis(releaseLock, requireRedisOptions(context.options)));
-  logger.debug("release actor's lock", { gameId: startEvent.gameId });
+    ? breakLock(redisConnection)
+    : useRedis(breakLock, requireRedisOptions(context.options)));
+  logger.debug("break actor's lock", { gameId: startEvent.gameId });
 
   // Start a new Lambda to process game messages.
   const client =

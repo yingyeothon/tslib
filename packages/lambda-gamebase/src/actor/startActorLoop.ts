@@ -14,6 +14,13 @@ export interface StartActorLoopOptions<M> {
   eventKeyPrefix: string;
   logger?: Logger;
   subsystem: Omit<ActorEventLoopOptions<M>, "id" | "loop">;
+  /**
+   * Announces that this invocation owns the game, after the lock is taken
+   * and before the loop starts. A duplicate invocation never reaches it.
+   */
+  onReady?: () => Promise<unknown>;
+  /** Heartbeat interval for the actor lock; see `eventLoop`. */
+  lockRenewIntervalMillis?: number;
   redisConnection: RedisConnection;
   gameMain: (args: GameMainOptions<M>) => Promise<unknown>;
   /**
@@ -32,6 +39,8 @@ export async function startActorLoop<M>({
   gameId,
   members,
   subsystem,
+  onReady,
+  lockRenewIntervalMillis,
   logger = nullLogger,
   eventKeyPrefix,
   redisConnection,
@@ -41,6 +50,10 @@ export async function startActorLoop<M>({
   await eventLoop<M>({
     ...subsystem,
     id: gameId,
+    ...(onReady ? { onAcquired: onReady } : {}),
+    ...(lockRenewIntervalMillis !== undefined
+      ? { lockRenewIntervalMillis }
+      : {}),
     loop: async (poll) => {
       // `members` carries names and e-mail addresses.
       logger.info("start a game with id", {

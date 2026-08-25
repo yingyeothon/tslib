@@ -4,6 +4,7 @@ import {
   enqueue,
 } from "@yingyeothon/actor-system";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
+import { capturingLogger } from "./capturingLogger.js";
 import type { RedisConnection } from "@yingyeothon/naive-redis";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -238,5 +239,104 @@ describe("handleActor", () => {
         gameMain: () => Promise.resolve(),
       }),
     ).rejects.toThrow("requires either redisConnection or context");
+  });
+
+  it("signals ready only after this invocation owns the game", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(null, { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const subsystem = newSubsystem();
+    // A duplicate invocation: someone else already owns this game.
+    await subsystem.lock.tryAcquire("game-1");
+
+    const gameMain = vi.fn();
+    await handleActor({
+      event: { ...startEvent, callbackUrl: "https://lobby.yyt.life/ready" },
+      eventKeyPrefix: "event:",
+      awaiterKeyPrefix: "awaiter:",
+      queueKeyPrefix: "queue:",
+      lockKeyPrefix: "lock:",
+      lifetimeSeconds: 30,
+      gameMain,
+      logger,
+      actorLogger: logger,
+      redisConnection: fakeConnection,
+      subsystem,
+      saveStartEvent: () => Promise.resolve(true),
+      deleteStartEvent: () => Promise.resolve(1),
+    });
+
+    // Fired before the lock, this would tell the lobby a game is ready that
+    // this invocation will never run.
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(gameMain).not.toHaveBeenCalled();
+  });
+
+  it("signals ready before the game loop starts", async () => {
+    const order: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockImplementation(() => {
+        order.push("ready");
+        return Promise.resolve(new Response(null, { status: 200 }));
+      }),
+    );
+
+    await handleActor({
+      event: { ...startEvent, callbackUrl: "https://lobby.yyt.life/ready" },
+      eventKeyPrefix: "event:",
+      awaiterKeyPrefix: "awaiter:",
+      queueKeyPrefix: "queue:",
+      lockKeyPrefix: "lock:",
+      lifetimeSeconds: 30,
+      gameMain: () => {
+        order.push("gameMain");
+        return Promise.resolve();
+      },
+      logger,
+      actorLogger: logger,
+      redisConnection: fakeConnection,
+      subsystem: newSubsystem(),
+      saveStartEvent: () => Promise.resolve(true),
+      deleteStartEvent: () => Promise.resolve(1),
+    });
+
+    expect(order).toEqual(["ready", "gameMain"]);
+  });
+
+  it("never logs member names or e-mail addresses", async () => {
+    // Values that cannot collide with unrelated log text.
+    const piiMembers = [
+      { memberId: "m1", name: "NAME-ALPHA-9f2", email: "MAIL-BETA-4c1@x.io" },
+    ];
+    const { logger: capturing, text } = capturingLogger();
+
+    await handleActor({
+      event: { gameId: "game-1", members: piiMembers },
+      eventKeyPrefix: "event:",
+      awaiterKeyPrefix: "awaiter:",
+      queueKeyPrefix: "queue:",
+      lockKeyPrefix: "lock:",
+      lifetimeSeconds: 30,
+      gameMain: () => Promise.resolve(),
+      logger: capturing,
+      actorLogger: logger,
+      redisConnection: fakeConnection,
+      subsystem: newSubsystem(),
+      saveStartEvent: () => Promise.resolve(true),
+      deleteStartEvent: () => Promise.resolve(1),
+    });
+
+    const logged = text();
+    // Positive control: the actor did log, and named the game.
+    expect(logged).toContain("game-1");
+    expect(logged).toContain("memberCount");
+    for (const member of piiMembers) {
+      expect(logged).not.toContain(member.name);
+      expect(logged).not.toContain(member.email);
+      expect(logged).not.toContain("ALPHA");
+      expect(logged).not.toContain("BETA");
+    }
   });
 });

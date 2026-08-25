@@ -8,8 +8,22 @@ import type { Transport } from "./transport.js";
  * client: the gateway unwraps it and forwards `message` verbatim.
  */
 export type GatewayCommand =
-  | { op: "send"; connectionId: string; message: unknown }
-  | { op: "drop"; connectionId: string };
+  // `op` alone does not separate the two send shapes, so each one denies
+  // the other's field: that is what lets a consumer narrow with a plain
+  // property check instead of an `in` guard.
+  | {
+      op: "send";
+      connectionId: string;
+      connectionIds?: never;
+      message: unknown;
+    }
+  | {
+      op: "send";
+      connectionIds: string[];
+      connectionId?: never;
+      message: unknown;
+    }
+  | { op: "drop"; connectionId: string; connectionIds?: never };
 
 export interface RedisPubSubTransportOptions {
   /** Connection used to `PUBLISH`; not the gateway's subscriber one. */
@@ -29,6 +43,11 @@ export interface RedisPubSubTransportOptions {
  * Subscribe to the same channel with `createRedisSubscriber` from
  * `@yingyeothon/naive-redis`.
  *
+ * `sendMany` is what makes a per-tick broadcast affordable: one `PUBLISH`
+ * carries the whole party instead of one per recipient, and the gateway —
+ * which already holds the sockets — does the fan-out. It only pays off when
+ * every recipient gets the *same* payload; per-player snapshots defeat it.
+ *
  * Its boolean answers a different question than the API Gateway
  * transport's: it reports whether a **gateway** was subscribed when the
  * command was published, not whether the client received it or the
@@ -45,6 +64,7 @@ export function createRedisPubSubTransport({
   const channel = channelPrefix + gameId;
 
   async function publish(command: GatewayCommand): Promise<boolean> {
+    const targets = command.connectionIds?.length ?? 1;
     try {
       const receivers = await redisPublish(
         connection,
@@ -55,7 +75,7 @@ export function createRedisPubSubTransport({
         logger.warn("no gateway is listening", {
           channel,
           op: command.op,
-          connectionId: command.connectionId,
+          targets,
         });
       }
       return receivers > 0;
@@ -63,7 +83,7 @@ export function createRedisPubSubTransport({
       logger.error("cannot publish a gateway command", {
         channel,
         op: command.op,
-        connectionId: command.connectionId,
+        targets,
         error,
       });
       return false;
@@ -73,6 +93,8 @@ export function createRedisPubSubTransport({
   return {
     send: (connectionId, message) =>
       publish({ op: "send", connectionId, message }),
+    sendMany: (connectionIds, message) =>
+      publish({ op: "send", connectionIds, message }),
     drop: (connectionId) => publish({ op: "drop", connectionId }),
   };
 }

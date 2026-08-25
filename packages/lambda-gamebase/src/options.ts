@@ -18,8 +18,8 @@ export interface GamebaseOptions {
 
 /**
  * Reads the documented environment variables (`REDIS_HOST`, `REDIS_PORT`,
- * `REDIS_USER`, `REDIS_PASSWORD`, `GAME_ACTOR_LAMBDA_NAME`, `IS_OFFLINE`,
- * `WS_ENDPOINT`)
+ * `REDIS_USER`, `REDIS_PASSWORD`, `REDIS_TLS`, `GAME_ACTOR_LAMBDA_NAME`,
+ * `IS_OFFLINE`, `WS_ENDPOINT`)
  * and returns a `GamebaseOptions`. Calling it is the caller's choice.
  */
 export function gamebaseOptionsFromEnv(): GamebaseOptions {
@@ -33,6 +33,9 @@ export function gamebaseOptionsFromEnv(): GamebaseOptions {
           // An empty REDIS_USER must not become `AUTH "" <password>`.
           username: process.env.REDIS_USER || undefined,
           password: process.env.REDIS_PASSWORD,
+          // Without this the documented env path cannot turn TLS on, and
+          // the connection carries `AUTH` in the clear.
+          tls: process.env.REDIS_TLS ? true : undefined,
         }
       : undefined,
     gameActorLambdaName: process.env.GAME_ACTOR_LAMBDA_NAME,

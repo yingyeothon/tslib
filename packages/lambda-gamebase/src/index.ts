@@ -1,5 +1,10 @@
 export { handleActor, type HandleActorOptions } from "./actor/handleActor.js";
 export { clearActorStartEvent } from "./actor/clearActorStartEvent.js";
+export {
+  authorizeGameConnection,
+  type AuthorizeGameConnectionOptions,
+  type GameConnectionAuthorization,
+} from "./actor/authorizeGameConnection.js";
 export { loadActorStartEvent } from "./actor/loadActorStartEvent.js";
 export { readyCall } from "./actor/lobby/readyCall.js";
 export { saveActorStartEvent } from "./actor/saveActorStartEvent.js";
@@ -22,6 +27,7 @@ export {
 } from "./context.js";
 
 export {
+  defaultConnectionMappingTtlMillis,
   handleConnect,
   type HandleConnectOptions,
 } from "./handlers/handleConnect.js";
