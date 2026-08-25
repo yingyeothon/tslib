@@ -120,20 +120,27 @@ describe("createRedisSubsystem", () => {
       "+OK\r\n", // SET NX (lock)
       "+OK\r\n", // SET PX (awaiter resolve)
     ]);
-    const subsystem = createRedisSubsystem({ connection, keyPrefix: "app:" });
+    const subsystem = createRedisSubsystem({
+      connection,
+      keyPrefix: "app:",
+      lockTimeout: 5000,
+    });
 
     expect(await subsystem.queue.size("actor")).toBe(0);
     expect(await subsystem.lock.tryAcquire("actor")).toBe(true);
     await subsystem.awaiter.resolve("actor", "message");
 
     expect(messages[0]).toContain('LLEN "app:queue:actor"');
-    expect(messages[1]).toContain("SET app:lock:actor 1 NX");
+    // The lock value is a per-acquisition token, so only its shape is fixed.
+    expect(messages[1]).toMatch(/^SET app:lock:actor [0-9a-f-]{36} PX 5000 NX/);
     expect(messages[2]).toContain("SET app:awaiter:actor/message 1 PX 1000");
   });
 
   it("spreads into an actor environment as own properties", () => {
     const { connection } = fakeRedis([]);
-    const spread = { ...createRedisSubsystem({ connection }) };
+    const spread = {
+      ...createRedisSubsystem({ connection, lockTimeout: 5000 }),
+    };
     expect(Object.keys(spread)).toEqual(
       expect.arrayContaining(["queue", "lock", "awaiter"]),
     );

@@ -7,6 +7,7 @@ import type {
 import { jsonCodec, type Codec } from "@yingyeothon/codec";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
 import {
+  redisExpire,
   redisLindex,
   redisLlen,
   redisLpop,
@@ -21,6 +22,13 @@ export interface RedisQueueOptions {
   keyPrefix?: string;
   codec?: Codec<string>;
   logger?: Logger;
+  /**
+   * Re-applied on every push, so an abandoned queue disappears instead of
+   * growing forever behind a consumer that died. Unset means no TTL, and on
+   * a shared `allkeys-lru` Redis that means evicting someone else's keys
+   * before anyone notices.
+   */
+  ttlSeconds?: number;
 }
 
 export interface RedisQueue
@@ -32,6 +40,7 @@ export function createRedisQueue({
   keyPrefix = "",
   codec = jsonCodec,
   logger = nullLogger,
+  ttlSeconds,
 }: RedisQueueOptions): RedisQueue {
   return {
     size: async (actorId: string): Promise<number> => {
@@ -40,10 +49,16 @@ export function createRedisQueue({
       logger.debug("redis-queue size", { redisKey, length });
       return length;
     },
-    push: async <T>(actorId: string, item: T): Promise<void> => {
+    push: async <T>(actorId: string, item: T): Promise<number> => {
       const redisKey = keyPrefix + actorId;
-      const pushed = await redisRpush(connection, redisKey, codec.encode(item));
-      logger.debug("redis-queue pushed", { redisKey, item, pushed });
+      // `RPUSH` answers with the new length, so depth costs nothing here.
+      const depth = await redisRpush(connection, redisKey, codec.encode(item));
+      if (ttlSeconds !== undefined && ttlSeconds > 0) {
+        await redisExpire(connection, redisKey, ttlSeconds);
+      }
+      // `item` is the caller's payload; log what routed it, not what it says.
+      logger.debug("redis-queue pushed", { redisKey, depth });
+      return depth;
     },
     pop: async <T>(actorId: string): Promise<T | null> => {
       const redisKey = keyPrefix + actorId;
@@ -51,9 +66,8 @@ export function createRedisQueue({
       if (value === null) {
         return null;
       }
-      const decoded = codec.decode<T>(value);
-      logger.debug("redis-queue popped", { redisKey, decoded });
-      return decoded;
+      logger.debug("redis-queue popped", { redisKey });
+      return codec.decode<T>(value);
     },
     peek: async <T>(actorId: string): Promise<T | null> => {
       const redisKey = keyPrefix + actorId;
@@ -61,9 +75,8 @@ export function createRedisQueue({
       if (value === null) {
         return null;
       }
-      const decoded = codec.decode<T>(value);
-      logger.debug("redis-queue peeked", { redisKey, decoded });
-      return decoded;
+      logger.debug("redis-queue peeked", { redisKey });
+      return codec.decode<T>(value);
     },
     flush: async <T>(actorId: string): Promise<T[]> => {
       const redisKey = keyPrefix + actorId;
@@ -74,7 +87,7 @@ export function createRedisQueue({
       }
 
       const decoded = values.map((value) => codec.decode<T>(value));
-      logger.debug("redis-queue flushed", { redisKey, decoded });
+      logger.debug("redis-queue flushed", { redisKey, count: decoded.length });
 
       await redisLtrim(connection, redisKey, values.length, -1);
       return decoded;

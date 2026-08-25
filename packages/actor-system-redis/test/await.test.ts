@@ -34,7 +34,11 @@ fixture("adder-await", async (connection) => {
   const adder = new Adder("adder");
   const env = {
     ...singleConsumer,
-    ...createRedisSubsystem({ connection, keyPrefix: "__TEST__await__" }),
+    ...createRedisSubsystem({
+      connection,
+      keyPrefix: "__TEST__await__",
+      lockTimeout: 30_000,
+    }),
     ...adder,
   };
 

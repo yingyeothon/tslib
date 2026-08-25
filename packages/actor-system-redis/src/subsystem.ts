@@ -8,6 +8,10 @@ export interface RedisSubsystemOptions {
   connection: RedisConnection;
   keyPrefix?: string;
   logger?: Logger;
+  /** Lock expiration in milliseconds; see `RedisLockOptions.lockTimeout`. */
+  lockTimeout: number;
+  /** Queue key TTL in seconds; see `RedisQueueOptions.ttlSeconds`. */
+  queueTtlSeconds?: number;
 }
 
 export interface RedisSubsystem {
@@ -25,17 +29,21 @@ export function createRedisSubsystem({
   connection,
   keyPrefix = "",
   logger = nullLogger,
+  lockTimeout,
+  queueTtlSeconds,
 }: RedisSubsystemOptions): RedisSubsystem {
   return {
     queue: createRedisQueue({
       connection,
       keyPrefix: keyPrefix + "queue:",
       logger,
+      ...(queueTtlSeconds !== undefined ? { ttlSeconds: queueTtlSeconds } : {}),
     }),
     lock: createRedisLock({
       connection,
       keyPrefix: keyPrefix + "lock:",
       logger,
+      lockTimeout,
     }),
     awaiter: createRedisAwaiter({
       connection,
