@@ -105,7 +105,7 @@ exports.hello = async (connectionId) => {
 
 Actor loop
 
-- `handleActor` / `HandleActorOptions` — game actor Lambda entry point: persists the start event, acquires the actor lock, signals the lobby, runs the actor loop. The lock lease is `lockTimeoutSeconds` (default 30) and is heartbeated while the game runs, so a crashed actor frees its `gameId` in seconds rather than for the game's whole lifetime
+- `handleActor` / `HandleActorOptions` — game actor Lambda entry point: persists the start event, acquires the actor lock, signals the lobby, runs the actor loop. The lock lease is `lockTimeoutSeconds` (default 30) and is heartbeated while the game runs, so a crashed actor frees its `gameId` in seconds rather than for the game's whole lifetime. A live actor that outlives its own lease (a Redis failover, a network gap) re-acquires and keeps playing; only a successor actually holding the game stops it
 - `startActorLoop` / `StartActorLoopOptions` — runs `gameMain` inside the actor event loop and clears the start event at the end
 - `createActorSubsystem` / `ActorSubsystemOptions` / `ActorSubsystem` — Redis-backed queue/lock/awaiter with per-component key prefixes
 - `saveActorStartEvent`, `loadActorStartEvent`, `clearActorStartEvent` — start-event persistence helpers
@@ -350,7 +350,9 @@ player mid-game is the game loop's job, through `Transport.drop`.
   lifetime (`lifetimeSeconds + 10`, up to ~730 s), so a crash at t=30s left
   the `gameId` unstartable for the remaining minutes. It is now
   `lockTimeoutSeconds` (default 30), extended by a heartbeat while the game
-  runs. Pass `lockTimeoutSeconds: lifetimeSeconds + 10` for the old shape.
+  runs. A Redis outage longer than the lease does **not** end the game: the
+  lease is a deadline for a successor, so a live actor whose lease lapsed
+  re-acquires and carries on, and only a genuine hand-off stops it.
 - **`readyCall` fires after the lock is acquired.** It used to fire before,
   so a duplicate invocation told the lobby a game was ready that it would
   never run.

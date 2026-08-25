@@ -109,11 +109,18 @@ Both entry points take `lockRenewIntervalMillis`, which heartbeats the lease
 through `lock.renew` while work runs. That is what lets a lease be short (so
 a crashed actor frees itself in seconds) without expiring under a long game.
 
-A renewal answering false means someone else owns the actor now, and that is
-acted on rather than only logged: `eventLoop`'s `poll` rejects from that
-moment (so this loop cannot consume the new owner's messages) and calls the
-optional `onLockLost`; `tryToProcess` stops its drain loop and returns what
-it had already processed.
+An expired lease is not by itself a loss. The lease is a deadline for a
+_successor_ — it exists so a crashed actor frees its id quickly — so a
+holder whose renewal comes back false re-acquires and carries on. That is
+what makes a short lease safe: a failover or a network gap longer than the
+lease costs a live session nothing, because nobody took anything from it.
+
+Only a re-acquisition that **fails** means another process owns the actor,
+and that is acted on rather than logged: `eventLoop`'s `poll` rejects from
+that moment (so this loop cannot consume the new owner's messages) and calls
+the optional `onLockLost`; `tryToProcess` stops its drain loop and returns
+what it had already processed. A renewal that merely failed to reach the
+lock store is neither — the next beat tries again.
 
 ## Public API
 

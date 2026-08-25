@@ -231,15 +231,85 @@ describe("eventLoop", () => {
     }
   });
 
+  it("carries on when the lease expired but nobody took the actor", async () => {
+    vi.useFakeTimers();
+    try {
+      const lines: string[] = [];
+      const logger: Logger = {
+        ...nullLogger,
+        warn: (...args: unknown[]) => lines.push(args.join(" ")),
+        error: (...args: unknown[]) => lines.push(args.join(" ")),
+      };
+      const inner = createInMemoryLock();
+      let polls = 0;
+      let release = (): void => undefined;
+
+      // The lease lapses — a store outage longer than it — and the key is
+      // free, because no successor ever wanted this actor.
+      const finished = eventLoop({
+        id: "loop-12",
+        queue: createInMemoryQueue(),
+        lock: {
+          ...inner,
+          renew: async (actorId: string) => {
+            await inner.release(actorId);
+            return false;
+          },
+        },
+        lockRenewIntervalMillis: 50,
+        logger,
+        loop: async (poll) => {
+          await poll();
+          polls++;
+          await new Promise((resolve) => setTimeout(resolve, 200));
+          // Still ours, so this must still be allowed.
+          await poll();
+          polls++;
+          await new Promise<void>((resolve) => (release = resolve));
+        },
+      });
+
+      await vi.advanceTimersByTimeAsync(300);
+      expect(polls).toBe(2);
+      expect(
+        lines.some((line) => line.includes("re-acquired the actor lock")),
+      ).toBe(true);
+      // Nothing was taken from anyone, so this is not a loss.
+      expect(lines.some((line) => line.includes("lost the actor lock"))).toBe(
+        false,
+      );
+
+      release();
+      await finished;
+      // And the lock is still released cleanly at the end.
+      expect(await inner.tryAcquire("loop-12")).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("refuses to poll once the lease is gone", async () => {
     vi.useFakeTimers();
     try {
       const inner = createInMemoryLock();
       let lost = 0;
+      // This invocation acquires normally; by the time the heartbeat tries
+      // to re-acquire, a successor holds the actor and it cannot.
+      let acquired = false;
       const finished = eventLoop({
         id: "loop-10",
         queue: createInMemoryQueue(),
-        lock: { ...inner, renew: () => Promise.resolve(false) },
+        lock: {
+          release: (actorId: string) => inner.release(actorId),
+          tryAcquire: async (actorId: string) => {
+            if (acquired) {
+              return false;
+            }
+            acquired = await inner.tryAcquire(actorId);
+            return acquired;
+          },
+          renew: () => Promise.resolve(false),
+        },
         lockRenewIntervalMillis: 100,
         onLockLost: () => lost++,
         loop: async (poll) => {

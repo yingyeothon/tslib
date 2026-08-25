@@ -45,6 +45,12 @@ real defects that shipped in the legacy code.
   lock" leaves both owners running; the loser must stop consuming, which is
   why `eventLoop`'s `poll` rejects from that moment and `tryToProcess` ends
   its drain loop.
+- An expired lease is not a loss. The lease is a deadline for a _successor_
+  — it exists so a crashed holder frees the resource quickly — so a holder
+  that is still working re-acquires and carries on, and only a failed
+  re-acquisition means someone else took it. Without that distinction a
+  short lease turns every store outage longer than it into a lost session,
+  which is how a safety mechanism becomes the outage.
 
 ## Trusting client-supplied identity
 
