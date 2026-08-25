@@ -19,6 +19,7 @@ import {
 import { doInStageWait } from "./services/doInStageWait.js";
 
 const defaultEndDropDelayMillis = 1000;
+const defaultEndRepeatIntervalMillis = 200;
 
 export type RunGameAllTogetherOptions<M extends GameMessageBase> =
   GameMainOptions<M> & {
@@ -54,6 +55,27 @@ export type RunGameAllTogetherOptions<M extends GameMessageBase> =
      * the pause lets them flush. Default 1000; `0` drops immediately.
      */
     endDropDelayMillis?: number;
+    /**
+     * How many times the end stage is announced and the connections
+     * dropped. Default 1.
+     *
+     * A transport that publishes to a gateway sends these exactly once, and
+     * pub/sub has no redelivery: a subscriber gap swallows the end frame
+     * (the party is shown no result) or the drop (the sockets stay open
+     * forever). Unlike a tick snapshot, nothing later heals either. Set it
+     * to 2 or more with `createRedisPubSubTransport`; both operations are
+     * idempotent, so the repeats cost a frame each and nothing else.
+     *
+     * Leave it at 1 for the API Gateway transport, where a repeat is a
+     * `PostToConnection` per player against an already-closed connection.
+     */
+    endRepeatCount?: number;
+    /**
+     * Gap between repeats. A burst with no gap would be swallowed by the
+     * same subscriber outage that swallowed the first frame. Default 200;
+     * only used when `endRepeatCount` is above 1.
+     */
+    endRepeatIntervalMillis?: number;
     logger?: Logger;
     /**
      * Network options for broadcasts and connection drops: pass the
@@ -82,6 +104,8 @@ export async function runGameAllTogether<M extends GameMessageBase>({
   minPlayers,
   dropUndeliveredConnections,
   endDropDelayMillis = defaultEndDropDelayMillis,
+  endRepeatCount = 1,
+  endRepeatIntervalMillis = defaultEndRepeatIntervalMillis,
   isGameOver,
   processMessage,
   updateTimeDelta,
@@ -155,20 +179,39 @@ export async function runGameAllTogether<M extends GameMessageBase>({
       : { dropUndeliveredConnections }),
     ...(onStageChanged ? { onStageChanged } : {}),
   });
-  await announce({
-    context,
-    age: gameRunningSeconds,
-    stage: GameStage.End,
-    network,
-  });
+  // Announce, then drop — repeating each in place rather than repeating the
+  // pair. A second announcement after the first drop would be addressed to
+  // sockets that are already closed, which is the half of the loss the
+  // repeat exists to cover.
+  const repeats = Math.max(1, Math.floor(endRepeatCount));
+  for (let attempt = 0; attempt < repeats; attempt++) {
+    if (attempt > 0) {
+      await sleep(endRepeatIntervalMillis);
+    }
+    await announce({
+      context,
+      age: gameRunningSeconds,
+      stage: GameStage.End,
+      network,
+    });
+  }
   if (endDropDelayMillis > 0) {
     await sleep(endDropDelayMillis);
   }
-  await Promise.all(
-    Object.keys(context.connectedUsers).map((connectionId) =>
-      dropConnection(connectionId, network),
-    ),
-  );
+  // Captured here, after the announcements, so a hook that prunes
+  // undelivered users is still reflected exactly as it was before repeats
+  // existed.
+  const endingConnections = Object.keys(context.connectedUsers);
+  for (let attempt = 0; attempt < repeats; attempt++) {
+    if (attempt > 0) {
+      await sleep(endRepeatIntervalMillis);
+    }
+    await Promise.all(
+      endingConnections.map((connectionId) =>
+        dropConnection(connectionId, network),
+      ),
+    );
+  }
   // `members` carries names and e-mail addresses; only counts go out.
   logger.info("Game end", { gameId, ...describeGame(context), reason });
 }

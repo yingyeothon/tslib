@@ -1,5 +1,6 @@
 import {
   broadcast,
+  dropConnection,
   type BaseGameEnterRequest,
   type BaseGameContext,
   type NetworkOptions,
@@ -36,6 +37,9 @@ export function broadcastMemberEntered({
  * users are registered as connected and reported through the
  * `onMemberEntered` hook — which is also where a reconnecting member can
  * be sent the current state.
+ *
+ * A member arriving on a second connection supersedes the first, and the
+ * superseded one is dropped rather than merely unbound.
  */
 export async function processEnter({
   context,
@@ -58,6 +62,10 @@ export async function processEnter({
       context.connectedUsers[previous] === newbie
     ) {
       delete context.connectedUsers[previous];
+      // Unbinding is not closing. Left open, the superseded socket receives
+      // nothing forever and its eventual `leave` is a no-op, because the
+      // binding it names is already gone.
+      await dropConnection(previous, network);
     }
 
     newbie.connectionId = connectionId;

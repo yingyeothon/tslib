@@ -24,16 +24,21 @@ interface SentMessage {
 function fakeNetwork(failing: string[] = []): {
   network: NetworkOptions;
   sent: SentMessage[];
+  dropped: string[];
 } {
   const sent: SentMessage[] = [];
+  const dropped: string[] = [];
   const transport: Transport = {
     send: (connectionId, message) => {
       sent.push({ connectionId, message: message as SentMessage["message"] });
       return Promise.resolve(!failing.includes(connectionId));
     },
-    drop: () => Promise.resolve(true),
+    drop: (connectionId) => {
+      dropped.push(connectionId);
+      return Promise.resolve(true);
+    },
   };
-  return { network: { transport }, sent };
+  return { network: { transport }, sent, dropped };
 }
 
 function newContext(): BaseGameContext {
@@ -135,6 +140,24 @@ describe("processEnter", () => {
     // Counting both would tell the wait stage the party is complete.
     expect(Object.keys(context.connectedUsers)).toEqual(["c1b"]);
     expect(context.users[0]).toMatchObject({ connectionId: "c1b" });
+    // Unbinding is not closing: the old socket would otherwise stay open
+    // forever, receiving nothing.
+    expect(net.dropped).toEqual(["c1"]);
+  });
+
+  it("drops nothing when a member re-enters on the same connection", async () => {
+    const net = fakeNetwork();
+    const context = newContext();
+    const message = {
+      type: "enter" as const,
+      connectionId: "c1",
+      memberId: "m1",
+    };
+    await processEnter({ context, message, network: net.network });
+    await processEnter({ context, message, network: net.network });
+
+    expect(net.dropped).toEqual([]);
+    expect(Object.keys(context.connectedUsers)).toEqual(["c1"]);
   });
 
   it("attaches an observer silently", async () => {

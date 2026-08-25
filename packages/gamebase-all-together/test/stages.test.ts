@@ -32,6 +32,8 @@ interface FakeNetwork {
   network: NetworkOptions;
   sent: SentMessage[];
   dropped: string[];
+  /** Sends and drops interleaved, so ordering can be asserted. */
+  order: string[];
   failFor: (connectionId: string) => void;
   ofType: (type: string) => SentMessage[];
   stages: () => Array<{ stage: GameStage; age: number }>;
@@ -44,14 +46,22 @@ interface FakeNetwork {
 function fakeNetwork(): FakeNetwork {
   const sent: SentMessage[] = [];
   const dropped: string[] = [];
+  const order: string[] = [];
   const failing = new Set<string>();
   const transport: Transport = {
     send: (connectionId, message) => {
-      sent.push({ connectionId, message: message as SentMessage["message"] });
+      const typed = message as SentMessage["message"];
+      sent.push({ connectionId, message: typed });
+      order.push(
+        typed.type === "stage"
+          ? `stage:${String((typed.payload as { stage?: string }).stage)}`
+          : typed.type,
+      );
       return Promise.resolve(!failing.has(connectionId));
     },
     drop: (connectionId) => {
       dropped.push(connectionId);
+      order.push("drop");
       return Promise.resolve(true);
     },
   };
@@ -60,6 +70,7 @@ function fakeNetwork(): FakeNetwork {
     network: { transport },
     sent,
     dropped,
+    order,
     failFor: (connectionId) => failing.add(connectionId),
     ofType,
     stages: () =>
@@ -815,6 +826,90 @@ describe("runGameAllTogether", () => {
     await vi.advanceTimersByTimeAsync(5000);
     await promise;
     expect([...net.dropped].sort()).toEqual(["c1", "c2"]);
+  });
+
+  it("announces the end once and drops once by default", async () => {
+    let gameOver = false;
+    const { net, promise } = fullRun({
+      pollMessages: scriptedPoll<GameMessage>([
+        [{ type: "enter", connectionId: "c1", memberId: "m1" }],
+        [{ type: "enter", connectionId: "c2", memberId: "m2" }],
+        [{ type: "move", connectionId: "c1", x: 1 }],
+      ]),
+      isGameOver: () => gameOver,
+      processMessage: () => {
+        gameOver = true;
+        return Promise.resolve();
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(2000);
+    await promise;
+
+    // One announcement round, and `stages()` records one entry per member.
+    expect(net.stages().filter((s) => s.stage === GameStage.End)).toHaveLength(
+      2,
+    );
+    expect([...net.dropped].sort()).toEqual(["c1", "c2"]);
+  });
+
+  it("repeats the end stage and the drops when asked", async () => {
+    let gameOver = false;
+    const { net, promise } = fullRun({
+      pollMessages: scriptedPoll<GameMessage>([
+        [{ type: "enter", connectionId: "c1", memberId: "m1" }],
+        [{ type: "enter", connectionId: "c2", memberId: "m2" }],
+        [{ type: "move", connectionId: "c1", x: 1 }],
+      ]),
+      isGameOver: () => gameOver,
+      processMessage: () => {
+        gameOver = true;
+        return Promise.resolve();
+      },
+      endRepeatCount: 3,
+    });
+
+    await vi.advanceTimersByTimeAsync(2000);
+    await promise;
+
+    // A pub/sub gap that swallows one end frame or one drop is survivable
+    // only because they are sent again.
+    // Three rounds × two members.
+    expect(net.stages().filter((s) => s.stage === GameStage.End)).toHaveLength(
+      6,
+    );
+    expect(net.dropped.filter((id) => id === "c1")).toHaveLength(3);
+    expect(net.dropped.filter((id) => id === "c2")).toHaveLength(3);
+  });
+
+  it("announces before dropping, on every repeat", async () => {
+    let gameOver = false;
+    const { net, promise } = fullRun({
+      pollMessages: scriptedPoll<GameMessage>([
+        [{ type: "enter", connectionId: "c1", memberId: "m1" }],
+        [{ type: "enter", connectionId: "c2", memberId: "m2" }],
+        [{ type: "move", connectionId: "c1", x: 1 }],
+      ]),
+      isGameOver: () => gameOver,
+      processMessage: () => {
+        gameOver = true;
+        return Promise.resolve();
+      },
+      endRepeatCount: 2,
+      endRepeatIntervalMillis: 10,
+    });
+
+    await vi.advanceTimersByTimeAsync(3000);
+    await promise;
+
+    // Every end frame precedes every drop. Repeating the announce/drop pair
+    // instead would put the second announcement after the first drop, where
+    // the socket it addresses is already closed.
+    const lastEnd = net.order.lastIndexOf("stage:end");
+    const firstDrop = net.order.indexOf("drop");
+    expect(firstDrop).toBeGreaterThan(lastEnd);
+    expect(net.order.filter((e) => e === "stage:end")).toHaveLength(4);
+    expect(net.dropped.filter((id) => id === "c1")).toHaveLength(2);
   });
 
   it("skips the running stage when not everyone connects in time", async () => {

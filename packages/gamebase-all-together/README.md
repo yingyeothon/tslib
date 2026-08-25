@@ -126,11 +126,11 @@ and paces itself by `intervalMillis`.
 
 ## Public API
 
-- `runGameAllTogether` / `RunGameAllTogetherOptions` (type) — the wait → running → end game loop; a drop-in `gameMain` for `handleActor`. Pass `network: { context }` (or an explicit `client` or `transport`) so broadcasts and connection drops reach the clients; `logger` defaults to `nullLogger`.
+- `runGameAllTogether` / `RunGameAllTogetherOptions` (type) — the wait → running → end game loop; a drop-in `gameMain` for `handleActor`. Pass `network: { context }` (or an explicit `client` or `transport`) so broadcasts and connection drops reach the clients; `logger` defaults to `nullLogger`. `endRepeatCount` repeats the end stage and the drops, which a gateway transport needs — see below
 - `GameStage` — enum `Wait = "wait"`, `Running = "running"`, `End = "end"`
 - `GameTickPolicy` (type) — `{ mode: "perMessage" }` or `{ mode: "fixed", intervalMillis, maxCatchUpSteps? }`
 - `GameEndReason` (type) — `"cleared" | "timeout" | "notEnoughPlayers" | "error"`, decided by this package and handed to `onGameEnd`
-- `GameHooks` (type) — `onStageChanged`, `onMemberEntered`, `onSnapshot`, `onGameEnd`, with `StageChangedOptions`, `MemberEnteredOptions`, `SnapshotOptions`, `GameEndOptions` (types)
+- `GameHooks` (type) — `onStageChanged`, `onMemberEntered`, `onSnapshot`, `onGameEnd`, with `StageChangedOptions`, `MemberEnteredOptions`, `SnapshotOptions`, `GameEndOptions` (types). **`onSnapshot` is a client-facing broadcast scheduler, not durable state**: it is rate-limited by `snapshotIntervalMillis` and nothing it produces is persisted. Game state lives in the actor's heap and is gone when the invocation ends
 - `GameController` (type) — `isGameOver`, `processMessage`, optional `updateTimeDelta`
 - `GameMessageBase` (type) — `{ type: string; connectionId: string }`, the constraint for the message type parameter `M`
 - `doInStageWait` / `DoInStageWaitOptions` (type) — the wait stage; it ends early only when every user is connected, and otherwise runs the full `gameWaitingSeconds` and then resolves `true` if at least `minPlayers` made it (default: every user)
@@ -148,6 +148,10 @@ and paces itself by `intervalMillis`.
   `DeleteConnection`, so dropping right after the result broadcast sometimes
   swallowed the result; pass `endDropDelayMillis: 0` for the old behavior.
 
+- **A superseded connection is closed, not merely unbound.** A member
+  entering on a second connection used to leave the first socket open
+  forever, receiving nothing, with its eventual `leave` a no-op.
+
 - **`updateTimeDelta` moved out of the message loop.** It used to be called
   from inside the per-message loop, so a game with no traffic did not
   simulate at all. It is now driven by the tick policy above; `perMessage`
@@ -162,6 +166,20 @@ and paces itself by `intervalMillis`.
 - **The wait stage can start short-handed** via `minPlayers`; the default is
   still every user. It relaxes the verdict, not the schedule — latecomers
   still get the whole waiting window.
+
+### Ending a game over a gateway transport
+
+`endRepeatCount` (default 1) repeats the end-stage announcement and the
+drops, spaced by `endRepeatIntervalMillis` (default 200). With
+`createRedisPubSubTransport` both are published exactly once and pub/sub has
+no redelivery, so a subscriber gap either shows the party no result or
+leaves their sockets open forever — and unlike a tick snapshot, nothing
+later heals it. Set it to 2 or more there; both operations are idempotent.
+
+Every announcement goes out before any drop, so a repeat is never addressed
+to a socket the previous round already closed. Leave it at 1 for the API
+Gateway transport, where each repeat is one `PostToConnection` per player
+against a connection that is already gone.
 
 ## Migrating from the legacy package
 
