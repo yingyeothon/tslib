@@ -167,7 +167,7 @@ describe("broken or expiring environments", () => {
       lock: createInMemoryLock(),
       awaiter: createInMemoryAwaiter(),
       queue: {
-        push: () => Promise.resolve(),
+        push: () => Promise.resolve(0),
         size: () => Promise.resolve(sizes.shift() ?? 0),
         peek: <T>() => Promise.resolve(null as T | null),
         pop: <T>() => Promise.resolve(null as T | null),

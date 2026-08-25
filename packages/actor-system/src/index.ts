@@ -1,6 +1,6 @@
 export type { AwaiterResolve, AwaiterWait } from "./awaiter.js";
 export { enqueue } from "./enqueue.js";
-export type { ActorEnqueueOptions } from "./enqueue.js";
+export type { ActorEnqueueOptions, EnqueuedMessage } from "./enqueue.js";
 export {
   bulkConsumer,
   singleConsumer,
@@ -22,7 +22,7 @@ export type {
   InMemoryLock,
   InMemoryQueue,
 } from "./inMemory.js";
-export type { LockAcquire, LockRelease } from "./lock.js";
+export type { LockAcquire, LockRelease, LockRenew } from "./lock.js";
 export { AwaitPolicy } from "./message.js";
 export type {
   AwaiterMeta,

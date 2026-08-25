@@ -79,14 +79,14 @@ export function createInMemoryQueue(): InMemoryQueue {
     size(actorId: string): Promise<number> {
       return Promise.resolve(queues.get(actorId)?.length ?? 0);
     },
-    push<T>(actorId: string, item: T): Promise<void> {
+    push<T>(actorId: string, item: T): Promise<number> {
       const queue = queues.get(actorId);
       if (queue) {
         queue.push(item);
-      } else {
-        queues.set(actorId, [item]);
+        return Promise.resolve(queue.length);
       }
-      return Promise.resolve();
+      queues.set(actorId, [item]);
+      return Promise.resolve(1);
     },
     pop<T>(actorId: string): Promise<T | null> {
       const queue = queues.get(actorId);

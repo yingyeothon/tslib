@@ -76,22 +76,70 @@ Concepts:
 - `eventLoop` hands the lock plus a `poll` drain function to a user-supplied loop.
 - Every options object accepts an optional `logger?: Logger` from `@yingyeothon/logger`, defaulting to `nullLogger`.
 
+### Delivery semantics: pick deliberately
+
+The two entry points differ, and neither is a superset of the other:
+
+| entry point    | drain                                   | on a crash mid-batch                                                                 |
+| -------------- | --------------------------------------- | ------------------------------------------------------------------------------------ |
+| `tryToProcess` | peek → handle → pop                     | **at-least-once**: the message is still queued and is handled again                  |
+| `eventLoop`    | flush, then hand the batch to your loop | **at-most-once**: the batch left the queue before your loop acted on it, and is gone |
+
+A game that cannot lose input needs an ack of its own above `eventLoop`, or
+`tryToProcess`.
+
+### Lock ownership
+
+Both entry points hold the actor's lock for the whole call — `tryToProcess`
+across every drain cycle, not just one. Actor state lives in the owner's heap
+while a shift payload carries only an `actorId`, so releasing between cycles
+would let ownership migrate to a process holding different state. Two
+consequences:
+
+- A competing invocation that asked to stay alive (`aliveMillis`, no
+  `oneShot`) waits at `idleIntervalMillis` until the owner finishes or its
+  own time runs out; a one-shot call gives up on the first miss.
+- Pass `lockRenewIntervalMillis` whenever the lease is shorter than
+  `aliveMillis`. The lock no longer re-stamps itself between cycles, so
+  without a heartbeat it expires mid-run and a second invocation starts
+  draining the same queue.
+- A `shift` happens **after** the release, so the successor can acquire.
+
+Both entry points take `lockRenewIntervalMillis`, which heartbeats the lease
+through `lock.renew` while work runs. That is what lets a lease be short (so
+a crashed actor frees itself in seconds) without expiring under a long game.
+
+A renewal answering false means someone else owns the actor now, and that is
+acted on rather than only logged: `eventLoop`'s `poll` rejects from that
+moment (so this loop cannot consume the new owner's messages) and calls the
+optional `onLockLost`; `tryToProcess` stops its drain loop and returns what
+it had already processed.
+
 ## Public API
 
-- `enqueue(env, input)` — queue a message, filling in `messageId` (random UUID), `awaitPolicy` (`Forget`), and `awaitTimeoutMillis` (0)
+- `enqueue(env, input)` — queue a message, filling in `messageId` (random UUID), `awaitPolicy` (`Forget`), and `awaitTimeoutMillis` (0); resolves with the message plus the `queueDepth` after the push, so a producer can notice that nobody is consuming without a second round trip
 - `post(env, input)` — enqueue and await completion according to the message's `AwaitPolicy`
 - `send(env, input, options?)` — enqueue, try to process in this thread, and await completion
 - `tryToProcess(env, options?)` — lock and drain the actor's queue; returns the `AwaiterMeta[]` of processed messages
-- `eventLoop(env)` — lock the actor and run a user loop with a queue-draining `poll`; `false` if the lock was held
+- `eventLoop(env)` — lock the actor and run a user loop with a queue-draining `poll`; `false` if the lock was held. `onAcquired` runs once, after the lock is taken, which is the only point that means "this invocation owns the actor"; `lockRenewIntervalMillis` heartbeats the lease
 - `createInMemoryQueue()` — in-process queue implementation
 - `createInMemoryLock()` — in-process lock implementation
 - `createInMemoryAwaiter()` — in-process awaiter implementation
 - `AwaitPolicy` — `Forget` | `Act` | `Commit` enum
 - `singleConsumer` — spreadable consume-type marker for message-by-message processing
 - `bulkConsumer` — spreadable consume-type marker for all-at-once processing
-- Message types: `AwaiterMeta`, `UserMessage`, `UserMessageItem`, `UserMessageMeta`
-- System interface types: `QueueProducer`, `QueueSingleConsumer`, `QueueBulkConsumer`, `QueueLength`, `LockAcquire`, `LockRelease`, `AwaiterWait`, `AwaiterResolve`, `ActorShift`, `InMemoryQueue`, `InMemoryLock`, `InMemoryAwaiter`
+- Message types: `AwaiterMeta`, `UserMessage`, `UserMessageItem`, `UserMessageMeta`, `EnqueuedMessage`
+- System interface types: `QueueProducer`, `QueueSingleConsumer`, `QueueBulkConsumer`, `QueueLength`, `LockAcquire`, `LockRelease`, `LockRenew`, `AwaiterWait`, `AwaiterResolve`, `ActorShift`, `InMemoryQueue`, `InMemoryLock`, `InMemoryAwaiter`
 - Options types: `ActorProperty`, `ActorLogger`, `ActorErrorHandler`, `ActorSingleMessageHandler`, `ActorMessageBulkConsumer`, `ActorEnqueueOptions`, `ActorPostOptions`, `ActorSendOptions`, `ActorProcessOptions`, `ActorLoopOptions`, `ActorSingleOptions`, `ActorBulkOptions`, `ActorEventLoopOptions`, `TryToProcessOptions` — `logger` fields take `Logger` from `@yingyeothon/logger`
+
+## Behavior changes
+
+- **`QueueProducer.push` resolves `number`, not `void`.** It is the queue
+  depth after the push, which a Redis `RPUSH` returns for free and which is
+  the cheapest way for a producer to notice that nobody is consuming. Any
+  custom `QueueProducer` implementation must be updated.
+- **The lock is held across drain cycles** and `shift` happens after the
+  release — see Lock ownership above.
 
 ## Migrating from the legacy package
 
