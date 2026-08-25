@@ -1,5 +1,6 @@
-import { Socket } from "node:net";
+import { isIP, Socket } from "node:net";
 import { StringDecoder } from "node:string_decoder";
+import { connect as tlsConnect, type ConnectionOptions } from "node:tls";
 
 import { nullLogger, type Logger } from "@yingyeothon/logger";
 
@@ -39,7 +40,22 @@ export interface NaiveSocketOptions {
    * Without it, unclaimed data is logged and discarded.
    */
   onUnsolicitedData?: UnsolicitedDataConsumer;
+
+  /**
+   * Wraps the connection in TLS. `true` uses Node's defaults with `host`
+   * as the SNI server name; an object is passed to `tls.connect` as is,
+   * so a private CA arrives as `{ ca }`. Unset means **cleartext** — the
+   * password and every command travel in the clear, which is only
+   * acceptable inside a trusted network.
+   */
+  tls?: boolean | TlsOptions;
 }
+
+/**
+ * `tls.connect` options, minus the ones this socket supplies itself
+ * (`host`, `port`).
+ */
+export type TlsOptions = Omit<ConnectionOptions, "host" | "port">;
 
 /**
  * Consumes the unclaimed receive buffer and returns how many characters
@@ -111,6 +127,7 @@ class NaiveSocketImpl implements NaiveSocket {
   private readonly onConnectionStateChanged: ConnectionStateListener;
   private readonly connectionRetryInterval: number;
   private readonly onUnsolicitedData: UnsolicitedDataConsumer | undefined;
+  private readonly tls: boolean | TlsOptions | undefined;
 
   private readonly sendWorks: SendWork[] = [];
   // Decodes UTF-8 across chunk boundaries: a multi-byte character split
@@ -128,6 +145,7 @@ class NaiveSocketImpl implements NaiveSocket {
     logger = nullLogger,
     onConnectionStateChanged = noListener,
     onUnsolicitedData,
+    tls,
   }: NaiveSocketOptions) {
     this.host = host;
     this.port = port;
@@ -135,6 +153,7 @@ class NaiveSocketImpl implements NaiveSocket {
     this.logger = logger;
     this.onConnectionStateChanged = onConnectionStateChanged;
     this.onUnsolicitedData = onUnsolicitedData;
+    this.tls = tls;
   }
 
   public send = (request: SendRequest): Promise<string> => {
@@ -157,12 +176,7 @@ class NaiveSocketImpl implements NaiveSocket {
     this.doDisconnect();
 
     // Reject all pending send works.
-    for (const work of this.sendWorks.splice(0)) {
-      if (work.timer !== null) {
-        clearTimeout(work.timer);
-      }
-      work.dPromise.reject(new Error(`DeadSocket`));
-    }
+    this.failAllPendingWork(new Error(`DeadSocket`));
   };
 
   private buildSendWork = ({
@@ -196,12 +210,55 @@ class NaiveSocketImpl implements NaiveSocket {
   private connect = () => {
     this.logger.info(`[NaiveSocket]`, `Start to connect`);
     this.changeConnectionState(ConnectionState.Connecting);
-    this.socket = new Socket();
-    this.socket.addListener("connect", this.onConnect);
+    try {
+      this.openSocket();
+    } catch (error) {
+      // `tls.connect` validates its options synchronously and throws, while
+      // `new Socket()` cannot. Without this the throw escapes `send` (which
+      // drives the queue synchronously) leaving the request unsettled, and
+      // escapes the reconnect timer as an uncaught exception.
+      this.logger.error(`[NaiveSocket]`, `Cannot open the socket`, error);
+      this.failAllPendingWork(
+        error instanceof Error ? error : new Error(String(error)),
+      );
+      this.changeConnectionState(ConnectionState.Disconnected);
+      this.socket = null;
+    }
+  };
+
+  private failAllPendingWork = (error: Error) => {
+    for (const work of this.sendWorks.splice(0)) {
+      if (work.timer !== null) {
+        clearTimeout(work.timer);
+      }
+      work.dPromise.reject(error);
+    }
+  };
+
+  private openSocket = () => {
+    // `tls.connect` starts connecting on its own and reports readiness as
+    // `secureConnect`, so the plaintext `connect` call and event name are
+    // the only difference between the two paths.
+    this.socket = this.tls
+      ? tlsConnect({
+          // RFC 6066 forbids an IP address as the SNI server name, and Node
+          // warns about it, so only a hostname is offered.
+          ...(isIP(this.host) === 0 ? { servername: this.host } : {}),
+          ...(this.tls === true ? {} : this.tls),
+          host: this.host,
+          port: this.port,
+        })
+      : new Socket();
+    this.socket.addListener(
+      this.tls ? "secureConnect" : "connect",
+      this.onConnect,
+    );
     this.socket.addListener("error", this.onError);
     this.socket.addListener("data", this.onData);
     this.socket.addListener("close", this.onClose);
-    this.socket.connect(this.port, this.host);
+    if (!this.tls) {
+      this.socket.connect(this.port, this.host);
+    }
   };
 
   private doDisconnect = () => {
@@ -325,11 +382,11 @@ class NaiveSocketImpl implements NaiveSocket {
   private consumeUnsolicitedData = () => {
     const consume = this.onUnsolicitedData;
     if (consume === undefined) {
-      this.logger.error(
-        `[NaiveSocket]`,
-        `No work but more response`,
-        this.currentBuffer,
-      );
+      // The buffer is whatever the peer just sent — a stored value, a
+      // credential echo, a game payload. Report its size, never its bytes.
+      this.logger.error(`[NaiveSocket]`, `No work but more response`, {
+        length: this.currentBuffer.length,
+      });
       this.currentBuffer = "";
       return;
     }

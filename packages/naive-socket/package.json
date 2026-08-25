@@ -1,7 +1,7 @@
 {
   "name": "@yingyeothon/naive-socket",
   "version": "0.0.0",
-  "description": "Zero-dependency TCP socket client with request queueing, auto-reconnect, and pluggable response matching.",
+  "description": "Minimal TCP/TLS socket client with request queueing, auto-reconnect, and pluggable response matching.",
   "keywords": [
     "yyt",
     "yingyeothon"
@@ -45,6 +45,7 @@
   },
   "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/naive-socket#readme",
   "dependencies": {
+    "@types/node": "^24.3.0",
     "@yingyeothon/logger": "workspace:*"
   }
 }

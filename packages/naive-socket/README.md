@@ -1,6 +1,6 @@
 # @yingyeothon/naive-socket
 
-Minimal TCP socket client over `node:net` with a serialized request queue, per-request timeouts, pluggable response matching (regex, fixed length, or a custom function), and automatic reconnection. Useful for talking to simple line- or length-based text protocols (for example Redis) without pulling in a full client library.
+Minimal TCP socket client over `node:net` (with an opt-in `node:tls` path) and a serialized request queue, per-request timeouts, pluggable response matching (regex, fixed length, or a custom function), and automatic reconnection. Useful for talking to simple line- or length-based text protocols (for example Redis) without pulling in a full client library.
 
 ## Install
 
@@ -87,14 +87,39 @@ socket
 
 Requests are written one at a time: the next queued message is sent only after the previous response is fulfilled. A `fulfill` result `<= 0` means "wait for more data"; a positive result consumes that many characters from the head of the receive buffer and resolves the request with them, leaving the remainder for the next request.
 
+### TLS
+
+**The connection is cleartext unless you ask for TLS.** Every byte — a Redis
+`AUTH <user> <password>` included — is readable on the wire, which is fine
+inside a VPC and not fine across the internet. Pass `tls` to wrap it:
+
+```ts
+const socket = createNaiveSocket({
+  host: "redis.example.com",
+  port: 6380,
+  tls: true, // Node's defaults, with `host` as the SNI server name
+});
+
+// Or with a private CA:
+const pinned = createNaiveSocket({
+  host: "redis.example.com",
+  port: 6380,
+  tls: { ca: readFileSync("ca.pem") },
+});
+```
+
+`tls` is handed to `tls.connect` as is, so anything it accepts works. Do not
+set `rejectUnauthorized: false` outside tests: it turns TLS into obfuscation.
+
 ## Public API
 
 - `createNaiveSocket(options)` — create a `NaiveSocket` client
 - `NaiveSocket` — the client; `send(request)` returns `Promise<string>`, `disconnect()` rejects all pending requests with `DeadSocket` (type)
-- `NaiveSocketOptions` — `{ host, port, connectionRetryInterval?, logger?, onConnectionStateChanged?, onUnsolicitedData? }`; `logger` is a `Logger` from `@yingyeothon/logger` and defaults to `nullLogger` (type)
+- `NaiveSocketOptions` — `{ host, port, connectionRetryInterval?, logger?, onConnectionStateChanged?, onUnsolicitedData?, tls? }`; `logger` is a `Logger` from `@yingyeothon/logger` and defaults to `nullLogger`, and `tls` is unset (cleartext) by default (type)
 - `SendRequest` — `{ message, fulfill?, timeoutMillis?, urgent?, expectResponse? }` (type)
 - `Fulfill` — `((buffer: string) => number) | RegExp | number` (type)
 - `UnsolicitedDataConsumer` — `(buffer: string) => number`, the `onUnsolicitedData` callback (type)
+- `TlsOptions` — `tls.connect` options minus `host`/`port`, the object form of `options.tls` (type)
 - `ConnectionState` — `Connecting | Connected | Disconnected` (enum)
 - `ConnectionStateListener` — callback for `onConnectionStateChanged` (type)
 - `createTextMatch(buffer)` — create a `TextMatch` scanner over a buffer

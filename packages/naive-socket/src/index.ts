@@ -6,6 +6,7 @@ export {
   type NaiveSocket,
   type NaiveSocketOptions,
   type SendRequest,
+  type TlsOptions,
   type UnsolicitedDataConsumer,
 } from "./naive-socket.js";
 export {

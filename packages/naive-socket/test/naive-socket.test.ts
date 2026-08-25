@@ -366,11 +366,18 @@ describe("NaiveSocket", () => {
     });
     await ns.send({ message: "ping", fulfill: "ping".length });
     await new Promise((resolve) => setTimeout(resolve, 40));
+    // The buffer is whatever the peer sent — a stored value, a credential
+    // echo — so only its size may be reported.
     expect(errorLog).toHaveBeenCalledWith(
       "[NaiveSocket]",
       "No work but more response",
-      "unsolicited",
+      { length: "unsolicited".length },
     );
+    expect(
+      errorLog.mock.calls.some((call) =>
+        call.some((arg) => String(arg).includes("unsolicited")),
+      ),
+    ).toBe(false);
     // The stray buffer is cleared so a later request is unaffected.
     expect(await ns.send({ message: "pong", fulfill: "pong".length })).toBe(
       "pong",
