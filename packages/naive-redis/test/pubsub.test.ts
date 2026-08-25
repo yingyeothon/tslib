@@ -1,3 +1,4 @@
+import { nullLogger } from "@yingyeothon/logger";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createRedisConnection,
@@ -201,6 +202,118 @@ describe("publish and subscribe", () => {
       async () => {
         await redisPublish(publisher, "room:5", "after-kill");
         expect(received.some((r) => r.message === "after-kill")).toBe(true);
+      },
+      { timeout: 10_000, interval: 100 },
+    );
+  });
+
+  it("reports a reconnect so a consumer can resynchronise", async () => {
+    const received: Received[] = [];
+    const reconnects: Array<{ channels: string[]; restored: boolean }> = [];
+    const subscriber = newSubscriber(received, {
+      connectionRetryInterval: 50,
+      onReconnected: (info) => reconnects.push(info),
+    });
+    await subscriber.subscribe("room:6");
+
+    const publisher = newConnection();
+    await redisPublish(publisher, "room:6", "before-kill");
+    await waitForMessages(received, 1);
+
+    // The first connection is not a reconnect, so nothing has fired yet.
+    expect(reconnects).toEqual([]);
+
+    await redisSend({
+      connection: publisher,
+      commands: ["CLIENT KILL TYPE pubsub"],
+      match: (m) => m.capture("\r\n"),
+      transform: (result) => result[0],
+    });
+
+    await vi.waitFor(() => expect(reconnects.length).toBeGreaterThan(0), {
+      timeout: 10_000,
+      interval: 50,
+    });
+    // The gap is announced with the channels that were replayed, which is
+    // what a consumer needs to resend anything published one-shot.
+    expect(reconnects[0]).toEqual({ channels: ["room:6"], restored: true });
+  });
+
+  it("still reports a reconnect whose replay failed", async () => {
+    const password = "pubsub-reconnect-password-1234";
+    const admin = newConnection();
+    await configSetRequirepass(admin, "", password);
+    try {
+      const received: Received[] = [];
+      const reconnects: Array<{ channels: string[]; restored: boolean }> = [];
+      const subscriber = newSubscriber(received, {
+        password,
+        connectionRetryInterval: 50,
+        onReconnected: (info) => reconnects.push(info),
+      });
+      await subscriber.subscribe("room:7");
+
+      // Rotate the password, then kill the connection: the replay's AUTH
+      // now fails, and the application has to hear about the gap anyway.
+      await configSetRequirepass(admin, password, "a-different-password");
+      await redisSend({
+        connection: admin,
+        commands: ["CLIENT KILL TYPE pubsub"],
+        match: (m) => m.capture("\r\n"),
+        transform: (result) => result[0],
+      });
+
+      await vi.waitFor(() => expect(reconnects.length).toBeGreaterThan(0), {
+        timeout: 10_000,
+        interval: 50,
+      });
+      expect(reconnects[0]?.restored).toBe(false);
+      expect(reconnects[0]?.channels).toEqual(["room:7"]);
+    } finally {
+      await configSetRequirepass(admin, "a-different-password", "");
+    }
+  });
+
+  it("survives a reconnect handler that throws", async () => {
+    const errors: unknown[][] = [];
+    const received: Received[] = [];
+    const subscriber = newSubscriber(received, {
+      connectionRetryInterval: 50,
+      logger: {
+        ...nullLogger,
+        error: (...args: unknown[]) => errors.push(args),
+      },
+      onReconnected: () => {
+        throw new Error("consumer bug");
+      },
+    });
+    await subscriber.subscribe("room:8");
+
+    const publisher = newConnection();
+    await redisSend({
+      connection: publisher,
+      commands: ["CLIENT KILL TYPE pubsub"],
+      match: (m) => m.capture("\r\n"),
+      transform: (result) => result[0],
+    });
+
+    await vi.waitFor(
+      () =>
+        expect(
+          errors.some((line) =>
+            line.some((arg) =>
+              String(JSON.stringify(arg)).includes("reconnect handler"),
+            ),
+          ),
+        ).toBe(true),
+      { timeout: 10_000, interval: 50 },
+    );
+
+    // A throwing consumer must not stop delivery.
+    await vi.waitFor(
+      async () => {
+        await redisPublish(publisher, "room:8", "after-throw");
+        expect(received.some((r) => r.message === "after-throw")).toBe(true);
       },
       { timeout: 10_000, interval: 100 },
     );

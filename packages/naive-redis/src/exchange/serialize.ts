@@ -6,7 +6,12 @@ export function serializeCommand(command: string[]): string {
   // Inline only when no part can break the argument or line framing;
   // anything with whitespace, quotes, backslashes, or control characters
   // goes through the length-prefixed RESP array form instead.
-  const inlineSafe = /^[^\s"\\\p{Cc}]+$/u;
+  //
+  // Both quote characters count: Redis's inline parser treats a single
+  // quote as a delimiter anywhere in a token, not only at its start, so
+  // `SET k v'` is answered with "unbalanced quotes" and the connection is
+  // closed under us.
+  const inlineSafe = /^[^\s"'\\\p{Cc}]+$/u;
   if (
     totalLength <= maxInlineRequestLength &&
     command.every((part) => inlineSafe.test(part))

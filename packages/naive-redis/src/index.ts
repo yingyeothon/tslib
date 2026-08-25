@@ -11,6 +11,8 @@ export { redisSet, type RedisSetOptions } from "./set.js";
 export { redisDel } from "./del.js";
 export { redisExists } from "./exists.js";
 export { redisIncr } from "./incr.js";
+export { redisExpire } from "./expire.js";
+export { redisEval, type RedisEvalOptions } from "./eval.js";
 
 export { redisPublish } from "./publish.js";
 

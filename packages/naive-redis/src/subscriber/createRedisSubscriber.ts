@@ -1,5 +1,9 @@
 import { nullLogger, type Logger } from "@yingyeothon/logger";
-import { ConnectionState, createNaiveSocket } from "@yingyeothon/naive-socket";
+import {
+  ConnectionState,
+  createNaiveSocket,
+  type TlsOptions,
+} from "@yingyeothon/naive-socket";
 import { redisAuth } from "../auth.js";
 import type { RedisConnection } from "../connection.js";
 import { serializeCommand } from "../exchange/serialize.js";
@@ -17,9 +21,25 @@ export interface RedisSubscriberOptions {
   timeoutMillis?: number;
   /** Passed through to the underlying socket. */
   connectionRetryInterval?: number;
+  /**
+   * Wraps this connection in TLS. A subscriber owns its own socket and
+   * sends its own `AUTH`, so leaving it unset while the request/response
+   * connection uses TLS puts the same credential on the wire in the clear.
+   */
+  tls?: boolean | TlsOptions;
   logger?: Logger;
   /** Called for every `message` frame on a subscribed channel. */
   onMessage: (params: { channel: string; message: string }) => void;
+  /**
+   * Called after a reconnect has replayed the subscription set, with
+   * `restored: false` when the replay failed.
+   *
+   * Nothing published during the gap is redelivered. That is harmless for
+   * self-contained snapshot frames, which the next one heals, and not
+   * harmless for one-shot commands — so a consumer that has any needs this
+   * to resynchronise rather than to assume continuity.
+   */
+  onReconnected?: (params: { channels: string[]; restored: boolean }) => void;
 }
 
 export interface RedisSubscriber {
@@ -47,8 +67,10 @@ export function createRedisSubscriber({
   password,
   timeoutMillis = 1000,
   connectionRetryInterval,
+  tls,
   logger = nullLogger,
   onMessage,
+  onReconnected,
 }: RedisSubscriberOptions): RedisSubscriber {
   const channels = new Set<string>();
   // Resolvers waiting for a `subscribe`/`unsubscribe` confirmation frame,
@@ -63,6 +85,7 @@ export function createRedisSubscriber({
     ...(connectionRetryInterval === undefined
       ? {}
       : { connectionRetryInterval }),
+    ...(tls !== undefined ? { tls } : {}),
     onUnsolicitedData: consume,
     onConnectionStateChanged: ({ state }) => {
       if (state !== ConnectionState.Connected) {
@@ -72,11 +95,16 @@ export function createRedisSubscriber({
       // reconnect has to replay the subscription set.
       const reconnected = everConnected;
       everConnected = true;
-      restore(reconnected).catch((error: unknown) => {
-        logger.error("Redis subscriber cannot restore its subscriptions", {
-          error,
+      restore(reconnected)
+        .then(() => {
+          notifyReconnected(reconnected, true);
+        })
+        .catch((error: unknown) => {
+          logger.error("Redis subscriber cannot restore its subscriptions", {
+            error,
+          });
+          notifyReconnected(reconnected, false);
         });
-      });
     },
   });
   const connection: RedisConnection = { socket, timeoutMillis };
@@ -99,6 +127,17 @@ export function createRedisSubscriber({
       settle(`${frame.event}:${frame.channel}`);
     }
     return consumed;
+  }
+
+  function notifyReconnected(reconnected: boolean, restored: boolean): void {
+    if (!reconnected || onReconnected === undefined) {
+      return;
+    }
+    try {
+      onReconnected({ channels: [...channels], restored });
+    } catch (error) {
+      logger.error("Redis subscriber reconnect handler failed", { error });
+    }
   }
 
   function settle(key: string, error?: Error): void {

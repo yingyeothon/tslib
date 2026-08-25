@@ -98,9 +98,23 @@ A payload may contain any UTF-8 text, including `\r\n` and multi-byte
 characters: bulk lengths are resolved as byte counts. Channel patterns
 (`PSUBSCRIBE`) are not supported.
 
+### TLS
+
+The transport is cleartext by default. Across an untrusted network — a Lambda
+in AWS reaching a self-hosted Redis, for example — set `tls`:
+
+```ts
+const connection = createRedisConnection({
+  host: "redis.example.com",
+  port: 6380,
+  password: "…",
+  tls: true, // or { ca } for a private CA
+});
+```
+
 ## Public API
 
-- `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set (`AUTH <username> <password>` when `username` — a Redis 6 ACL user — is set too)
+- `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set (`AUTH <username> <password>` when `username` — a Redis 6 ACL user — is set too). `tls` wraps the connection in TLS; **unset means cleartext**, so `AUTH` and every command are readable on the wire
 - `redisAuth(connection, password, { username? })` — send `AUTH` explicitly
 - `redisSend({ connection, commands, match, transform, urgent? })` — low-level RESP exchange for commands not covered below
 - `redisGet(connection, key)` — read a string value (`null` when missing)
@@ -108,8 +122,10 @@ characters: bulk lengths are resolved as byte counts. Channel patterns
 - `redisDel(connection, ...keys)` — delete keys
 - `redisExists(connection, key)` — key existence check
 - `redisIncr(connection, key)` — atomic increment
+- `redisExpire(connection, key, seconds)` — set a key's TTL, replacing any existing one; false when the key does not exist
+- `redisEval(connection, script, options?)` — run a Lua script; `RedisEvalOptions`: `keys` (also supplies `NUMKEYS`), `args`. **Integer replies only** — it exists for compare-and-delete style scripts, so a script returning a string or an array is a protocol error here
 - `redisPublish(connection, channel, message)` — publish to a channel; resolves with the number of subscribers that received it
-- `createRedisSubscriber(options)` — a connection dedicated to subscriber mode: `subscribe(channel)`, `unsubscribe(channel)`, `disconnect()`. Both commands resolve only once Redis confirms them, so a message published right after `subscribe` cannot be missed. It re-authenticates and re-subscribes after a reconnect
+- `createRedisSubscriber(options)` — a connection dedicated to subscriber mode: `subscribe(channel)`, `unsubscribe(channel)`, `disconnect()`. Both commands resolve only once Redis confirms them, so a message published right after `subscribe` cannot be missed. It re-authenticates and re-subscribes after a reconnect, and reports that gap through `onReconnected({ channels, restored })` — nothing published during it is redelivered, which the next snapshot heals but a one-shot command does not
 - `parsePushFrame(buffer)` — reads one complete reply from a subscriber stream; `incompletePushFrame` (`-1`) means "wait for more"
 - `redisRpush(connection, key, ...values)` — append to a list
 - `redisLpop(connection, key)` — pop the head of a list
@@ -123,7 +139,7 @@ characters: bulk lengths are resolved as byte counts. Channel patterns
 - `createRedisSimple(options)` — returns a `RedisSimple` (`get`/`set`/`del`/`cache` with a shared `keyPrefix` and codec)
 - `redisSimpleWork(options, work)` — connect, run `work`, always disconnect
 - `redisSimpleCache(fn, options)` — cache an async function's result in Redis (with `peek`/`refresh`/`clear` friends)
-- Types: `RedisConnection`, `RedisConnectionOptions`, `RedisSendOptions`, `RedisSetOptions`, `RedisSimple`, `RedisSimpleFn`, `RedisSimpleCacheFriends`, `RedisSimpleCacheOptions`, `RedisSimpleOptions`, `RedisSubscriber`, `RedisSubscriberOptions`, `PushFrame`, `PushFrameResult`
+- Types: `RedisAuthOptions`, `RedisConnection`, `RedisConnectionOptions`, `RedisEvalOptions`, `RedisSendOptions`, `RedisSetOptions`, `RedisSimple`, `RedisSimpleFn`, `RedisSimpleCacheFriends`, `RedisSimpleCacheOptions`, `RedisSimpleOptions`, `RedisSubscriber`, `RedisSubscriberOptions`, `PushFrame`, `PushFrameResult`
 
 ## Migrating from the legacy package
 

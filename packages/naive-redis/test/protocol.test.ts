@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import type { RedisConnection } from "../src/index.js";
 import {
   redisDel,
+  redisEval,
   redisExists,
+  redisExpire,
   redisGet,
   redisIncr,
   redisLindex,
@@ -241,5 +243,143 @@ describe("redisSimpleWork", () => {
         Promise.reject(new Error("boom")),
       ),
     ).rejects.toThrow("boom");
+  });
+});
+
+describe("expire and eval framing", () => {
+  it("sends EXPIRE through the escaping choke point", async () => {
+    const { connection, sent } = fakeConnection(() => ":1\r\n");
+    expect(await redisExpire(connection, "queue:game-1", 60)).toBe(true);
+    expect(sent[0]).toBe("EXPIRE queue:game-1 60\r\n");
+  });
+
+  it("floors a fractional TTL instead of sending a decimal point", async () => {
+    const { connection, sent } = fakeConnection(() => ":1\r\n");
+    await redisExpire(connection, "k", 1.9);
+    expect(sent[0]).toBe("EXPIRE k 1\r\n");
+  });
+
+  it("reports a missing key as false", async () => {
+    const { connection } = fakeConnection(() => ":0\r\n");
+    expect(await redisExpire(connection, "k", 60)).toBe(false);
+  });
+
+  it("cannot be used to inject a second command through the key", async () => {
+    const { connection, sent } = fakeConnection(() => ":0\r\n");
+    await redisExpire(connection, "k\r\nFLUSHALL", 60);
+    // The RESP array form is length-prefixed, so the embedded newline is
+    // payload rather than a command boundary.
+    expect(sent[0]).toBe(
+      "*3\r\n$6\r\nEXPIRE\r\n$11\r\nk\r\nFLUSHALL\r\n$2\r\n60\r\n\r\n",
+    );
+    expect(sent[0]?.startsWith("EXPIRE")).toBe(false);
+  });
+
+  it("sends EVAL with NUMKEYS derived from the key list", async () => {
+    const { connection, sent } = fakeConnection(() => ":1\r\n");
+    expect(
+      await redisEval(connection, "return 1", {
+        keys: ["lock:a"],
+        args: ["token"],
+      }),
+    ).toBe(1);
+    expect(sent[0]).toBe(
+      "*5\r\n$4\r\nEVAL\r\n$8\r\nreturn 1\r\n$1\r\n1\r\n$6\r\nlock:a\r\n$5\r\ntoken\r\n\r\n",
+    );
+  });
+
+  it("defaults to no keys and no args", async () => {
+    const { connection, sent } = fakeConnection(() => ":7\r\n");
+    expect(await redisEval(connection, "return 7")).toBe(7);
+    expect(sent[0]).toBe(
+      "*3\r\n$4\r\nEVAL\r\n$8\r\nreturn 7\r\n$1\r\n0\r\n\r\n",
+    );
+  });
+
+  it("reads a negative integer reply", async () => {
+    const { connection } = fakeConnection(() => ":-1\r\n");
+    expect(await redisEval(connection, "return -1")).toBe(-1);
+  });
+
+  it("rejects a script error instead of returning a number", async () => {
+    const { connection } = fakeConnection(() => "-ERR bad script\r\n");
+    await expect(redisEval(connection, "boom")).rejects.toThrow(/bad script/);
+  });
+
+  it("keeps a multi-line script inside one length-prefixed argument", async () => {
+    const { connection, sent } = fakeConnection(() => ":0\r\n");
+    const script =
+      'if redis.call("GET", KEYS[1]) == ARGV[1] then\n  return 1\nend\nreturn 0';
+    await redisEval(connection, script, { keys: ["lock:a"], args: ["t"] });
+    const frame = sent[0] ?? "";
+    expect(frame.startsWith("*5\r\n$4\r\nEVAL\r\n")).toBe(true);
+    expect(frame).toContain(`$${Buffer.byteLength(script)}\r\n${script}\r\n`);
+  });
+});
+
+describe("quote characters on the inline path", () => {
+  it("uses the RESP array form for a single quote", () => {
+    // Redis's inline parser treats `'` as a delimiter anywhere in a token,
+    // so `SET q v'` is answered with "unbalanced quotes" and the connection
+    // is closed under us.
+    expect(serializeCommand(["SET", "q", "v'"])).toBe(
+      "*3\r\n$3\r\nSET\r\n$1\r\nq\r\n$2\r\nv'\r\n",
+    );
+  });
+
+  it("does not let two single-quoted arguments merge into one", () => {
+    const frame = serializeCommand(["SET", "k'", "v'"]);
+    expect(frame.startsWith("SET ")).toBe(false);
+    expect(frame).toBe("*3\r\n$3\r\nSET\r\n$2\r\nk'\r\n$2\r\nv'\r\n");
+  });
+
+  it("still inlines a quote-free command", () => {
+    expect(serializeCommand(["EXPIRE", "queue:g1", "60"])).toBe(
+      "EXPIRE queue:g1 60",
+    );
+  });
+});
+
+describe("eval reply framing", () => {
+  it("consumes a bulk reply whole instead of leaving its tail behind", async () => {
+    const { connection, sent } = fakeConnection((message) =>
+      message.includes("EVAL") ? "$8\r\nabcdefgh\r\n" : ":42\r\n",
+    );
+
+    // The helper only resolves integers, but the reply must be framed off
+    // the connection either way.
+    await expect(redisEval(connection, "return 'abcdefgh'")).rejects.toThrow(
+      /Not an integer reply: bulk/,
+    );
+    // The next command on the same connection is unaffected.
+    expect(await redisIncr(connection, "counter")).toBe(42);
+    expect(sent).toHaveLength(2);
+  });
+
+  it("consumes a flat array reply whole", async () => {
+    const { connection } = fakeConnection((message) =>
+      message.includes("EVAL") ? "*2\r\n:7\r\n:8\r\n" : ":42\r\n",
+    );
+
+    await expect(redisEval(connection, "return {7,8}")).rejects.toThrow(
+      /Not an integer reply: array/,
+    );
+    expect(await redisIncr(connection, "counter")).toBe(42);
+  });
+
+  it("consumes a null bulk reply", async () => {
+    const { connection } = fakeConnection((message) =>
+      message.includes("EVAL") ? "$-1\r\n" : ":42\r\n",
+    );
+
+    await expect(redisEval(connection, "return nil")).rejects.toThrow(
+      /Not an integer reply: bulk/,
+    );
+    expect(await redisIncr(connection, "counter")).toBe(42);
+  });
+
+  it("reports a script error as an error, not as a shape mismatch", async () => {
+    const { connection } = fakeConnection(() => "-ERR bad script\r\n");
+    await expect(redisEval(connection, "boom")).rejects.toThrow(/bad script/);
   });
 });

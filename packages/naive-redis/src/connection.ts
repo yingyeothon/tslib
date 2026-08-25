@@ -2,6 +2,7 @@ import {
   ConnectionState,
   createNaiveSocket,
   type NaiveSocket,
+  type TlsOptions,
 } from "@yingyeothon/naive-socket";
 import { redisAuth } from "./auth.js";
 
@@ -12,6 +13,11 @@ export interface RedisConnectionOptions {
   username?: string;
   password?: string;
   timeoutMillis?: number;
+  /**
+   * Wraps the connection in TLS. Unset means cleartext, so `AUTH` and every
+   * command are readable on the wire — see `@yingyeothon/naive-socket`.
+   */
+  tls?: boolean | TlsOptions;
 }
 
 export interface RedisConnection {
@@ -26,10 +32,12 @@ export function createRedisConnection({
   username,
   password,
   timeoutMillis = 1000,
+  tls,
 }: RedisConnectionOptions): RedisConnection {
   const socket = createNaiveSocket({
     host,
     port,
+    ...(tls !== undefined ? { tls } : {}),
     onConnectionStateChanged: ({ state }) => {
       if (password && state === ConnectionState.Connected) {
         const authenticated = redisAuth(connection, password, { username });
