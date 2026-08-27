@@ -14,7 +14,7 @@
 - `"type": "module"`, dual `exports` map (import/require × types/default),
   `files: ["dist"]`, `sideEffects: false`, `engines.node >= 20`.
 - Build script is always `tsup --config ../../tsup.config.base.ts`.
-- `version` stays `0.0.0` in git — see [release.md](release.md).
+- `version` is written only by the Release workflow — see [release.md](release.md).
 - **Any `@types/*` package referenced by a public `.d.ts` must be a runtime
   `dependency`, not a devDependency.** `@types/aws-lambda` (4 packages) and
   `@types/jsonwebtoken` (jwt authorizer) are there for that reason; moving them

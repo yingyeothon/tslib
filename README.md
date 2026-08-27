@@ -80,7 +80,7 @@ Every package ships dual ESM/CJS with type definitions via an `exports` map, tar
 
 All packages share one version. To release:
 
-1. Create a GitHub Release with a tag like `v2.0.0` (must be greater than any previously published version of the kept package names).
-2. The [release workflow](.github/workflows/release.yml) stamps that version into every package, builds, tests, and runs `pnpm -r publish` to npm with provenance.
+1. Run the [Release workflow](.github/workflows/release.yml) from the GitHub Actions tab with the version to publish (e.g. `2.0.0`; it must exceed every version already published for any package).
+2. The workflow stamps that version into every package, builds and tests, commits `Release vX.Y.Z`, tags that commit, pushes commit and tag atomically, publishes all packages with `pnpm -r publish` and npm provenance, and creates the GitHub Release.
 
-Publishing auth uses npm Trusted Publishing via the workflow's `id-token: write` permission; no npm token is stored.
+The committed `version` fields therefore always equal the last release, and the tag points at the commit that was published. Publishing auth uses npm Trusted Publishing via the workflow's `id-token: write` permission; no npm token is stored. A package name that is new to npm needs one manual `scripts/bootstrap-publish.sh` run first so its Trusted Publisher can be registered.

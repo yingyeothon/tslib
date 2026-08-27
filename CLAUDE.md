@@ -43,5 +43,5 @@ pnpm coverage     # vitest with per-package v8 thresholds
 - Manually verify against the built `dist` in both ESM and CJS —
   see `rules/manual-verification.md`.
 - Follow the per-task completion ritual in `rules/workflow.md`.
-- Never bump `version` in git; releases are tag-driven —
+- Never edit `version` by hand; the Release workflow commits and tags it —
   see `rules/release.md`.

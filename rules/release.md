@@ -2,32 +2,55 @@
 
 ## Versioning
 
-- All 18 packages share one version. `version` stays `0.0.0` in git — never bump
-  it by hand.
-- `scripts/set-version.mjs <x.y.z>` stamps the tag version into every
-  `packages/*/package.json` at release time. Workspace ranges (`workspace:^`)
-  stay intact; `pnpm publish` rewrites them to real semver.
+- All 19 packages share one version, and the version **is committed**: the
+  Release workflow writes it into every `packages/*/package.json`, commits
+  `Release vX.Y.Z`, and tags that commit. Between releases the manifests carry
+  the last released version. Never edit `version` by hand — only the workflow
+  (or the bootstrap script, transiently) does.
+- `scripts/set-version.mjs <x.y.z>` stamps a version into every package.
+  Workspace ranges (`workspace:^`) stay intact; `pnpm publish` rewrites them
+  to real semver.
+- `scripts/verify-release-version.mjs <x.y.z>` is the gate: stable semver
+  only, and the version must exceed every version already published on npm
+  for every package (a name new to npm passes). If the tag already exists it
+  must carry that version — that is the publish-retry path.
 
-## Release flow (the user performs the release)
+## Release flow (the user runs it)
 
 1. Ensure `main` is green (see [workflow.md](workflow.md)) and pushed.
-2. Publish a GitHub Release with a stable tag `vX.Y.Z` — the workflow rejects
-   anything else, and the version must exceed any previously published version
-   of a kept package name (hence v2.0.0+).
-3. `.github/workflows/release.yml` then stamps, builds, lints, typechecks,
-   tests, and runs `pnpm -r publish --access public --no-git-checks --provenance`.
+2. GitHub → Actions → **Release** → _Run workflow_ with `version: X.Y.Z`
+   (no leading `v`). The workflow, on a fresh checkout of `main`:
+   verify version → stamp → build/lint/format/typecheck/test →
+   commit + annotated tag → `git push --atomic origin main vX.Y.Z` →
+   `pnpm -r publish --provenance` → GitHub Release with generated notes.
+3. Version, tag, commit, and npm provenance therefore all point at the same
+   commit. The push is atomic: either the release commit and tag both land or
+   neither does, and nothing is published unless the push succeeded.
+4. If publishing fails part-way, re-run the workflow with the same version:
+   it detects the existing tag, checks it out, and `pnpm -r publish` skips the
+   packages already on npm.
+5. The job uses the `npm-release` GitHub environment. Add required reviewers
+   there if the "Run workflow" button alone feels too easy to press.
+6. `main` branch protection must let `github-actions[bot]` push (or exempt the
+   workflow); otherwise the push step fails before anything is published.
 
 ## Authentication: Trusted Publishing (OIDC)
 
 - Publishing uses npm Trusted Publishing. There is **no `NPM_TOKEN`** — do not
   reintroduce a `NODE_AUTH_TOKEN` env or reference the secret anywhere.
-- The job needs `permissions: id-token: write`. Provenance is attached
+- The job needs `permissions: id-token: write` and npm >= 11.5.1 (the workflow
+  upgrades npm because Node 22 ships an older one). Provenance is attached
   automatically on the OIDC path.
-- Every package must have `yingyeothon` / `tslib` / `release.yml` registered as a
-  Trusted Publisher on npmjs.com (package → Settings → Trusted Publisher →
-  GitHub Actions). Registration is only possible for packages that already
-  exist, so a brand-new package name needs one manual `npm publish` (with
-  `npm login` + OTP) before it can be added.
+- Every package must have `yingyeothon` / `tslib` / `release.yml` registered
+  as a Trusted Publisher on npmjs.com (package → Settings → Trusted Publisher
+  → GitHub Actions; the environment name `npm-release` may be set there too).
+- Registration is only possible for packages that already exist, so a
+  brand-new name needs one manual publish first:
+  `scripts/bootstrap-publish.sh <version> <dir>...` (after `npm login`). It
+  stamps transiently, publishes only the listed packages under the
+  `bootstrap` dist-tag, and restores the manifests; it is not a release, so
+  nothing is committed or tagged. Register the Trusted Publisher, then run the
+  real Release workflow — npm has no cooldown between successive versions.
 - `ci.yml` must never touch publish credentials.
 
 ## Pre-release verification

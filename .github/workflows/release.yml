@@ -1,37 +1,83 @@
 name: Release
 
+# Manual, version-driven release: stamp the version into every package, verify,
+# commit that stamp, tag it, push commit + tag atomically, and only then publish
+# to npm with provenance. The tag therefore always points at the commit whose
+# package.json files carry the published version.
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release (x.y.z, stable only, no leading v)"
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
-  publish:
+  release:
     runs-on: ubuntu-latest
+    environment: npm-release
     permissions:
-      contents: read
-      id-token: write # npm provenance
+      contents: write # release commit, tag, GitHub Release
+      id-token: write # npm provenance / Trusted Publishing
+    env:
+      VERSION: ${{ inputs.version }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
-      - name: Verify tag format
-        run: |
-          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release tag '$GITHUB_REF_NAME' must look like v1.2.3 (stable only)" >&2
-            exit 1
-          fi
+      - name: Upgrade npm for Trusted Publishing (OIDC needs npm >= 11.5.1)
+        run: npm install -g npm@latest && npm --version
       - run: pnpm install --frozen-lockfile
-      - name: Stamp version from tag
-        run: node scripts/set-version.mjs "${GITHUB_REF_NAME#v}"
+      - name: Verify the requested version
+        run: node scripts/verify-release-version.mjs "$VERSION"
+      - name: Detect publish retry
+        id: retry
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/v$VERSION" >/dev/null; then
+            echo "retry=true" >> "$GITHUB_OUTPUT"
+            git checkout --detach "v$VERSION"
+          else
+            echo "retry=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Stamp version
+        if: steps.retry.outputs.retry == 'false'
+        run: node scripts/set-version.mjs "$VERSION"
       - run: pnpm build
       - run: pnpm lint
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
+      - name: Commit, tag, and push atomically
+        if: steps.retry.outputs.retry == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/*/package.json
+          git commit -m "Release v$VERSION"
+          git tag -a "v$VERSION" -m "Release v$VERSION"
+          git push --atomic origin HEAD:main "refs/tags/v$VERSION"
       - name: Publish all packages
         # Auth via npm Trusted Publishing (OIDC): every package must have this
-        # repo + workflow registered as a Trusted Publisher on npmjs.com.
+        # repo + workflow file registered as a Trusted Publisher on npmjs.com.
+        # The tree is already committed and pushed above, so git checks are
+        # redundant; skipping them also keeps the retry path (detached tag) working.
+        # `pnpm -r publish` skips packages whose version is already on npm.
         run: pnpm -r publish --access public --no-git-checks --provenance
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "v$VERSION" >/dev/null 2>&1; then
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+          fi

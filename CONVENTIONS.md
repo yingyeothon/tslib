@@ -49,4 +49,4 @@ before the first tslib release (v2.0.0+); all breaking changes are allowed until
 ## Unchanged invariants
 
 Named exports only via `src/index.ts`; `"type": "module"` dual build; version
-stays `0.0.0` in git; see `.github/workflows` and root configs.
+is written only by the Release workflow; see `.github/workflows` and root configs.
