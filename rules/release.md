@@ -51,6 +51,11 @@
   `bootstrap` dist-tag, and restores the manifests; it is not a release, so
   nothing is committed or tagged. Register the Trusted Publisher, then run the
   real Release workflow — npm has no cooldown between successive versions.
+- After a brand-new name is published, `npm access get status` answers at
+  once but `npm view` can return 404 for ~5 minutes while the read replicas
+  catch up. Wait; do not republish. The first version of a package always
+  gets `latest` as well, whatever `--tag` said — the next real release
+  overrides it.
 - `ci.yml` must never touch publish credentials.
 
 ## Pre-release verification
