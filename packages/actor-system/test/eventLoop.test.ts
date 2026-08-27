@@ -320,12 +320,11 @@ describe("eventLoop", () => {
         },
       });
 
-      await expect(
-        (async () => {
-          await vi.advanceTimersByTimeAsync(400);
-          await finished;
-        })(),
-      ).rejects.toThrow("Actor lock lost");
+      // Attach the expectation before advancing time: the loop rejects
+      // during the advance, and an unobserved rejection fails the whole run.
+      const outcome = expect(finished).rejects.toThrow("Actor lock lost");
+      await vi.advanceTimersByTimeAsync(400);
+      await outcome;
       expect(lost).toBe(1);
     } finally {
       vi.useRealTimers();
