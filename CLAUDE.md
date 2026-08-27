@@ -2,7 +2,7 @@
 
 ## Project Shape
 
-- `tslib` is a pnpm workspace monorepo publishing 18 `@yingyeothon/*` TypeScript
+- `tslib` is a pnpm workspace monorepo publishing 19 `@yingyeothon/*` TypeScript
   libraries (codec, logger, naive-socket/redis, repository, actor-system, lambda
   glue, gamebase) from `packages/*`, all sharing one version.
 - Every package is a library: no app, no runtime entry point. Build output is

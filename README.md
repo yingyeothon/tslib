@@ -24,6 +24,7 @@ TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) 
 | [@yingyeothon/lambda-authorizer-jwt](packages/lambda-authorizer-jwt)   | JWT-issuing and JWT-verifying API Gateway authorizers      |
 | [@yingyeothon/lambda-gamebase](packages/lambda-gamebase)               | Serverless WebSocket game framework on AWS Lambda          |
 | [@yingyeothon/gamebase-all-together](packages/gamebase-all-together)   | Wait/running stage game loop plugin for lambda-gamebase    |
+| [@yingyeothon/gamebase-client](packages/gamebase-client)               | Browser-capable client SDK for the yyt WebSocket gateway   |
 
 ## Dependency graph
 
@@ -54,6 +55,8 @@ graph LR
   lambda-gamebase --> naive-redis
   gamebase-all-together --> lambda-gamebase
   gamebase-all-together --> logger
+  gamebase-client --> codec
+  gamebase-client --> logger
 ```
 
 API design rules shared by all packages are documented in [CONVENTIONS.md](CONVENTIONS.md).

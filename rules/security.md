@@ -120,6 +120,10 @@ real defects that shipped in the legacy code.
 
 ## Logging secrets
 
+- The gateway JWT travels in the WebSocket subprotocol list
+  (`["bearer", token]`), never in the URL. Client-side logs name the channel,
+  game, user, and close code only; a test asserts the token string is absent
+  from a capturing `LogWriter`.
 - Never log a raw receive buffer. It is whatever the peer just sent — a
   stored value, a credential echo, a game payload. Report its size.
 - Never log an entire request event. `APIGatewayProxyEvent` carries `headers`

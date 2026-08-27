@@ -21,6 +21,11 @@
 
 - AWS SDK v3 → `aws-sdk-client-mock`. Never hit real AWS.
 - HTTP → `undici` `MockAgent`. Never hit a real network.
+- WebSocket → a WHATWG-shaped fake class injected through the client's
+  `WebSocket` option, driven from the test as the server
+  (`packages/gamebase-client/test/fake-web-socket.ts`). Do not add `ws`; the
+  SDK must never depend on it and a real socket cannot be told to close with
+  code 4001 on cue.
 - Time → `vi.useFakeTimers()`; assert scheduling explicitly instead of sleeping.
 - Environment → `vi.stubEnv`, and only when testing an `*OptionsFromEnv()` helper.
   Everything else takes injected options.

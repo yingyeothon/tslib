@@ -108,8 +108,14 @@ rename. Keep new authorizers in that shape; do not rename them to `*Handler`.
 ## Layering
 
 - Leaf packages (`codec`, `logger`, `repository`, `naive-socket`,
-  `event-broker`, `s3-cache-bridge-client`) must not depend on anything in the
-  workspace beyond each other's leaves.
+  `event-broker`, `s3-cache-bridge-client`, `gamebase-client`) must not depend
+  on anything in the workspace beyond each other's leaves.
+- A package that must run in a browser (`gamebase-client`) types the WHATWG
+  globals it uses (`WebSocketLike`, `FetchLike`) itself and reads
+  `globalThis.WebSocket` / `fetch` only as a default behind an injectable
+  option. The DOM lib and `undici-types` are both off-limits in a public
+  `.d.ts`: the first is not in `tsconfig.base.json`, the second would become a
+  runtime dependency (see `tooling.md`). No `node:` imports there either.
 - Backend adapters (`repository-redis`, `repository-s3`, `actor-system-redis`,
   `actor-system-lambda`) implement an abstraction defined in the leaf package.
   Put the interface in the abstraction package, never in the adapter.
