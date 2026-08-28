@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/actor-system-lambda",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "AWS Lambda handler and shift-invoker glue for @yingyeothon/actor-system.",
   "keywords": [
     "yyt",

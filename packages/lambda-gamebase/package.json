@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/lambda-gamebase",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Serverless WebSocket game framework on AWS Lambda: actor-based game loop, connection handling, and broadcasting.",
   "keywords": [
     "yyt",

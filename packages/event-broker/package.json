@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/event-broker",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Type-safe async event broker with add/remove/once listener semantics.",
   "keywords": [
     "yyt",

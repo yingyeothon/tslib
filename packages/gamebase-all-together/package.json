@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/gamebase-all-together",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Wait/running stage game loop plugin for @yingyeothon/lambda-gamebase (formerly do-game-all-together).",
   "keywords": [
     "yyt",

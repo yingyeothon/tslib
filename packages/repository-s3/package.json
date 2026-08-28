@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/repository-s3",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "S3-backed implementation of the @yingyeothon/repository abstractions.",
   "keywords": [
     "yyt",

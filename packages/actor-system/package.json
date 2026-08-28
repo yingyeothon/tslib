@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/actor-system",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Lightweight actor system: per-actor message queues, locking, and awaitable message processing.",
   "keywords": [
     "yyt",

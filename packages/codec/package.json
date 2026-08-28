@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/codec",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Tiny codec abstraction (Codec interface + JsonCodec) for encoding domain values into strings.",
   "keywords": [
     "yyt",

@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/repository",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Key-value repository abstractions (Repository, ExpirableRepository) with an in-memory implementation.",
   "keywords": [
     "yyt",

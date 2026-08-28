@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/gamebase-client",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Browser-capable client SDK for the yyt WebSocket gateway: lobby and dungeon (q) protocols with typed frames, reconnect, and a peer map.",
   "keywords": [
     "yyt",
