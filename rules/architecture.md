@@ -97,6 +97,19 @@ consequences of those rules.
   arrangement the README recommends — a credential crossing an extension
   point needs a warning at the extension point, not only in the docs.
 
+## Mirroring a Go wire protocol
+
+- `gamebase-client`'s types mirror the gateway's Go structs, **including the
+  JSON tags**. Two things a TypeScript reading of the README gets wrong:
+  a Go `string` field refuses a JSON number for the whole frame (`dir` was
+  typed `number` in 2.0.0 and every `pos` carrying it was dropped as
+  `bad_message`), and `omitempty` means the field is simply absent — so a
+  required field in the SDK type is a lie unless the client fills it in
+  (`normalizePartyFrame` for `leaderId`/`invited`/`max`).
+- When checking a wire type, open `gateway/internal/lobby/protocol.go` in the
+  service repo, not only its README. A smoke that never sends the optional
+  field (`dir`) does not catch a type mismatch; the test that sends it does.
+
 ## Naming a factory that returns a handler
 
 `CONVENTIONS.md` reserves `create*Handler` for factories whose product is

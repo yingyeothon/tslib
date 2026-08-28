@@ -31,11 +31,18 @@ export interface Hello {
   capabilities: Capabilities;
 }
 
+/**
+ * Facing token. It is the game's own opaque string (e.g. `"n"`, `"left"`),
+ * at most 16 bytes on the wire; the gateway refuses the whole frame as
+ * `bad_message` when it is not a string.
+ */
+export type Direction = string;
+
 export interface Peer {
   userId: string;
   x: number;
   y: number;
-  dir?: number;
+  dir?: Direction;
 }
 
 /** Documented gateway refusal codes; the union stays open for future ones. */
@@ -70,7 +77,7 @@ export interface PosFrame {
   zone: string;
   x: number;
   y: number;
-  dir?: number;
+  dir?: Direction;
 }
 
 export interface SayFrame {
@@ -145,7 +152,7 @@ export interface EnterFrame {
   userId: string;
   x: number;
   y: number;
-  dir?: number;
+  dir?: Direction;
 }
 
 export interface LeaveFrame {
@@ -183,7 +190,13 @@ export interface PartyMember {
   online: boolean;
 }
 
-/** Roster snapshot on every change and on reconnect; `partyId: ""` means no party. */
+/**
+ * Roster snapshot on every change and on reconnect; `partyId: ""` means no
+ * party. On the wire `leaderId`, `invited`, and `max` are omitted when empty
+ * (Go `omitempty`); the lobby client fills them in as `""`, `[]`, and `0`
+ * (and a missing `members` as `[]`) before the frame reaches `roster`, a
+ * `party` handler, or the `frame` event.
+ */
 export interface PartyFrame {
   type: "party";
   partyId: string;

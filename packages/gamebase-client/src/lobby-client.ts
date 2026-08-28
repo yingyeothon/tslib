@@ -18,6 +18,7 @@ import { createPeerMap } from "./peer-map.js";
 import type { FetchLike, WebSocketConstructor } from "./transport.js";
 import type {
   Capabilities,
+  Direction,
   ErrorFrame,
   EventBroadcastFrame,
   Hello,
@@ -71,7 +72,10 @@ export interface GatewayLobbyClientEvents {
   pong: undefined;
   error: ErrorFrame;
   protocolError: ProtocolErrorEvent;
-  /** Every frame after `hello`, before any SDK handling. */
+  /**
+   * Every frame after `hello`, before any SDK handling; a `party` frame is
+   * already filled in (see `PartyFrame`).
+   */
   frame: LobbyServerFrame;
   [key: string]: unknown;
 }
@@ -100,7 +104,7 @@ export interface GatewayLobbyClient {
   close(): void;
   /** Fetches `hello.mapUrl` (cached per URL). */
   map(): Promise<unknown>;
-  pos(input: { zone: string; x: number; y: number; dir?: number }): void;
+  pos(input: { zone: string; x: number; y: number; dir?: Direction }): void;
   say(input: { scope: SayScope; to?: string; text: string }): void;
   event(input: {
     scope: SayScope;
@@ -120,6 +124,27 @@ export interface GatewayLobbyClient {
 
 function normalizePartyId(partyId: string | undefined): string | undefined {
   return partyId === undefined || partyId === "" ? undefined : partyId;
+}
+
+/** The gateway refuses a `dir` longer than this many bytes as `bad_message`. */
+const maxDirBytes = 16;
+
+/**
+ * The gateway marshals the roster with Go `omitempty`: `leaderId`, `invited`,
+ * and `max` are missing when empty (always after leave/dissolve, and
+ * `invited` whenever nobody is pending); `members` is guarded the same way in
+ * case a future gateway marks it too. Fill them so the public type stays
+ * strict and a handler can read `roster.invited.length` without a guard.
+ */
+function normalizePartyFrame(frame: PartyFrame): PartyFrame {
+  const partial = frame as Partial<PartyFrame>;
+  return {
+    ...frame,
+    leaderId: partial.leaderId ?? "",
+    members: partial.members ?? [],
+    invited: partial.invited ?? [],
+    max: partial.max ?? 0,
+  };
 }
 
 /**
@@ -211,7 +236,9 @@ export function createGatewayLobbyClient(
     emitter.emit("connected", frame);
   });
   socket.on("frame", (raw) => {
-    const frame = raw as unknown as LobbyServerFrame;
+    const received = raw as unknown as LobbyServerFrame;
+    const frame =
+      received.type === "party" ? normalizePartyFrame(received) : received;
     emitter.emit("frame", frame);
     switch (frame.type) {
       case "snapshot":
@@ -326,6 +353,12 @@ export function createGatewayLobbyClient(
     },
     pos(input) {
       requireCapability("pos");
+      if (
+        input.dir !== undefined &&
+        new TextEncoder().encode(input.dir).length > maxDirBytes
+      ) {
+        throw new Error(`dir must be at most ${maxDirBytes} bytes`);
+      }
       send({ type: "pos", ...input });
     },
     say(input) {

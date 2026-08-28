@@ -169,6 +169,7 @@ describe("createGatewayLobbyClient: senders and capabilities", () => {
   it("sends typed lobby frames", async () => {
     const { client, factory } = await connected();
     client.pos({ zone: "town", x: 1, y: 2 });
+    client.pos({ zone: "town", x: 1, y: 3, dir: "n" });
     client.say({ scope: "user", to: "bob", text: "psst" });
     client.event({
       scope: "party",
@@ -184,6 +185,7 @@ describe("createGatewayLobbyClient: senders and capabilities", () => {
     client.ping();
     expect(factory.latest().sent).toEqual([
       { type: "pos", zone: "town", x: 1, y: 2 },
+      { type: "pos", zone: "town", x: 1, y: 3, dir: "n" },
       { type: "say", scope: "user", to: "bob", text: "psst" },
       {
         type: "event",
@@ -263,7 +265,7 @@ describe("createGatewayLobbyClient: peers and frames", () => {
       userId: "carol",
       x: 2,
       y: 2,
-      dir: 1,
+      dir: "d1",
     });
     socket.serverSend({
       type: "pos",
@@ -286,7 +288,7 @@ describe("createGatewayLobbyClient: peers and frames", () => {
       ["leave", "bob"],
     ]);
     expect(client.peers.all()).toEqual([
-      { userId: "carol", x: 2, y: 2, dir: 1 },
+      { userId: "carol", x: 2, y: 2, dir: "d1" },
     ]);
     expect(client.peers.get("alice")).toBeUndefined();
   });
@@ -373,6 +375,59 @@ describe("createGatewayLobbyClient: peers and frames", () => {
       "party:",
     ]);
     expect(raw).toHaveBeenCalledTimes(9);
+  });
+
+  it("fills the roster fields the gateway omits when empty", async () => {
+    const { client, factory } = await connected();
+    const seen: unknown[] = [];
+    const raw: unknown[] = [];
+    client.on("party", (f) => seen.push(f));
+    client.on("frame", (f) => raw.push(f));
+    const socket = factory.latest();
+    // Go `omitempty`: no `invited` when nobody is pending.
+    socket.serverSend({
+      type: "party",
+      partyId: "pty_1",
+      leaderId: "bob",
+      members: [{ userId: "bob", online: true }],
+      max: 4,
+    });
+    expect(client.roster).toEqual({
+      type: "party",
+      partyId: "pty_1",
+      leaderId: "bob",
+      members: [{ userId: "bob", online: true }],
+      invited: [],
+      max: 4,
+    });
+    // After leave/dissolve only `partyId: ""` is certain to be sent.
+    socket.serverSend({ type: "party", partyId: "" });
+    expect(client.partyId).toBeUndefined();
+    expect(client.roster).toEqual({
+      type: "party",
+      partyId: "",
+      leaderId: "",
+      members: [],
+      invited: [],
+      max: 0,
+    });
+    expect(seen).toHaveLength(2);
+    expect(seen[1]).toEqual(client.roster);
+    // The raw `frame` event carries the filled-in frame as well.
+    expect(raw).toEqual(seen);
+  });
+
+  it("refuses a dir longer than the gateway accepts", async () => {
+    const { client, factory } = await connected();
+    client.pos({ zone: "town", x: 0, y: 0, dir: "0123456789abcdef" });
+    expect(() =>
+      client.pos({ zone: "town", x: 0, y: 0, dir: "0123456789abcdefg" }),
+    ).toThrow("dir must be at most 16 bytes");
+    expect(() =>
+      // 6 characters, 18 bytes: the limit is bytes, as in the gateway.
+      client.pos({ zone: "town", x: 0, y: 0, dir: "북북동서남남" }),
+    ).toThrow("dir must be at most 16 bytes");
+    expect(factory.latest().sent).toHaveLength(1);
   });
 
   it("takes partyId from hello and normalises an empty one", async () => {

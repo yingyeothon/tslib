@@ -1,5 +1,6 @@
 export type {
   Capabilities,
+  Direction,
   EnterFrame,
   ErrorFrame,
   EventBroadcastFrame,

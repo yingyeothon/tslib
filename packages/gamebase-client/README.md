@@ -25,7 +25,7 @@ lobby.on("peerEnter", (peer) => spawn(peer));
 lobby.on("peerMove", (peers) => peers.forEach(move));
 lobby.on("peerLeave", (userId) => despawn(userId));
 lobby.on("say", (frame) => showChat(frame.from, frame.text));
-lobby.on("connected", () => lobby.pos({ zone: startZone, x, y })); // also after a reconnect
+lobby.on("connected", () => lobby.pos({ zone: startZone, x, y, dir: "n" })); // also after a reconnect
 
 const hello = await lobby.connect(); // resolves on the gateway's `hello`
 const map = await lobby.map(); // fetches hello.mapUrl once, no credentials
@@ -74,6 +74,11 @@ const { createGatewayLobbyClient } = require("@yingyeothon/gamebase-client");
 
 Reconnects use exponential backoff (500 ms, ×2, cap 15 s, ±20 % jitter) until `backoff.maxAttempts` is exhausted, which ends in `stopped`. A browser cannot see why a handshake was refused (401/403/404/410 all surface as a close before open), so `maxHandshakeFailures` consecutive closes-before-open (default 5) also end in `stopped` instead of retrying a dead token forever; the counter resets on every successful open. `disconnected` fires before every reconnect or stop with `willReconnect` set. On the lobby, `connected` fires again with the new `hello` and the peer map is empty until the game re-sends `pos` and the gateway answers with a `snapshot`; a `party` frame that follows `hello` after a gateway restart updates `partyId` and `roster`. On `q`, a reconnect is a fresh `enter` and the game is expected to reply with a snapshot.
 
+## Wire details worth knowing
+
+- `dir` is the game's own facing token, an opaque **string** of at most 16 bytes (`"n"`, `"left"`, …). The gateway parses `pos` with a string field, so a numeric `dir` makes the whole frame a `bad_message` and the position is dropped; `pos()` throws locally on a longer one. Omit it if the game has no facing.
+- The `party` roster is marshalled with Go `omitempty`: `leaderId`, `invited`, and `max` are missing on the wire when empty (always after leave/dissolve, `invited` whenever nobody is pending). The lobby client fills them in as `""`, `[]`, and `0` (and a missing `members` as `[]`) before the frame reaches `roster`, a `party` handler, or the `frame` event, so `roster.invited.length` needs no guard.
+
 ## Browser and Node
 
 The SDK uses only the WHATWG `WebSocket` and `fetch` globals through its own structural types, so its `.d.ts` pulls in neither the DOM lib nor `undici-types`. Browsers and Node >= 22 need nothing; on Node 20 pass an implementation through the `WebSocket` option (and `fetch` for `map()`).
@@ -88,7 +93,7 @@ The SDK uses only the WHATWG `WebSocket` and `fetch` globals through its own str
 - `classifyClose(code, kind)` — the table above as a function; `GatewayCloseCode` — the `4000`–`4004` constants.
 - `buildGatewayUrl(url, channelId, gameId?)` — the `?channel=…&gameId=…` form the gateway expects.
 - `reservedGameFrameTypes` — `["enter", "leave"]`.
-- Types: wire — `Hello`, `Capabilities`, `Peer`, `SayScope`, `ErrorFrame`, `GatewayErrorCode`, `LobbyClientFrame` (`PosFrame`, `SayFrame`, `EventFrame`, `PartyCreateFrame`, `PartyInviteRequestFrame`, `PartyAcceptFrame`, `PartyDeclineFrame`, `PartyLeaveFrame`, `PartyListFrame`, `PingFrame`), `LobbyServerFrame` (`SnapshotFrame`, `EnterFrame`, `LeaveFrame`, `PosBroadcastFrame`, `SayBroadcastFrame`, `EventBroadcastFrame`, `PartyFrame`, `PartyMember`, `PartyInviteFrame`, `PartyDeclinedFrame`, `PongFrame`), `GameClientFrame`, `GameServerFrame`; transport — `WebSocketLike`, `WebSocketConstructor`, `WebSocketMessageEventLike`, `WebSocketCloseEventLike`, `FetchLike`, `FetchResponseLike`; events — `EventHandler`, `Unsubscribe`, `GatewayClientState`, `DisconnectedEvent`, `ReconnectingEvent`, `StoppedEvent`, `ProtocolErrorEvent`, `GameEndedEvent`; close codes — `GatewayChannelKind`, `CloseDisposition`, `CloseDispositionKind`; backoff — `Backoff`, `BackoffOptions`; peers — `PeerMap`, `PeerMapOptions`, `PeerMapFrame`, `PeerChange`; map — `MapFetcher`, `MapFetcherOptions`; clients — `GatewayClientBaseOptions`, `GatewayLobbyClientOptions`, `GatewayLobbyClient`, `GatewayLobbyClientEvents`, `PartyCommands`, `GatewayGameClientOptions`, `GatewayGameClient`, `GatewayGameClientEvents`.
+- Types: wire — `Hello`, `Capabilities`, `Peer`, `Direction`, `SayScope`, `ErrorFrame`, `GatewayErrorCode`, `LobbyClientFrame` (`PosFrame`, `SayFrame`, `EventFrame`, `PartyCreateFrame`, `PartyInviteRequestFrame`, `PartyAcceptFrame`, `PartyDeclineFrame`, `PartyLeaveFrame`, `PartyListFrame`, `PingFrame`), `LobbyServerFrame` (`SnapshotFrame`, `EnterFrame`, `LeaveFrame`, `PosBroadcastFrame`, `SayBroadcastFrame`, `EventBroadcastFrame`, `PartyFrame`, `PartyMember`, `PartyInviteFrame`, `PartyDeclinedFrame`, `PongFrame`), `GameClientFrame`, `GameServerFrame`; transport — `WebSocketLike`, `WebSocketConstructor`, `WebSocketMessageEventLike`, `WebSocketCloseEventLike`, `FetchLike`, `FetchResponseLike`; events — `EventHandler`, `Unsubscribe`, `GatewayClientState`, `DisconnectedEvent`, `ReconnectingEvent`, `StoppedEvent`, `ProtocolErrorEvent`, `GameEndedEvent`; close codes — `GatewayChannelKind`, `CloseDisposition`, `CloseDispositionKind`; backoff — `Backoff`, `BackoffOptions`; peers — `PeerMap`, `PeerMapOptions`, `PeerMapFrame`, `PeerChange`; map — `MapFetcher`, `MapFetcherOptions`; clients — `GatewayClientBaseOptions`, `GatewayLobbyClientOptions`, `GatewayLobbyClient`, `GatewayLobbyClientEvents`, `PartyCommands`, `GatewayGameClientOptions`, `GatewayGameClient`, `GatewayGameClientEvents`.
 
 ## Migrating from the legacy package
 

@@ -22,12 +22,12 @@ describe("createPeerMap", () => {
     const change = peers.apply({
       type: "snapshot",
       zone: "field",
-      peers: [{ userId: "carol", x: 5, y: 5, dir: 2 }],
+      peers: [{ userId: "carol", x: 5, y: 5, dir: "d2" }],
     });
     expect(change).toEqual({
       kind: "snapshot",
       zone: "field",
-      peers: [{ userId: "carol", x: 5, y: 5, dir: 2 }],
+      peers: [{ userId: "carol", x: 5, y: 5, dir: "d2" }],
     });
     expect(peers.get("bob")).toBeUndefined();
   });
@@ -49,9 +49,12 @@ describe("createPeerMap", () => {
         userId: "carol",
         x: 2,
         y: 3,
-        dir: 1,
+        dir: "d1",
       }),
-    ).toEqual({ kind: "enter", peer: { userId: "carol", x: 2, y: 3, dir: 1 } });
+    ).toEqual({
+      kind: "enter",
+      peer: { userId: "carol", x: 2, y: 3, dir: "d1" },
+    });
     expect(
       peers.apply({ type: "leave", zone: "town", userId: "carol" }),
     ).toEqual({
@@ -83,13 +86,13 @@ describe("createPeerMap", () => {
       zone: "town",
       peers: [
         { userId: "me", x: 7, y: 7 },
-        { userId: "bob", x: 2, y: 2, dir: 3 },
+        { userId: "bob", x: 2, y: 2, dir: "d3" },
         { userId: "ghost", x: 0, y: 0 },
       ],
     });
     expect(change).toEqual({
       kind: "move",
-      peers: [{ userId: "bob", x: 2, y: 2, dir: 3 }],
+      peers: [{ userId: "bob", x: 2, y: 2, dir: "d3" }],
     });
     expect(peers.get("me")).toBeUndefined();
     expect(peers.get("ghost")).toBeUndefined();
@@ -103,14 +106,19 @@ describe("createPeerMap", () => {
       userId: "carol",
       x: 0,
       y: 0,
-      dir: 4,
+      dir: "d4",
     });
     peers.apply({
       type: "pos",
       zone: "town",
       peers: [{ userId: "carol", x: 1, y: 0 }],
     });
-    expect(peers.get("carol")).toEqual({ userId: "carol", x: 1, y: 0, dir: 4 });
+    expect(peers.get("carol")).toEqual({
+      userId: "carol",
+      x: 1,
+      y: 0,
+      dir: "d4",
+    });
   });
 
   it("ignores frames for another zone", () => {
