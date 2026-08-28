@@ -40,6 +40,11 @@ pnpm coverage      # per-package thresholds must hold
 Docker must be running (Redis testcontainers). Order matters: build before
 typecheck/test, because workspace types resolve through each package's `dist`.
 
+The same gate runs automatically from `.githooks/pre-push` (registered by the
+`prepare` script via `core.hooksPath`), so `git push` fails locally instead of
+in CI. Do not bypass it with `SKIP_CI_GATE=1` or `--no-verify` unless the user
+explicitly asks; CI will still reject the push.
+
 ## Scope decisions already made
 
 - Backward compatibility with the legacy standalone packages was deliberately

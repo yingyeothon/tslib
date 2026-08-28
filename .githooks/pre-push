@@ -1,0 +1,19 @@
+#!/usr/bin/env sh
+# Runs the same gate as .github/workflows/ci.yml so a push cannot land red.
+# Skip once with: SKIP_CI_GATE=1 git push
+set -e
+
+if [ -n "$SKIP_CI_GATE" ]; then
+  echo "pre-push: SKIP_CI_GATE set, skipping CI gate"
+  exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-push: running CI gate (build, lint, format:check, typecheck, coverage)"
+pnpm install --frozen-lockfile
+pnpm build
+pnpm lint
+pnpm format:check
+pnpm typecheck
+pnpm coverage

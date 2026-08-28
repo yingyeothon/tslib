@@ -74,6 +74,8 @@ pnpm test         # vitest across all packages (spins up Redis containers)
 pnpm coverage     # with v8 coverage and thresholds
 ```
 
+`pnpm install` also registers `.githooks/` (via `core.hooksPath`), whose `pre-push` hook runs the full CI gate — build, lint, format:check, typecheck, coverage — so a push that would fail CI is rejected locally. Set `SKIP_CI_GATE=1` to bypass it once.
+
 Every package ships dual ESM/CJS with type definitions via an `exports` map, targets Node >= 20, and exposes its whole public API as named exports from the package root (legacy deep imports such as `@yingyeothon/naive-redis/lib/get` are gone — see each package README's migration notes).
 
 ## Release
