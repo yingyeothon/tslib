@@ -149,6 +149,7 @@ describe("createRedisSubsystem", () => {
       connection,
       keyPrefix: "app:",
       lockTimeout: 5000,
+      queueTtlSeconds: 60,
     });
 
     expect(await subsystem.queue.size("actor")).toBe(0);
@@ -164,7 +165,11 @@ describe("createRedisSubsystem", () => {
   it("spreads into an actor environment as own properties", () => {
     const { connection } = fakeRedis([]);
     const spread = {
-      ...createRedisSubsystem({ connection, lockTimeout: 5000 }),
+      ...createRedisSubsystem({
+        connection,
+        lockTimeout: 5000,
+        queueTtlSeconds: 60,
+      }),
     };
     expect(Object.keys(spread)).toEqual(
       expect.arrayContaining(["queue", "lock", "awaiter"]),
@@ -176,6 +181,24 @@ describe("createRedisSubsystem", () => {
 });
 
 describe("createRedisQueue with a fake connection", () => {
+  it("rejects a ttlSeconds that is not a positive integer", () => {
+    // Every runtime key carries a TTL, and EXPIRE takes whole seconds: a
+    // fraction floors to 0 and would delete the key right after each push.
+    const { connection } = fakeRedis([]);
+    for (const ttlSeconds of [
+      0,
+      -1,
+      0.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      expect(() => createRedisQueue({ connection, ttlSeconds })).toThrow(
+        '"ttlSeconds" should be a positive integer.',
+      );
+    }
+    expect(() => createRedisQueue({ connection, ttlSeconds: 1 })).not.toThrow();
+  });
+
   it("uses a custom codec for push and pop", async () => {
     const codec = {
       encode: <T>(item: T): string => `<${String(item)}>`,
@@ -183,13 +206,15 @@ describe("createRedisQueue with a fake connection", () => {
     };
     const { connection, messages } = fakeRedis([
       ":1\r\n", // RPUSH
+      ":1\r\n", // EXPIRE
       "$5\r\n<abc>\r\n", // LPOP
       "$5\r\n<abc>\r\n", // LINDEX
     ]);
-    const queue = createRedisQueue({ connection, codec });
+    const queue = createRedisQueue({ connection, codec, ttlSeconds: 60 });
 
     await queue.push("actor", "abc");
     expect(messages[0]).toContain('RPUSH "actor" "<abc>"');
+    expect(messages[1]).toContain("EXPIRE actor 60");
     expect(await queue.pop("actor")).toBe("abc");
     expect(await queue.peek("actor")).toBe("abc");
   });

@@ -24,6 +24,7 @@ const env = {
     connection,
     keyPrefix: "my-app:",
     lockTimeout: 30_000,
+    queueTtlSeconds: 900, // every runtime key carries a TTL
   }),
   id: "adder",
   onMessage: ({ delta }: { delta: number }) => {
@@ -48,7 +49,7 @@ import {
 const queue = createRedisQueue({
   connection,
   keyPrefix: "queue:",
-  ttlSeconds: 900, // an abandoned queue disappears instead of growing
+  ttlSeconds: 900, // required: an abandoned queue disappears instead of growing
 });
 await queue.push("actor-1", { hello: "world" });
 console.log(await queue.size("actor-1")); // 1
@@ -78,6 +79,7 @@ const connection = createRedisConnection({ host: "localhost" });
 const { queue, lock, awaiter } = createRedisSubsystem({
   connection,
   lockTimeout: 30_000,
+  queueTtlSeconds: 900,
 });
 ```
 
@@ -85,7 +87,7 @@ const { queue, lock, awaiter } = createRedisSubsystem({
 
 - `createRedisQueue` — creates a Redis list-backed queue implementing `QueueProducer`, `QueueSingleConsumer`, `QueueBulkConsumer`, and `QueueLength` (`push`, `pop`, `peek`, `flush`, `size`); values are encoded with a `Codec<string>` (default `jsonCodec`)
 - `RedisQueue` — the return type of `createRedisQueue` (type)
-- `RedisQueueOptions` — `{ connection, keyPrefix?, codec?, logger?, ttlSeconds? }` (type). `push` resolves with the queue depth after the push, which `RPUSH` gives back for free, so a producer can notice that nobody is consuming without a second round trip. `ttlSeconds` is re-applied on every push; without it an abandoned queue grows forever, and on a shared `allkeys-lru` Redis that evicts someone else's keys first
+- `RedisQueueOptions` — `{ connection, keyPrefix?, codec?, logger?, ttlSeconds }` (type). `push` resolves with the queue depth after the push, which `RPUSH` gives back for free, so a producer can notice that nobody is consuming without a second round trip. `ttlSeconds` (seconds, **required**, a positive integer or the factory throws) is re-applied on every push; without it an abandoned queue grows forever, and on a shared `allkeys-lru` Redis that evicts someone else's keys first
 - `createRedisLock` — creates a `SET NX`-based per-actor lock implementing `LockAcquire`, `LockRelease`, and `LockRenew`. Every acquisition writes a random token as the value and keeps it in process, so `release` compares before deleting and `renew` compares before extending: a holder whose lease expired cannot delete the lock its successor took, and a process that never acquired cannot touch it at all. `renew` returning false means the lock is gone
   `lockTimeout` (milliseconds) is **required**: a lock that never expires deadlocks its actor forever when the holder crashes, so no-expiry has to be an explicit choice — pass a non-positive value to make it
 - `RedisLock` — the return type of `createRedisLock` (type)
@@ -95,7 +97,7 @@ const { queue, lock, awaiter } = createRedisSubsystem({
 - `RedisAwaiterOptions` — `{ connection, keyPrefix?, logger? }` (type)
 - `createRedisSubsystem` — builds `{ queue, lock, awaiter }` sharing one connection, appending `queue:`, `lock:`, and `awaiter:` to the given key prefix
 - `RedisSubsystem` — the return type of `createRedisSubsystem` (type)
-- `RedisSubsystemOptions` — `{ connection, keyPrefix?, logger?, lockTimeout, queueTtlSeconds? }` (type)
+- `RedisSubsystemOptions` — `{ connection, keyPrefix?, logger?, lockTimeout, queueTtlSeconds }` (type); `queueTtlSeconds` is forwarded as the queue's `ttlSeconds` and is required for the same reason
 
 Every factory accepts an optional `logger?: Logger` (from [`@yingyeothon/logger`](../logger), default `nullLogger`). All methods are own properties, so results can be spread into an actor environment (`{ ...singleConsumer, ...createRedisSubsystem(...), ...actor }`).
 
@@ -116,6 +118,11 @@ Every factory accepts an optional `logger?: Logger` (from [`@yingyeothon/logger`
 - **`renew` is new**, and `RedisLock` now extends `LockRenew`. A long-running
   loop should heartbeat it; see `eventLoop`'s `lockRenewIntervalMillis`.
 - **`push` resolves the queue depth** instead of `void`.
+- **`ttlSeconds` / `queueTtlSeconds` are required** and must be a positive
+  integer; `createRedisQueue` throws otherwise. Every runtime key carries a TTL: a
+  queue pushed by something other than the gateway must still expire, and on
+  a shared `allkeys-lru` Redis a key that never expires evicts someone else's
+  before anyone notices.
 
 ## Migrating from the legacy package
 

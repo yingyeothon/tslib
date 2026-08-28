@@ -11,7 +11,7 @@ export interface RedisSubsystemOptions {
   /** Lock expiration in milliseconds; see `RedisLockOptions.lockTimeout`. */
   lockTimeout: number;
   /** Queue key TTL in seconds; see `RedisQueueOptions.ttlSeconds`. */
-  queueTtlSeconds?: number;
+  queueTtlSeconds: number;
 }
 
 export interface RedisSubsystem {
@@ -37,7 +37,7 @@ export function createRedisSubsystem({
       connection,
       keyPrefix: keyPrefix + "queue:",
       logger,
-      ...(queueTtlSeconds !== undefined ? { ttlSeconds: queueTtlSeconds } : {}),
+      ttlSeconds: queueTtlSeconds,
     }),
     lock: createRedisLock({
       connection,

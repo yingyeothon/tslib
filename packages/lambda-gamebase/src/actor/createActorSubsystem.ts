@@ -15,12 +15,13 @@ export interface ActorSubsystemOptions {
   lockKeyPrefix: string;
   lockTimeoutSeconds: number;
   /**
-   * Queue key TTL, applied on every push. The actor only drains its queue,
-   * so this matters solely when the same subsystem is used to push — the
-   * producers (`handleConnect`, `handleDisconnect`, `handleMessages`, or a
-   * gateway) are what normally set it.
+   * Queue key TTL in seconds, applied on every push. Required: every
+   * runtime key carries a TTL. The actor only drains its queue, so this
+   * matters solely when the same subsystem is used to push — the producers
+   * (`handleConnect`, `handleDisconnect`, `handleMessages`, or a gateway)
+   * are what normally set it.
    */
-  queueTtlSeconds?: number;
+  queueTtlSeconds: number;
   redisConnection: RedisConnection;
   logger?: Logger;
 }
@@ -56,7 +57,7 @@ export function createActorSubsystem({
       connection: redisConnection,
       keyPrefix: queueKeyPrefix,
       logger,
-      ...(queueTtlSeconds !== undefined ? { ttlSeconds: queueTtlSeconds } : {}),
+      ttlSeconds: queueTtlSeconds,
     }),
     lock: createRedisLock({
       connection: redisConnection,

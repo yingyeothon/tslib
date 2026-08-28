@@ -70,6 +70,7 @@ export const connect = (event: APIGatewayProxyEvent) =>
     connectionIdAndGameIdKeyPrefix: "game:conn:",
     actorEventKeyPrefix: "game:event:",
     actorQueueKeyPrefix: "game:queue:",
+    queueTtlSeconds: 900, // required: the queue key expires even if no one drains it
     resolveMemberId: (connecting) => {
       const memberId: unknown =
         connecting.requestContext.authorizer?.["memberId"];
@@ -107,7 +108,7 @@ Actor loop
 
 - `handleActor` / `HandleActorOptions` — game actor Lambda entry point: persists the start event, acquires the actor lock, signals the lobby, runs the actor loop. The lock lease is `lockTimeoutSeconds` (default 30) and is heartbeated while the game runs, so a crashed actor frees its `gameId` in seconds rather than for the game's whole lifetime. A live actor that outlives its own lease (a Redis failover, a network gap) re-acquires and keeps playing; only a successor actually holding the game stops it
 - `startActorLoop` / `StartActorLoopOptions` — runs `gameMain` inside the actor event loop and clears the start event at the end
-- `createActorSubsystem` / `ActorSubsystemOptions` / `ActorSubsystem` — Redis-backed queue/lock/awaiter with per-component key prefixes
+- `createActorSubsystem` / `ActorSubsystemOptions` / `ActorSubsystem` — Redis-backed queue/lock/awaiter with per-component key prefixes; `queueTtlSeconds` is **required** (`handleActor` defaults its own to `lifetimeSeconds + 10`)
 - `saveActorStartEvent`, `loadActorStartEvent`, `clearActorStartEvent` — start-event persistence helpers
 - `authorizeGameConnection` / `AuthorizeGameConnectionOptions` / `GameConnectionAuthorization` (types) — the "may this member speak for this game" check `handleConnect` makes, exported so a custom gateway runs the same one instead of re-deriving it
 - `readyCall` — HTTP PUT ready signal to the lobby callback URL
@@ -115,9 +116,9 @@ Actor loop
 
 API Gateway handlers
 
-- `handleConnect` / `HandleConnectOptions` — resolves the member id (`resolveMemberId`, default `x-member-id`), validates it against `x-game-id`'s start event, maps the connection, enqueues `enter`, and optionally echoes a `Sec-WebSocket-Protocol` (`selectSubprotocol`)
-- `handleDisconnect` / `HandleDisconnectOptions` — enqueues `leave` and removes the mapping
-- `handleMessages` / `HandleMessagesOptions` — validates the client message and enqueues it stamped with the connection id. Messages whose `type` is reserved are refused with `400`
+- `handleConnect` / `HandleConnectOptions` — resolves the member id (`resolveMemberId`, default `x-member-id`), validates it against `x-game-id`'s start event, maps the connection, enqueues `enter`, and optionally echoes a `Sec-WebSocket-Protocol` (`selectSubprotocol`). `queueTtlSeconds` is **required** and re-applied to the queue key on every push
+- `handleDisconnect` / `HandleDisconnectOptions` — enqueues `leave` and removes the mapping; takes the same required `queueTtlSeconds`
+- `handleMessages` / `HandleMessagesOptions` — validates the client message and enqueues it stamped with the connection id. Messages whose `type` is reserved are refused with `400`. Takes the same required `queueTtlSeconds`
 - `handleDebugStart` / `HandleDebugStartOptions` — serverless-offline only: breaks the actor lock and invokes the actor Lambda locally
 - `defaultConnectionMappingTtlMillis` — the default `connectionId -> gameId` mapping lifetime (900000). `handleMessages` refreshes it on every inbound message, so it bounds idle time rather than session length; pass the same `connectionMappingTtlMillis` to both handlers if you change it
 
@@ -368,8 +369,14 @@ player mid-game is the game loop's job, through `Transport.drop`.
   contract above.
 - **The actor's queue key TTL belongs to whoever pushes.** `handleConnect`,
   `handleDisconnect`, and `handleMessages` take `queueTtlSeconds`; the actor
-  only drains its queue, so configuring a TTL on its subsystem never applies
-  one.
+  only drains its queue, so the TTL `handleActor` gives its own subsystem is
+  inert unless `gameMain` pushes through it.
+- **`queueTtlSeconds` is required** on `handleConnect`, `handleDisconnect`,
+  `handleMessages`, and `createActorSubsystem` (`handleActor` defaults its
+  own to `lifetimeSeconds + 10`). Every runtime key carries a TTL: a queue
+  pushed by something other than the gateway must still expire, and on a
+  shared `allkeys-lru` Redis a key that never expires evicts someone else's
+  first.
 - **`broadcast` logs at `debug`, and logs counts.** It used to log the
   connection id list and the whole response body at `info`, which is a game
   payload in the logs several times a second at a fixed tick.

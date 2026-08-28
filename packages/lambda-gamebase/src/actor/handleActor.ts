@@ -30,6 +30,13 @@ export interface HandleActorOptions<M> {
    * shortens the lease. Default: 30.
    */
   lockTimeoutSeconds?: number;
+  /**
+   * TTL for the actor's own queue key. The actor only drains, so this is
+   * applied only if its subsystem is ever used to push; the producers'
+   * `queueTtlSeconds` is what normally governs the key. Default: the
+   * actor's alive window (`lifetimeSeconds + 10`).
+   */
+  queueTtlSeconds?: number;
   gameMain: (args: GameMainOptions<M>) => Promise<unknown>;
   logger?: Logger;
   actorLogger?: Logger;
@@ -58,6 +65,7 @@ export async function handleActor<M>({
   lockKeyPrefix,
   lifetimeSeconds,
   lockTimeoutSeconds = defaultLockTimeoutSeconds,
+  queueTtlSeconds,
   gameMain,
   logger = nullLogger,
   actorLogger = nullLogger,
@@ -111,6 +119,7 @@ export async function handleActor<M>({
         lockKeyPrefix,
         queueKeyPrefix,
         lockTimeoutSeconds,
+        queueTtlSeconds: queueTtlSeconds ?? aliveSeconds,
         logger: actorLogger,
         redisConnection: connection,
       }),

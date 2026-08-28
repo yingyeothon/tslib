@@ -30,14 +30,15 @@ const fake = vi.hoisted(() => {
     lists,
     expires,
     state,
-    failNextExpire: false,
+    /** The key whose next EXPIRE is rejected, e.g. the mapping key only. */
+    failNextExpireOf: undefined as string | undefined,
     reset,
   };
   function reset(): void {
     strings.clear();
     lists.clear();
     expires.length = 0;
-    self.failNextExpire = false;
+    self.failNextExpireOf = undefined;
     state.disconnects = 0;
     state.connects = 0;
   }
@@ -106,8 +107,8 @@ vi.mock("@yingyeothon/naive-redis", () => {
       Promise.resolve(list(key)[index] ?? null),
     ),
     redisExpire: vi.fn((_c: unknown, key: string, seconds: number) => {
-      if (fake.failNextExpire) {
-        fake.failNextExpire = false;
+      if (fake.failNextExpireOf === key) {
+        fake.failNextExpireOf = undefined;
         return Promise.reject(new Error("connection reset"));
       }
       fake.expires.push({ key, seconds });
@@ -192,6 +193,7 @@ describe("handleConnect", () => {
     actorQueueKeyPrefix: "queue:",
     logger,
     redisConnection: fakeConnection,
+    queueTtlSeconds: 900,
   };
 
   it("rejects a connection without game or member id", async () => {
@@ -480,6 +482,7 @@ describe("handleDisconnect", () => {
     actorQueueKeyPrefix: "queue:",
     logger,
     redisConnection: fakeConnection,
+    queueTtlSeconds: 900,
   };
 
   it("ignores a connection with no game mapping", async () => {
@@ -525,6 +528,7 @@ describe("handleMessages", () => {
     validateMessage: (maybe: { type: string }) => maybe.type !== "invalid",
     logger,
     redisConnection: fakeConnection,
+    queueTtlSeconds: 900,
   };
 
   it("answers 404 without a body", async () => {
@@ -738,6 +742,7 @@ describe("createActorSubsystem", () => {
       queueKeyPrefix: "queue:",
       lockKeyPrefix: "lock:",
       lockTimeoutSeconds: 30,
+      queueTtlSeconds: 900,
       redisConnection: fakeConnection,
       logger,
     });
@@ -926,18 +931,23 @@ describe("connection mapping lifetime", () => {
       validateMessage: () => true,
       logger,
       redisConnection: fakeConnection,
+      queueTtlSeconds: 900,
       // A millisecond value that must not reach EXPIRE unrounded.
       connectionMappingTtlMillis: 1500,
     });
 
-    expect(fake.expires).toEqual([{ key: "c2g:c1", seconds: 2 }]);
+    // The queue TTL lands on the push; the mapping refresh follows.
+    expect(fake.expires).toEqual([
+      { key: "queue:game-ttl", seconds: 900 },
+      { key: "c2g:c1", seconds: 2 },
+    ]);
   });
 
   it("delivers the message even when the refresh fails", async () => {
     fake.strings.set("event:game-ttl", JSON.stringify(startEvent));
     fake.strings.set("c2g:c1", "game-ttl");
     const { logger: capturing, text } = capturingLogger();
-    fake.failNextExpire = true;
+    fake.failNextExpireOf = "c2g:c1";
 
     const result = await handleMessages<{ type: string }>({
       event: connectionEvent("c1", {}, JSON.stringify({ type: "move" })),
@@ -946,6 +956,7 @@ describe("connection mapping lifetime", () => {
       validateMessage: () => true,
       logger: capturing,
       redisConnection: fakeConnection,
+      queueTtlSeconds: 900,
     });
 
     // Housekeeping must not cost the player their message.
@@ -976,21 +987,5 @@ describe("connection mapping lifetime", () => {
       key: "queue:game-ttl",
       seconds: 930,
     });
-  });
-
-  it("sets no queue ttl when the producer does not ask for one", async () => {
-    fake.strings.set("event:game-ttl", JSON.stringify(startEvent));
-    fake.strings.set("c2g:c1", "game-ttl");
-
-    await handleMessages<{ type: string }>({
-      event: connectionEvent("c1", {}, JSON.stringify({ type: "move" })),
-      connectionIdAndGameIdKeyPrefix: "c2g:",
-      actorQueueKeyPrefix: "queue:",
-      validateMessage: () => true,
-      logger,
-      redisConnection: fakeConnection,
-    });
-
-    expect(fake.expires.some((e) => e.key === "queue:game-ttl")).toBe(false);
   });
 });

@@ -38,6 +38,7 @@ fixture("adder-await", async (connection) => {
       connection,
       keyPrefix: "__TEST__await__",
       lockTimeout: 30_000,
+      queueTtlSeconds: 60,
     }),
     ...adder,
   };

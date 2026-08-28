@@ -8,7 +8,7 @@ interface KeyValue {
 }
 
 fixture("queue push/peek/pop/size", async (connection) => {
-  const queue = createRedisQueue({ connection });
+  const queue = createRedisQueue({ connection, ttlSeconds: 60 });
   const actorId = "test-actor";
 
   expect(await queue.size(actorId)).toBe(0);
@@ -36,7 +36,11 @@ fixture("queue push/peek/pop/size", async (connection) => {
 });
 
 fixture("queue flush drains all pending items at once", async (connection) => {
-  const queue = createRedisQueue({ connection, keyPrefix: "flush:" });
+  const queue = createRedisQueue({
+    connection,
+    keyPrefix: "flush:",
+    ttlSeconds: 60,
+  });
   const actorId = "test-actor";
 
   expect(await queue.flush(actorId)).toEqual([]);
@@ -58,8 +62,16 @@ fixture("queue flush drains all pending items at once", async (connection) => {
 fixture(
   "queues with different key prefixes are isolated",
   async (connection) => {
-    const queueA = createRedisQueue({ connection, keyPrefix: "a:" });
-    const queueB = createRedisQueue({ connection, keyPrefix: "b:" });
+    const queueA = createRedisQueue({
+      connection,
+      keyPrefix: "a:",
+      ttlSeconds: 60,
+    });
+    const queueB = createRedisQueue({
+      connection,
+      keyPrefix: "b:",
+      ttlSeconds: 60,
+    });
     const actorId = "same-actor";
 
     await queueA.push(actorId, "only-a");
@@ -71,7 +83,11 @@ fixture(
 );
 
 fixture("push reports the queue depth", async (connection) => {
-  const queue = createRedisQueue({ connection, keyPrefix: "depth:" });
+  const queue = createRedisQueue({
+    connection,
+    keyPrefix: "depth:",
+    ttlSeconds: 60,
+  });
   const actorId = "test-actor";
 
   expect(await queue.push(actorId, { seq: 1 })).toBe(1);
@@ -119,24 +135,6 @@ fixture("an unconsumed queue expires on its own", async (connection) => {
   expect(await queue.size(actorId)).toBe(0);
 });
 
-fixture("no ttl is applied when ttlSeconds is unset", async (connection) => {
-  const withTtl = createRedisQueue({
-    connection,
-    keyPrefix: "nottl:",
-    ttlSeconds: 1,
-  });
-  const withoutTtl = createRedisQueue({ connection, keyPrefix: "nottl:" });
-
-  // Two keys, one option apart. An implementation that never expires and
-  // one that always expires both fail this pair.
-  await withTtl.push("expiring", { seq: 1 });
-  await withoutTtl.push("kept", { seq: 1 });
-
-  await new Promise((resolve) => setTimeout(resolve, 1300));
-  expect(await withTtl.size("expiring")).toBe(0);
-  expect(await withoutTtl.size("kept")).toBe(1);
-});
-
 fixture("never logs the queued payload", async (connection) => {
   const lines: string[] = [];
   const logger = {
@@ -150,6 +148,7 @@ fixture("never logs the queued payload", async (connection) => {
     connection,
     keyPrefix: "quiet:",
     logger,
+    ttlSeconds: 60,
   });
   const actorId = "logging";
   const secret = "PAYLOAD-ALPHA-9f2";

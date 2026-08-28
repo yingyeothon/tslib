@@ -24,11 +24,12 @@ export interface RedisQueueOptions {
   logger?: Logger;
   /**
    * Re-applied on every push, so an abandoned queue disappears instead of
-   * growing forever behind a consumer that died. Unset means no TTL, and on
-   * a shared `allkeys-lru` Redis that means evicting someone else's keys
-   * before anyone notices.
+   * growing forever behind a consumer that died. Required and must be
+   * greater than 0: a queue without a TTL on a shared `allkeys-lru` Redis
+   * evicts someone else's keys before anyone notices, so every runtime key
+   * carries one.
    */
-  ttlSeconds?: number;
+  ttlSeconds: number;
 }
 
 export interface RedisQueue
@@ -42,6 +43,11 @@ export function createRedisQueue({
   logger = nullLogger,
   ttlSeconds,
 }: RedisQueueOptions): RedisQueue {
+  // `EXPIRE` takes whole seconds; a fraction would floor to 0 and delete the
+  // key right after every push.
+  if (!Number.isInteger(ttlSeconds) || ttlSeconds < 1) {
+    throw new Error('"ttlSeconds" should be a positive integer.');
+  }
   return {
     size: async (actorId: string): Promise<number> => {
       const redisKey = keyPrefix + actorId;
@@ -53,9 +59,7 @@ export function createRedisQueue({
       const redisKey = keyPrefix + actorId;
       // `RPUSH` answers with the new length, so depth costs nothing here.
       const depth = await redisRpush(connection, redisKey, codec.encode(item));
-      if (ttlSeconds !== undefined && ttlSeconds > 0) {
-        await redisExpire(connection, redisKey, ttlSeconds);
-      }
+      await redisExpire(connection, redisKey, ttlSeconds);
       // `item` is the caller's payload; log what routed it, not what it says.
       logger.debug("redis-queue pushed", { redisKey, depth });
       return depth;

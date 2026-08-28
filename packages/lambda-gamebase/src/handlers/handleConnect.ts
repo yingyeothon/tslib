@@ -86,9 +86,9 @@ export interface HandleConnectOptions {
    * TTL re-applied to the actor's queue key on every push, so a queue
    * nobody drains disappears instead of growing forever behind a dead
    * actor. The producer is the only party that can set it — the actor
-   * itself never pushes.
+   * itself never pushes. Required: every runtime key carries a TTL.
    */
-  queueTtlSeconds?: number;
+  queueTtlSeconds: number;
 }
 
 /** Reads a header case-insensitively; clients control header casing. */
@@ -221,9 +221,7 @@ export async function handleConnect({
           connection,
           keyPrefix: actorQueueKeyPrefix,
           logger,
-          ...(queueTtlSeconds !== undefined
-            ? { ttlSeconds: queueTtlSeconds }
-            : {}),
+          ttlSeconds: queueTtlSeconds,
         }),
         logger,
       },

@@ -32,6 +32,7 @@ fixture("simple-actor", async (connection) => {
       connection,
       keyPrefix: "__TEST__simple__",
       lockTimeout: 30_000,
+      queueTtlSeconds: 60,
     }),
     ...adder,
   };
