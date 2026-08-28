@@ -38,3 +38,11 @@
 - ESLint 9 flat config, type-aware (`recommendedTypeChecked`).
   `no-floating-promises`, `no-misused-promises`, and `consistent-type-imports`
   are errors. Unused names must be prefixed `_` to be ignored.
+
+## CI runtime vs. library target
+
+- `packageManager` is pnpm 11, which needs Node >= 22.13. CI and the release
+  workflow run on Node 22/24 only; a Node 20 matrix entry fails inside
+  `actions/setup-node`'s pnpm cache step before any script runs, and
+  `fail-fast` then cancels the healthy job too. Node 20 support of the
+  published output comes from `tsup` `target: node20` and `engines`.

@@ -13,8 +13,12 @@ jobs:
   ci:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
-        node: [20, 22]
+        # pnpm 11 needs Node >= 22.13, so the toolchain cannot run on Node 20;
+        # Node 20 support of the built output is guaranteed by tsup's
+        # `target: node20`, not by running the suite there.
+        node: [22, 24]
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
