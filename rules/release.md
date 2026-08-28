@@ -76,5 +76,9 @@ Confirm each tarball ships `dist/index.d.cts`, no `src/`, and no test files.
   (`npm deprecate "<pkg>@*" "Moved to <new>"`; an empty message undoes it).
 - Kept names must never be deprecated — v2 publishes under the same names.
 - Legacy GitHub repos get a DEPRECATED notice pushed to the README _before_
-  being archived; archiving makes them read-only.
+  being archived; archiving makes them read-only. Done 2026-08-28 for
+  `nodejs-actor-system`, `nodejs-lambda-authorizer`, `nodejs-repository`,
+  `nodejs-toolkit`, `naive-redis`, `naive-socket`, `s3-cache-bridge-client`,
+  `slack-logger`. Their clones under `~/git/yyt.life/` are read-only history
+  now; commits there need `--no-verify` because the old husky hooks are gone.
 - Executing these steps is the user's job. Assist only when asked.
