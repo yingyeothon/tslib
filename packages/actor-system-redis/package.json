@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/actor-system-redis",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "description": "Redis-backed queue, lock, and awaiter for @yingyeothon/actor-system (formerly @yingyeothon/actor-system-redis-support).",
   "keywords": [
     "yyt",

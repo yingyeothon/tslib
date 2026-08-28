@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/s3-cache-bridge-client",
-  "version": "0.0.0",
+  "version": "2.0.0",
   "description": "HTTP client for the s3-cache-bridge server: get/put/delete, append, lock/unlock, and cache sync helpers.",
   "keywords": [
     "yyt",
