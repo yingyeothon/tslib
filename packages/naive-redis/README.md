@@ -114,9 +114,9 @@ const connection = createRedisConnection({
 
 ## Public API
 
-- `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set (`AUTH <username> <password>` when `username` — a Redis 6 ACL user — is set too). `tls` wraps the connection in TLS; **unset means cleartext**, so `AUTH` and every command are readable on the wire
-- `redisAuth(connection, password, { username? })` — send `AUTH` explicitly
-- `redisSend({ connection, commands, match, transform, urgent? })` — low-level RESP exchange for commands not covered below
+- `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set (`AUTH <username> <password>` when `username` — a Redis 6 ACL user — is set too). That `AUTH` waits up to `authTimeoutMillis` (default `max(timeoutMillis, 5000)`, since it also pays for the handshake after a reconnect). When it fails or times out, or when any command is answered with `-NOAUTH`/`-WRONGPASS`, the socket is dropped so the next command reconnects and authenticates again — a Redis restart never leaves a warm process stuck on an unauthenticated socket. A command that hit `-NOAUTH`/`-WRONGPASS` is retried once on the new connection. `tls` wraps the connection in TLS; **unset means cleartext**, so `AUTH` and every command are readable on the wire
+- `redisAuth(connection, password, { username?, timeoutMillis? })` — send `AUTH` explicitly
+- `redisSend({ connection, commands, match, transform, urgent?, timeoutMillis? })` — low-level RESP exchange for commands not covered below
 - `redisGet(connection, key)` — read a string value (`null` when missing)
 - `redisSet(connection, key, value, options?)` — write a string value; `RedisSetOptions`: `expirationMillis`, `onlySet: "nx" | "xx"`
 - `redisDel(connection, ...keys)` — delete keys

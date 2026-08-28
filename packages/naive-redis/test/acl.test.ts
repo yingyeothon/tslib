@@ -82,12 +82,14 @@ describe("acl user", () => {
       password: "wrong",
     });
     try {
-      // The test server has no `requirepass`, so the socket stays usable as
-      // `default`; the failed AUTH surfaces through `authenticated`.
-      await expect(redisGet(connection, "acl:key")).resolves.toBeNull();
-      await expect(
-        connection.authenticated ?? Promise.resolve(false),
-      ).rejects.toThrow(/WRONGPASS/);
+      // The test server has no `requirepass`, so the socket would stay
+      // usable as `default` — but a failed AUTH drops it anyway so the
+      // command in flight fails with the AUTH error instead of silently
+      // running as the wrong user.
+      await expect(redisGet(connection, "acl:key")).rejects.toThrow(
+        /WRONGPASS/,
+      );
+      expect(connection.authenticated).toBeUndefined();
     } finally {
       connection.socket.disconnect();
     }

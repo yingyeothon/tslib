@@ -81,10 +81,8 @@ describe("auth", () => {
     });
     try {
       await expect(redisGet(connection, "any-key")).rejects.toThrow();
-      // Consume the failed authentication to avoid an unhandled rejection.
-      await expect(
-        connection.authenticated ?? Promise.resolve(false),
-      ).rejects.toThrow();
+      // The failed AUTH tore the socket down; nothing is left to await.
+      expect(connection.authenticated).toBeUndefined();
     } finally {
       connection.socket.disconnect();
     }

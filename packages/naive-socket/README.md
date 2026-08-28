@@ -114,7 +114,7 @@ set `rejectUnauthorized: false` outside tests: it turns TLS into obfuscation.
 ## Public API
 
 - `createNaiveSocket(options)` — create a `NaiveSocket` client
-- `NaiveSocket` — the client; `send(request)` returns `Promise<string>`, `disconnect()` rejects all pending requests with `DeadSocket` (type)
+- `NaiveSocket` — the client; `send(request)` returns `Promise<string>`, `disconnect(reason?)` rejects all pending requests with `reason` (default `Error("DeadSocket")`); the next `send` reconnects (type)
 - `NaiveSocketOptions` — `{ host, port, connectionRetryInterval?, logger?, onConnectionStateChanged?, onUnsolicitedData?, tls? }`; `logger` is a `Logger` from `@yingyeothon/logger` and defaults to `nullLogger`, and `tls` is unset (cleartext) by default (type)
 - `SendRequest` — `{ message, fulfill?, timeoutMillis?, urgent?, expectResponse? }` (type)
 - `Fulfill` — `((buffer: string) => number) | RegExp | number` (type)

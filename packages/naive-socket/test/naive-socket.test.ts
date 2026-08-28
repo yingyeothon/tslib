@@ -324,6 +324,41 @@ describe("NaiveSocket", () => {
     await expect(promise).rejects.toThrow(/DeadSocket/);
   });
 
+  it("rejects pending works with the given reason on disconnect", async () => {
+    const port = await findFreePort();
+    const ns = newSocket(port, { connectionRetryInterval: -1 });
+    const promise = ns.send({ message: "SHOULD FAIL", timeoutMillis: 100 });
+    ns.disconnect(new Error("Invalid password"));
+    await expect(promise).rejects.toThrow(/Invalid password/);
+  });
+
+  it("serves a send issued right after disconnect on a fresh connection", async () => {
+    const server = await startServer((message, client) => {
+      client.write(`echo:${message}`);
+    });
+    cleanups.push(() => server.close());
+    const ns = newSocket(server.port, { connectionRetryInterval: 5000 });
+    await expect(
+      ns.send({
+        message: "first",
+        fulfill: /(echo:first)/,
+        timeoutMillis: 1000,
+      }),
+    ).resolves.toBe("echo:first");
+    ns.disconnect();
+    // The old socket's `close` fires after this `send` opened a new one; a
+    // retry loop triggered by that event would kill the new socket and
+    // leave this request waiting for the retry interval.
+    await expect(
+      ns.send({
+        message: "second",
+        fulfill: /(echo:second)/,
+        timeoutMillis: 1000,
+      }),
+    ).resolves.toBe("echo:second");
+    expect(server.clients).toHaveLength(2);
+  });
+
   it("does not reconnect when the retry interval is negative", async () => {
     const port = await findFreePort();
     const ns = newSocket(port, { connectionRetryInterval: -1 });

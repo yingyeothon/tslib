@@ -5,6 +5,8 @@ import { serializeCommand } from "./exchange/serialize.js";
 export interface RedisAuthOptions {
   /** ACL user name (Redis >= 6). Omitted = the `default` user. */
   username?: string;
+  /** Overrides the connection's `timeoutMillis` for this `AUTH` only. */
+  timeoutMillis?: number;
 }
 
 /**
@@ -14,11 +16,13 @@ export interface RedisAuthOptions {
 export function redisAuth(
   connection: RedisConnection,
   password: string,
-  { username }: RedisAuthOptions = {},
+  { username, timeoutMillis }: RedisAuthOptions = {},
 ): Promise<boolean> {
   const command =
     username !== undefined ? ["AUTH", username, password] : ["AUTH", password];
   return ok(connection, [serializeCommand(command)], {
     urgent: true,
+    timeoutMillis,
+    recoverAuthentication: false,
   });
 }

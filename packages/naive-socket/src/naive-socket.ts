@@ -103,8 +103,12 @@ export interface NaiveSocket {
   /** Queue a request and resolve with its fulfilled response. */
   send: (request: SendRequest) => Promise<string>;
 
-  /** Close the connection and reject all pending requests with `DeadSocket`. */
-  disconnect: () => void;
+  /**
+   * Close the connection and reject all pending requests, with `reason`
+   * when given and `Error("DeadSocket")` otherwise. The next `send` opens a
+   * fresh connection.
+   */
+  disconnect: (reason?: Error) => void;
 }
 
 interface SendWork {
@@ -170,13 +174,13 @@ class NaiveSocketImpl implements NaiveSocket {
     return newWork.dPromise.promise;
   };
 
-  public disconnect = (): void => {
+  public disconnect = (reason?: Error): void => {
     this.alive = false;
     this.logger.info(`[NaiveSocket]`, `Socket is dead`);
     this.doDisconnect();
 
     // Reject all pending send works.
-    this.failAllPendingWork(new Error(`DeadSocket`));
+    this.failAllPendingWork(reason ?? new Error(`DeadSocket`));
   };
 
   private buildSendWork = ({
@@ -249,15 +253,27 @@ class NaiveSocketImpl implements NaiveSocket {
           port: this.port,
         })
       : new Socket();
-    this.socket.addListener(
+    // `destroy()` emits `close` on a later tick, so a `send` issued right
+    // after `disconnect()` has already opened the next socket by the time
+    // the old one reports closing. Events from a socket that is no longer
+    // the current one must not touch the current one.
+    const socket = this.socket;
+    const current =
+      <A extends unknown[]>(listener: (...args: A) => void) =>
+      (...args: A) => {
+        if (this.socket === socket) {
+          listener(...args);
+        }
+      };
+    socket.addListener(
       this.tls ? "secureConnect" : "connect",
-      this.onConnect,
+      current(this.onConnect),
     );
-    this.socket.addListener("error", this.onError);
-    this.socket.addListener("data", this.onData);
-    this.socket.addListener("close", this.onClose);
+    socket.addListener("error", current(this.onError));
+    socket.addListener("data", current(this.onData));
+    socket.addListener("close", current(this.onClose));
     if (!this.tls) {
-      this.socket.connect(this.port, this.host);
+      socket.connect(this.port, this.host);
     }
   };
 
