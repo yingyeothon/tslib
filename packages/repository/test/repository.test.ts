@@ -4,6 +4,7 @@ import {
   createListDocument,
   createMapDocument,
   createRepositoryFromKV,
+  isCasRepository,
   type ExpirableRepository,
   type Repository,
 } from "../src/index.js";
@@ -324,5 +325,273 @@ describe("createMapDocument", () => {
     const { mem, map } = newMap();
     await mem.set("map", { version: undefined, content: undefined });
     expect(await map.read()).toEqual({ version: 0, content: {} });
+  });
+});
+
+describe("compare-and-set", () => {
+  it("writes only when the token matches what was read", async () => {
+    const mem = createInMemoryRepository();
+    expect(await mem.getRevision("k")).toBeUndefined();
+
+    // Absent key: only an `undefined` token may create it.
+    expect(await mem.compareAndSet("k", "stale", 1)).toBe(false);
+    expect(await mem.get("k")).toBeUndefined();
+    expect(await mem.compareAndSet("k", undefined, 1)).toBe(true);
+
+    const first = await mem.getRevision<number>("k");
+    expect(first).toMatchObject({ value: 1 });
+
+    // Existing key: the token from the read wins, `undefined` loses.
+    expect(await mem.compareAndSet("k", undefined, 2)).toBe(false);
+    expect(await mem.compareAndSet("k", first?.token, 2)).toBe(true);
+    expect(await mem.get("k")).toBe(2);
+    // The old token is now stale.
+    expect(await mem.compareAndSet("k", first?.token, 3)).toBe(false);
+    expect(await mem.get("k")).toBe(2);
+  });
+
+  it("treats an expired entry as absent", async () => {
+    vi.useFakeTimers();
+    try {
+      const mem = createInMemoryRepository();
+      await mem.setWithExpire("k", "v", 10);
+      const revision = await mem.getRevision("k");
+      vi.advanceTimersByTime(11);
+      expect(await mem.getRevision("k")).toBeUndefined();
+      expect(await mem.compareAndSet("k", revision?.token, "w")).toBe(false);
+      expect(
+        await mem.compareAndSet("k", undefined, "w", { expiresInMillis: 10 }),
+      ).toBe(true);
+      expect(await mem.get("k")).toBe("w");
+      vi.advanceTimersByTime(11);
+      expect(await mem.get("k")).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("createRepositoryFromKV exposes CAS only when both primitives exist", async () => {
+    const store = new Map<string, string>();
+    const base = {
+      get: (key: string) => Promise.resolve(store.get(key)),
+      set: (key: string, serialized: string) => {
+        store.set(key, serialized);
+        return Promise.resolve();
+      },
+      delete: (key: string) => {
+        store.delete(key);
+        return Promise.resolve();
+      },
+    };
+    expect(isCasRepository(createRepositoryFromKV(base))).toBe(false);
+    expect(
+      isCasRepository(
+        createRepositoryFromKV({
+          ...base,
+          getRevision: () => Promise.resolve(undefined),
+        }),
+      ),
+    ).toBe(false);
+
+    const cas = createRepositoryFromKV({
+      ...base,
+      getRevision: (key: string) => {
+        const serialized = store.get(key);
+        return Promise.resolve(
+          serialized === undefined
+            ? undefined
+            : { serialized, token: serialized },
+        );
+      },
+      compareAndSet: (key, expectedToken, serialized) => {
+        if (store.get(key) !== expectedToken) {
+          return Promise.resolve(false);
+        }
+        store.set(key, serialized);
+        return Promise.resolve(true);
+      },
+    });
+    expect(isCasRepository(cas)).toBe(true);
+    expect(await cas.compareAndSet("k", undefined, { n: 1 })).toBe(true);
+    const revision = await cas.getRevision<{ n: number }>("k");
+    expect(revision).toEqual({ value: { n: 1 }, token: '{"n":1}' });
+    expect(await cas.compareAndSet("k", revision?.token, { n: 2 })).toBe(true);
+    expect(await cas.get("k")).toEqual({ n: 2 });
+  });
+});
+
+describe("documents on a CAS repository", () => {
+  it("keeps both writers' changes when their edits interleave", async () => {
+    const mem = createInMemoryRepository();
+    // `b` reads, then `a` reads and writes, then `b`'s conditional write
+    // lands on a revision it never saw: `b` must retry, not clobber `a`.
+    let aWrite: Promise<unknown> = Promise.resolve();
+    let firstWrite = true;
+    const raced = {
+      ...mem,
+      compareAndSet: async (
+        ...args: Parameters<typeof mem.compareAndSet>
+      ): Promise<boolean> => {
+        if (firstWrite) {
+          firstWrite = false;
+          await aWrite;
+        }
+        return mem.compareAndSet(...args);
+      },
+    };
+    const a = createMapDocument<number>({ repository: mem, key: "scores" });
+    const b = createMapDocument<number>({ repository: raced, key: "scores" });
+    await a.insertOrUpdate("seed", 5);
+
+    const bWrite = b.edit((values) => ({ ...values, b: 2 }));
+    aWrite = a.insertOrUpdate("a", 1);
+    const result = await bWrite;
+
+    // Without CAS b would have written its stale view, dropping "a".
+    expect(result.content).toEqual({ seed: 5, a: 1, b: 2 });
+    expect(result.version).toBe(3);
+    expect((await a.read()).content).toEqual({ seed: 5, a: 1, b: 2 });
+  });
+
+  it("gives up after maxRetries lost races", async () => {
+    const mem = createInMemoryRepository();
+    let attempts = 0;
+    const alwaysLosing = {
+      ...mem,
+      compareAndSet: () => {
+        attempts += 1;
+        return Promise.resolve(false);
+      },
+    };
+    const list = createListDocument<string>({
+      repository: alwaysLosing,
+      key: "todo",
+      maxRetries: 2,
+    });
+    await expect(list.insert("x")).rejects.toThrow(
+      /Concurrent modification of "todo" \(gave up after 3 attempts\)/,
+    );
+    expect(attempts).toBe(3);
+  });
+
+  it("passes expiresInMillis through to the conditional write", async () => {
+    vi.useFakeTimers();
+    try {
+      const mem = createInMemoryRepository();
+      const list = createListDocument<string>({
+        repository: mem,
+        key: "todo",
+        expiresInMillis: 10,
+      });
+      await list.insert("x");
+      expect((await list.read()).content).toEqual(["x"]);
+      vi.advanceTimersByTime(11);
+      expect((await list.read()).content).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe("stored values are not shared references for CAS", () => {
+  it("survives a modifier that mutates the read value in place", async () => {
+    const mem = createInMemoryRepository();
+    const list = createListDocument<string>({ repository: mem, key: "l" });
+    await list.insert("a");
+    // The modifier pushes into the array it was handed instead of copying.
+    // If the token were recomputed from the (now mutated) stored object,
+    // a single writer would lose every race against itself.
+    const result = await list.edit((values) => {
+      values.push("b");
+      return values;
+    });
+    expect(result.content).toEqual(["a", "b"]);
+    expect(result.version).toBe(2);
+  });
+
+  it("refuses to store undefined through set, setWithExpire and compareAndSet", async () => {
+    const store = new Map<string, string>();
+    const repo = createRepositoryFromKV({
+      get: (key) => Promise.resolve(store.get(key)),
+      set: (key, serialized) => {
+        store.set(key, serialized);
+        return Promise.resolve();
+      },
+      delete: (key) => {
+        store.delete(key);
+        return Promise.resolve();
+      },
+      setWithExpire: (key, serialized) => {
+        store.set(key, serialized);
+        return Promise.resolve();
+      },
+      getRevision: (key) => {
+        const serialized = store.get(key);
+        return Promise.resolve(
+          serialized === undefined ? undefined : { serialized, token: "t" },
+        );
+      },
+      compareAndSet: (key, _token, serialized) => {
+        store.set(key, serialized);
+        return Promise.resolve(true);
+      },
+    });
+    const message = /Cannot store undefined/;
+    await expect(repo.set("k", undefined)).rejects.toThrow(message);
+    await expect(repo.setWithExpire("k", undefined, 10)).rejects.toThrow(
+      message,
+    );
+    await expect(repo.compareAndSet("k", undefined, undefined)).rejects.toThrow(
+      message,
+    );
+    expect(store.size).toBe(0);
+  });
+});
+
+describe("documents on a plain repository", () => {
+  function plainRepository(): Repository & { writes: string[] } {
+    const store = new Map<string, unknown>();
+    const writes: string[] = [];
+    return {
+      writes,
+      get: <T>(key: string) => Promise.resolve(store.get(key) as T | undefined),
+      set: (key, value) => {
+        writes.push(`set:${key}`);
+        store.set(key, value);
+        return Promise.resolve();
+      },
+      delete: (key) => {
+        store.delete(key);
+        return Promise.resolve();
+      },
+    };
+  }
+
+  it("falls back to set when the repository has no CAS", async () => {
+    const repo = plainRepository();
+    const map = createMapDocument<number>({ repository: repo, key: "m" });
+    await map.insertOrUpdate("a", 1);
+    expect(repo.writes).toEqual(["set:m"]);
+    expect((await map.read()).content).toEqual({ a: 1 });
+  });
+
+  it("uses setWithExpire when a TTL is given and the repository is expirable", async () => {
+    const repo = plainRepository();
+    const writes: string[] = [];
+    const expirable: ExpirableRepository = {
+      ...repo,
+      setWithExpire: (key, value, ttl) => {
+        writes.push(`expire:${key}:${ttl}`);
+        return repo.set(key, value);
+      },
+    };
+    const map = createMapDocument<number>({
+      repository: expirable,
+      key: "m",
+      expiresInMillis: 500,
+    });
+    await map.insertOrUpdate("a", 1);
+    expect(writes).toEqual(["expire:m:500"]);
+    expect(repo.writes).toEqual(["set:m"]);
   });
 });

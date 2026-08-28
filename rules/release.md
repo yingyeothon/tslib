@@ -2,7 +2,7 @@
 
 ## Versioning
 
-- All 19 packages share one version, and the version **is committed**: the
+- All 20 packages share one version, and the version **is committed**: the
   Release workflow writes it into every `packages/*/package.json`, commits
   `Release vX.Y.Z`, and tags that commit. Between releases the manifests carry
   the last released version. Never edit `version` by hand — only the workflow
@@ -51,6 +51,8 @@
   `bootstrap` dist-tag, and restores the manifests; it is not a release, so
   nothing is committed or tagged. Register the Trusted Publisher, then run the
   real Release workflow — npm has no cooldown between successive versions.
+  Pending: `@yingyeothon/repository-dynamodb` (added 2026-08-29) is not on
+  npm yet and needs this bootstrap before its first Release.
 - After a brand-new name is published, `npm access get status` answers at
   once but `npm view` can return 404 for ~5 minutes while the read replicas
   catch up. Wait; do not republish. The first version of a package always

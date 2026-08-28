@@ -17,6 +17,7 @@ TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) 
 | [@yingyeothon/repository](packages/repository)                         | Key-value repository abstractions + in-memory impl         |
 | [@yingyeothon/repository-redis](packages/repository-redis)             | Redis-backed repository                                    |
 | [@yingyeothon/repository-s3](packages/repository-s3)                   | S3-backed repository                                       |
+| [@yingyeothon/repository-dynamodb](packages/repository-dynamodb)       | DynamoDB-backed repository (TTL + conditional writes)      |
 | [@yingyeothon/actor-system](packages/actor-system)                     | Lightweight actor system (queue/lock/awaiter)              |
 | [@yingyeothon/actor-system-redis](packages/actor-system-redis)         | Redis-backed actor system support                          |
 | [@yingyeothon/actor-system-lambda](packages/actor-system-lambda)       | AWS Lambda glue for the actor system                       |
@@ -40,6 +41,8 @@ graph LR
   repository-redis --> repository
   repository-s3 --> codec
   repository-s3 --> repository
+  repository-dynamodb --> codec
+  repository-dynamodb --> repository
   actor-system-redis --> actor-system
   actor-system-redis --> codec
   actor-system-redis --> logger

@@ -12,6 +12,7 @@ fixture("list-doc", async (repo) => {
   const listDoc = createListDocument<KeyValue>({
     repository: repo,
     key: "list-doc",
+    expiresInMillis: 60_000,
   });
 
   const first = { key: "hello", value: "world" };

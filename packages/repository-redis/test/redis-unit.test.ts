@@ -2,6 +2,7 @@ import type { Codec } from "@yingyeothon/codec";
 import type { Logger } from "@yingyeothon/logger";
 import type { RedisConnection } from "@yingyeothon/naive-redis";
 import { createListDocument, createMapDocument } from "@yingyeothon/repository";
+import { createHash } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createRedisRepository } from "../src/index.js";
 
@@ -67,6 +68,23 @@ function fakeRedis(): FakeRedis {
           }
           return Promise.resolve(`:${count}\r\n`);
         }
+        case "EVAL": {
+          // [script, numkeys, key, expectedToken, value, px]
+          const [, , key = "", expected = "", value = "", px = ""] = args;
+          const current = store.get(key);
+          const currentToken =
+            current === undefined
+              ? undefined
+              : createHash("sha1").update(current).digest("hex");
+          const matches =
+            expected === "" ? current === undefined : currentToken === expected;
+          if (!matches) {
+            return Promise.resolve(":0\r\n");
+          }
+          store.set(key, value);
+          fake.lastSetExpirationMillis = Number(px);
+          return Promise.resolve(":1\r\n");
+        }
         default:
           return Promise.reject(new Error(`Unsupported command: ${command}`));
       }
@@ -85,7 +103,7 @@ describe("createRedisRepository", () => {
     const fake = fakeRedis();
     const repo = createRedisRepository({ redisConnection: fake.connection });
 
-    await repo.set("key1", { hello: "world" });
+    await repo.setWithExpire("key1", { hello: "world" }, 1000);
     expect(fake.store.get("repo:key1")).toEqual(
       JSON.stringify({ hello: "world" }),
     );
@@ -101,7 +119,7 @@ describe("createRedisRepository", () => {
       prefix: "session",
     });
 
-    await repo.set("key1", 42);
+    await repo.setWithExpire("key1", 42, 1000);
     expect(fake.store.get("repo:session:key1")).toEqual("42");
     expect(await repo.get<number>("key1")).toEqual(42);
 
@@ -119,11 +137,11 @@ describe("createRedisRepository", () => {
     const fake = fakeRedis();
     const repo = createRedisRepository({ redisConnection: fake.connection });
 
-    await repo.set("key1", "value");
+    await repo.setWithExpire("key1", "value", 1000);
     await repo.set("key1", undefined);
     expect(fake.store.size).toEqual(0);
 
-    await repo.set("key2", "value");
+    await repo.setWithExpire("key2", "value", 1000);
     await repo.setWithExpire("key2", undefined, 1000);
     expect(fake.store.size).toEqual(0);
   });
@@ -197,7 +215,7 @@ describe("createRedisRepository", () => {
       codec: base64Codec,
     });
 
-    await repo.set("key1", { hello: "world" });
+    await repo.setWithExpire("key1", { hello: "world" }, 1000);
     expect(fake.store.get("repo:key1")).toEqual(
       Buffer.from(JSON.stringify({ hello: "world" })).toString("base64"),
     );
@@ -211,7 +229,7 @@ describe("createRedisRepository", () => {
 
     expect(prefixed).not.toBe(repo);
 
-    await prefixed.set("key1", "value");
+    await prefixed.setWithExpire("key1", "value", 1000);
     expect(fake.store.has("repo:nested:key1")).toEqual(true);
     expect(await repo.get("key1")).toBeUndefined();
   });
@@ -223,8 +241,10 @@ describe("createRedisRepository", () => {
     const mapDoc = createMapDocument<string>({
       repository: repo,
       key: "map-doc",
+      expiresInMillis: 5000,
     });
     await mapDoc.insertOrUpdate("hello", "world");
+    expect(fake.lastSetExpirationMillis).toEqual(5000);
     const map = await mapDoc.read();
     expect(map.version).toEqual(1);
     expect(map.content).toEqual({ hello: "world" });
@@ -232,10 +252,115 @@ describe("createRedisRepository", () => {
     const listDoc = createListDocument<string>({
       repository: repo,
       key: "list-doc",
+      expiresInMillis: 5000,
     });
     await listDoc.insert("hello");
     const list = await listDoc.read();
     expect(list.version).toEqual(1);
     expect(list.content).toEqual(["hello"]);
+  });
+
+  it("rounds a fractional TTL up to whole milliseconds", async () => {
+    // Redis rejects `PX 333.33` with "value is not an integer".
+    const fake = fakeRedis();
+    const repo = createRedisRepository({ redisConnection: fake.connection });
+    await repo.setWithExpire("k", "v", 1000 / 3);
+    expect(fake.lastSetExpirationMillis).toBe(334);
+    const revision = await repo.getRevision("k");
+    await repo.compareAndSet("k", revision?.token, "w", {
+      expiresInMillis: 1000 / 3,
+    });
+    expect(fake.lastSetExpirationMillis).toBe(334);
+  });
+
+  it("rejects a TTL-less set", async () => {
+    const fake = fakeRedis();
+    const repo = createRedisRepository({ redisConnection: fake.connection });
+
+    await expect(repo.set("key1", "value")).rejects.toThrow(
+      /stores every key with a TTL; use setWithExpire/,
+    );
+    expect(fake.store.size).toEqual(0);
+    expect(fake.sentMessages).toEqual([]);
+  });
+
+  it("rejects compareAndSet without a TTL", async () => {
+    const fake = fakeRedis();
+    const repo = createRedisRepository({ redisConnection: fake.connection });
+    const message = /stores every key with a TTL; use setWithExpire/;
+
+    await expect(repo.compareAndSet("key1", undefined, "v")).rejects.toThrow(
+      message,
+    );
+    await expect(
+      repo.compareAndSet("key1", undefined, "v", { expiresInMillis: 0 }),
+    ).rejects.toThrow(message);
+    await expect(
+      repo.compareAndSet("key1", undefined, undefined, {
+        expiresInMillis: 1000,
+      }),
+    ).rejects.toThrow("compareAndSet cannot store undefined");
+    expect(fake.sentMessages).toEqual([]);
+  });
+
+  it("returns a SHA-1 token of the stored string from getRevision", async () => {
+    const fake = fakeRedis();
+    const repo = createRedisRepository({ redisConnection: fake.connection });
+
+    expect(await repo.getRevision("key1")).toBeUndefined();
+    await repo.setWithExpire("key1", { hello: "world" }, 1000);
+    const revision = await repo.getRevision<{ hello: string }>("key1");
+    expect(revision).toEqual({
+      value: { hello: "world" },
+      token: createHash("sha1")
+        .update(JSON.stringify({ hello: "world" }))
+        .digest("hex"),
+    });
+  });
+
+  it("sends compareAndSet as one EVAL with the key and values as arguments", async () => {
+    const fake = fakeRedis();
+    const repo = createRedisRepository({
+      redisConnection: fake.connection,
+      prefix: "p",
+    });
+    // A value that would break inline framing or a naive script template.
+    const value = 'quote\' "double" \r\nFLUSHALL';
+
+    expect(
+      await repo.compareAndSet("key1", undefined, value, {
+        expiresInMillis: 1234,
+      }),
+    ).toEqual(true);
+    expect(fake.store.get("repo:p:key1")).toEqual(JSON.stringify(value));
+    expect(fake.lastSetExpirationMillis).toEqual(1234);
+
+    const [message] = fake.sentMessages;
+    expect(message?.startsWith("*")).toEqual(true);
+    const [command, script, numKeys, key, expected, stored, px] = parseCommand(
+      message ?? "",
+    );
+    expect(command).toEqual("EVAL");
+    expect(numKeys).toEqual("1");
+    expect(key).toEqual("repo:p:key1");
+    expect(expected).toEqual("");
+    expect(stored).toEqual(JSON.stringify(value));
+    expect(px).toEqual("1234");
+    expect(script).not.toContain("repo:p:key1");
+    expect(script).not.toContain("FLUSHALL");
+    expect(script).toContain("redis.sha1hex(cur)");
+
+    const token = (await repo.getRevision("key1"))?.token;
+    expect(
+      await repo.compareAndSet("key1", "stale", "next", {
+        expiresInMillis: 10,
+      }),
+    ).toEqual(false);
+    expect(
+      await repo.compareAndSet("key1", token, "next", {
+        expiresInMillis: 10,
+      }),
+    ).toEqual(true);
+    expect(await repo.get("key1")).toEqual("next");
   });
 });

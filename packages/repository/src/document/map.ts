@@ -1,5 +1,10 @@
 import type { Repository } from "../repository.js";
 import type { Versioned } from "./versioned.js";
+import {
+  editDocument,
+  ensureDocument,
+  type DocumentWriteOptions,
+} from "./write.js";
 
 export type KeyValues<V> = Record<string, V>;
 
@@ -17,31 +22,27 @@ export interface MapDocument<V = string> {
   view<U>(selector: (input: KeyValues<V>) => U): Promise<U>;
 }
 
-export interface MapDocumentOptions {
+export interface MapDocumentOptions extends DocumentWriteOptions {
   repository: Repository;
   key: string;
 }
 
+const empty = <V>(): KeyValues<V> => ({});
+
 export function createMapDocument<V = string>(
   options: MapDocumentOptions,
 ): MapDocument<V> {
-  const { repository, key: tupleKey } = options;
+  const { repository, key: tupleKey, ...writeOptions } = options;
 
   async function read(): Promise<Versioned<KeyValues<V>>> {
     const actual = await repository.get<Versioned<KeyValues<V>>>(tupleKey);
-    return ensureDocument(actual);
+    return ensureDocument(actual, empty<V>);
   }
 
-  async function edit(
+  function edit(
     modifier: (input: KeyValues<V>) => KeyValues<V>,
   ): Promise<Versioned<KeyValues<V>>> {
-    const doc = await read();
-    const newDoc = {
-      content: modifier(doc.content),
-      version: doc.version + 1,
-    };
-    await repository.set(tupleKey, newDoc);
-    return newDoc;
+    return editDocument(repository, tupleKey, empty<V>, modifier, writeOptions);
   }
 
   function insertOrUpdate(
@@ -65,14 +66,5 @@ export function createMapDocument<V = string>(
     delete: (key) => insertOrUpdate(key, undefined),
     truncate: () => repository.delete(tupleKey),
     view: async (selector) => selector((await read()).content),
-  };
-}
-
-function ensureDocument<V>(
-  doc: Versioned<KeyValues<V>> | undefined,
-): Versioned<KeyValues<V>> {
-  return {
-    version: doc?.version ? doc.version : 0,
-    content: doc?.content ? doc.content : {},
   };
 }

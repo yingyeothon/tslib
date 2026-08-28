@@ -92,6 +92,24 @@
   precedes every drop" is what separates announce-then-drop from a repeated
   announce/drop pair; counting each in isolation does not.
 
+## Scripted TCP peer for recovery paths
+
+- A real Redis cannot be told to answer `-ERR` to one `AUTH` and `-NOAUTH`
+  to the next `GET`, so recovery is tested against a `node:net` server that
+  records every inbound line and replies per connection number
+  (`packages/naive-redis/test/auth-recovery.test.ts`). Assert the whole
+  `received` array (`[AUTH, GET, AUTH, GET]`) and the connection count; that
+  is what pins "reconnected once and re-authenticated first".
+- A regex `fulfill` on `NaiveSocket.send` uses its first capture group; a
+  pattern without one never fulfils and the test times out for no visible
+  reason.
+- For CAS backends, the race test is the same shape everywhere: wrap the
+  repository so the first `compareAndSet` awaits the other writer, then
+  assert both writers' keys survive and the version advanced twice
+  (`packages/repository/test/repository.test.ts` "keeps both writers'
+  changes"). Copy that pattern into a new backend rather than inventing a
+  weaker one.
+
 ## Assertions
 
 - Assert observable behavior of the public API, not internal call counts.

@@ -30,7 +30,7 @@
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm build         # 19 packages × ESM/CJS/DTS
+pnpm build         # 20 packages × ESM/CJS/DTS
 pnpm lint          # 0 errors
 pnpm format:check  # CI gate — run `pnpm format` before committing
 pnpm typecheck     # only meaningful after pnpm build

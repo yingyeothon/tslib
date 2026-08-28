@@ -1,5 +1,10 @@
 import type { Repository } from "../repository.js";
 import type { Versioned } from "./versioned.js";
+import {
+  editDocument,
+  ensureDocument,
+  type DocumentWriteOptions,
+} from "./write.js";
 
 export type Values<V> = V[];
 
@@ -12,31 +17,25 @@ export interface ListDocument<V = string> {
   view<U>(selector: (input: V[]) => U): Promise<U>;
 }
 
-export interface ListDocumentOptions {
+export interface ListDocumentOptions extends DocumentWriteOptions {
   repository: Repository;
   key: string;
 }
 
+const empty = <V>(): Values<V> => [];
+
 export function createListDocument<V = string>(
   options: ListDocumentOptions,
 ): ListDocument<V> {
-  const { repository, key } = options;
+  const { repository, key, ...writeOptions } = options;
 
   async function read(): Promise<Versioned<Values<V>>> {
     const actual = await repository.get<Versioned<Values<V>>>(key);
-    return ensureDocument(actual);
+    return ensureDocument(actual, empty<V>);
   }
 
-  async function edit(
-    modifier: (input: V[]) => V[],
-  ): Promise<Versioned<Values<V>>> {
-    const doc = await read();
-    const newDoc = {
-      content: modifier(doc.content),
-      version: doc.version + 1,
-    };
-    await repository.set(key, newDoc);
-    return newDoc;
+  function edit(modifier: (input: V[]) => V[]): Promise<Versioned<Values<V>>> {
+    return editDocument(repository, key, empty<V>, modifier, writeOptions);
   }
 
   return {
@@ -47,14 +46,5 @@ export function createListDocument<V = string>(
       edit((values) => values.filter((value) => !filter(value))),
     truncate: () => repository.delete(key),
     view: async (selector) => selector((await read()).content),
-  };
-}
-
-function ensureDocument<V>(
-  doc: Versioned<Values<V>> | undefined,
-): Versioned<Values<V>> {
-  return {
-    version: doc?.version ? doc.version : 0,
-    content: doc?.content ? doc.content : [],
   };
 }

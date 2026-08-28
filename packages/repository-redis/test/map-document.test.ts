@@ -7,6 +7,7 @@ fixture("map-doc", async (repo) => {
   const mapDoc = createMapDocument<string>({
     repository: repo,
     key: "map-doc",
+    expiresInMillis: 60_000,
   });
 
   const empty = await mapDoc.read();

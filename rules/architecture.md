@@ -70,11 +70,58 @@ consequences of those rules.
   the actor's own subsystem is dead: only a _producer_ pushes, so only a
   producer can re-apply a TTL. Trace an option to the call it changes before
   documenting it as a safeguard.
+- Every runtime Redis key carries a TTL, and "no TTL" is not an option.
+  `RedisQueueOptions.ttlSeconds` is **required** and `createRedisQueue`
+  throws on a non-positive value: on a shared `allkeys-lru` Redis a key that
+  never expires evicts someone else's first, and a queue pushed by something
+  other than the gateway must still expire. Handlers that push take
+  `queueTtlSeconds` required; `handleActor` (which only drains) defaults its
+  own to the alive window. `repository-redis` `set()` throws for the same
+  reason (use `setWithExpire`; the document helpers take `expiresInMillis`).
 - A default that is unsafe should not exist. `RedisLockOptions.lockTimeout` is
   **required** rather than defaulting to "no expiry": a lock that never expires
   deadlocks its actor forever when the holder crashes, so that has to be a
   choice someone typed. Requiring the field is the enforcement; a doc comment
   is not.
+
+## Conditional writes (`CasRepository`)
+
+- Read-modify-write on a shared key needs a conditional write, not a version
+  field the writer trusts by itself. `Repository` gains an optional
+  `CasRepository` extension: `getRevision` returns an opaque `token`, and
+  `compareAndSet(key, expectedToken, value)` writes only while the key still
+  holds that revision (`undefined` = must be absent).
+- The token is whatever the backend can check atomically, never something
+  the caller computes: an ETag for S3 (`If-Match` / `If-None-Match: *`), a
+  random `rev` attribute for DynamoDB (`ConditionExpression`), a SHA-1 of the
+  stored bytes for Redis (Lua `redis.sha1hex`) and memory. Comparing a
+  serialized payload from JavaScript would tie the check to codec determinism.
+- `ListDocument`/`MapDocument` use CAS when the repository has it, retry from
+  a fresh read (`maxRetries`, default 3), then throw. Without CAS they stay
+  last-writer-wins and the README says so; do not add a silent fallback that
+  looks like a guarantee.
+- A failed conditional write is still a billed request on S3 (a PUT) and
+  DynamoDB (one WCU), the same as the unconditional write it replaces, so
+  cost is not a reason to leave a backend out. Check the installed SDK types
+  before declaring a vendor feature unavailable.
+
+## Connection recovery
+
+- A connection that can be poisoned must reset itself, not report forever.
+  `naive-redis` drops the socket when `AUTH` fails or times out and when any
+  reply is `-NOAUTH`/`-WRONGPASS`, so the next command reconnects and
+  authenticates again; a command that hit `-NOAUTH` is retried once. Before
+  this, a Redis restart left every warm Lambda container answering
+  `-NOAUTH` until it was recycled.
+- The command that performs the recovery (`AUTH`) must be excluded from the
+  recovery path (`recoverAuthentication: false`), or a wrong password
+  reconnects recursively.
+- `NaiveSocket.disconnect(reason?)` passes the cause to the pending requests;
+  a bare `DeadSocket` hides why the caller's command died.
+- Socket event handlers are bound to the socket that raised them. `destroy()`
+  emits `close` on a later tick, so a `send` issued right after `disconnect()`
+  has already opened the next socket; the stale `close` must not trigger a
+  reconnect loop against the new one.
 
 ## Option shapes
 
@@ -129,7 +176,7 @@ rename. Keep new authorizers in that shape; do not rename them to `*Handler`.
   option. The DOM lib and `undici-types` are both off-limits in a public
   `.d.ts`: the first is not in `tsconfig.base.json`, the second would become a
   runtime dependency (see `tooling.md`). No `node:` imports there either.
-- Backend adapters (`repository-redis`, `repository-s3`, `actor-system-redis`,
+- Backend adapters (`repository-redis`, `repository-s3`, `repository-dynamodb`, `actor-system-redis`,
   `actor-system-lambda`) implement an abstraction defined in the leaf package.
   Put the interface in the abstraction package, never in the adapter.
 - Keep protocol/serialization logic (RESP framing, codecs, policy building) pure

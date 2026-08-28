@@ -1,6 +1,6 @@
 # @yingyeothon/repository
 
-Key-value repository abstractions for asynchronous storage backends: a minimal `Repository` interface, an `ExpirableRepository` extension for TTL-based entries, a `createRepositoryFromKV` building block that turns primitive string get/set/delete operations into a full JSON repository, versioned list/map document helpers, and a `createInMemoryRepository` implementation useful for tests and local development.
+Key-value repository abstractions for asynchronous storage backends: a minimal `Repository` interface, an `ExpirableRepository` extension for TTL-based entries, a `CasRepository` extension for conditional (compare-and-set) writes, a `createRepositoryFromKV` building block that turns primitive string get/set/delete operations into a full JSON repository, versioned list/map document helpers, and a `createInMemoryRepository` implementation useful for tests and local development.
 
 ## Install
 
@@ -25,6 +25,12 @@ const value = await repo.get<{ hi: string }>("greeting");
 
 // TTL entries
 await repo.setWithExpire("session", "token", 60_000);
+
+// Conditional writes: a token from getRevision guards compareAndSet
+const rev = await repo.getRevision<string>("session");
+await repo.compareAndSet("session", rev?.token, "rotated", {
+  expiresInMillis: 60_000,
+});
 
 // Versioned document helpers
 const list = createListDocument<string>({ repository: repo, key: "todo" });
@@ -57,21 +63,34 @@ const repo = createRepositoryFromKV({
   // Optional; providing it makes the result an ExpirableRepository.
   setWithExpire: (key, serialized, expiresInMillis) =>
     backend.writeWithTTL(key, serialized, expiresInMillis),
+  // Optional; providing both makes the result a CasRepository.
+  getRevision: (key) => backend.readWithEtag(key), // { serialized, token }
+  compareAndSet: (key, expectedToken, serialized, expiresInMillis) =>
+    backend.writeIfMatch(key, expectedToken, serialized),
 });
 ```
+
+### Concurrent writers
+
+`ListDocument`/`MapDocument` do a read-modify-write on every `edit`, `insert`, `insertOrUpdate`, `deleteIf` and `delete`. On a `CasRepository` (in-memory, `repository-redis`, `repository-s3`, `repository-dynamodb`) that write is conditioned on the revision that was read and retried from a fresh read when another writer got in between — up to `maxRetries` (default 3) times, after which `edit` throws `Concurrent modification of "<key>"`. On a repository without CAS the last writer wins, so serialize writers yourself there (an actor lock does).
 
 ## Public API
 
 - `Repository` (type) — async key-value interface: `get<T>(key)`, `set<T>(key, value)`, `delete(key)`.
 - `ExpirableRepository` (type) — extends `Repository` with `setWithExpire<T>(key, value, expiresInMillis)`; a non-positive TTL means "never expires".
-- `createRepositoryFromKV(primitives)` — builds a `Repository` from primitive string-valued operations. The primitives contract (`KVPrimitives`): `get(key): Promise<string | undefined>` (`undefined` means "no value"), `set(key, serialized): Promise<void>`, `delete(key): Promise<void>`, and optionally `setWithExpire(key, serialized, expiresInMillis): Promise<void>`. Values are serialized with `JSON.stringify` before `set`/`setWithExpire` and parsed with `JSON.parse` after `get`. When `setWithExpire` is provided the returned object is an `ExpirableRepository`; otherwise the result has no `setWithExpire` member.
+- `CasRepository` (type) — extends `Repository` with `getRevision<T>(key): Promise<Revision<T> | undefined>` and `compareAndSet<T>(key, expectedToken, value, options?)`. `compareAndSet` writes only while the key still holds the revision `expectedToken` (`undefined` = the key must not exist) and resolves `false` without writing otherwise. `options.expiresInMillis` applies a TTL where the backend has one.
+- `Revision<T>` (type) — `{ value: T; token: string }`; `token` is backend-specific and opaque (an ETag, a content hash, a row revision).
+- `CompareAndSetOptions` (type) — `{ expiresInMillis?: number }`.
+- `isCasRepository(repository)` / `isExpirableRepository(repository)` — type guards for the two extensions.
+- `createRepositoryFromKV(primitives)` — builds a `Repository` from primitive string-valued operations. The primitives contract (`KVPrimitives`): `get(key): Promise<string | undefined>` (`undefined` means "no value"), `set(key, serialized): Promise<void>`, `delete(key): Promise<void>`, and optionally `setWithExpire(key, serialized, expiresInMillis): Promise<void>`, `getRevision(key): Promise<{ serialized, token } | undefined>` and `compareAndSet(key, expectedToken, serialized, expiresInMillis?): Promise<boolean>`. Values are serialized with `JSON.stringify` before writes and parsed with `JSON.parse` after reads. When `setWithExpire` is provided the returned object is an `ExpirableRepository`; when both `getRevision` and `compareAndSet` are provided it is a `CasRepository`; otherwise those members are absent.
 - `KVPrimitives` (type) — the primitives contract accepted by `createRepositoryFromKV`.
 - `createInMemoryRepository()` — returns an `InMemoryRepository` (an `ExpirableRepository`) backed by an in-process `Map`.
-- `InMemoryRepository` (type) — alias for `ExpirableRepository`, the return type of `createInMemoryRepository`.
+- `InMemoryRepository` (type) — `ExpirableRepository & CasRepository`, the return type of `createInMemoryRepository`; its revision token is a SHA-1 of the serialized value.
 - `createListDocument<V>(options: ListDocumentOptions)` — returns a `ListDocument<V>`, a versioned list stored under `options.key` in `options.repository`: `insert`, `deleteIf`, `truncate`, `read`, `edit`, `view`.
 - `createMapDocument<V>(options: MapDocumentOptions)` — returns a `MapDocument<V>`, a versioned string-keyed map stored under `options.key` in `options.repository`: `insertOrUpdate`, `delete`, `truncate`, `read`, `edit`, `view`.
 - `ListDocument<V>` / `MapDocument<V>` (types) — the document interfaces returned by the factories.
-- `ListDocumentOptions` / `MapDocumentOptions` (types) — `{ repository: Repository; key: string }`.
+- `ListDocumentOptions` / `MapDocumentOptions` (types) — `{ repository: Repository; key: string; expiresInMillis?: number; maxRetries?: number }`. `expiresInMillis` is applied on every write (through `compareAndSet` or `setWithExpire`; ignored on backends without per-key TTL). `maxRetries` bounds the CAS retries, see "Concurrent writers".
+- `DocumentWriteOptions` (type) — the `{ expiresInMillis?, maxRetries? }` part shared by both option types.
 - `Versioned<T>` (type) — `{ version: number; content: T }` envelope used by the document helpers.
 - `Values<V>` (type) — alias for `V[]`, the content type of `ListDocument`.
 - `KeyValues<V>` (type) — alias for `Record<string, V>`, the content type of `MapDocument`.

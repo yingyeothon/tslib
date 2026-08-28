@@ -8,6 +8,7 @@ import {
 import type { Codec } from "@yingyeothon/codec";
 import { createListDocument, createMapDocument } from "@yingyeothon/repository";
 import { mockClient } from "aws-sdk-client-mock";
+import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createS3Repository } from "../src/index.js";
 
@@ -25,6 +26,24 @@ function textBody(text: string): GetObjectCommandOutput["Body"] {
   } as GetObjectCommandOutput["Body"];
 }
 
+function preconditionFailed(): Error {
+  return Object.assign(new Error("At least one of the pre-conditions failed"), {
+    name: "PreconditionFailed",
+    $metadata: { httpStatusCode: 412 },
+  });
+}
+
+function etagOf(body: string): string {
+  return `"${createHash("sha1").update(body).digest("hex")}"`;
+}
+
+interface PutInput {
+  Key: string;
+  Body: string;
+  IfMatch?: string;
+  IfNoneMatch?: string;
+}
+
 function useInMemoryBucket(): Map<string, string> {
   const store = new Map<string, string>();
   s3Mock.on(GetObjectCommand).callsFake((input: { Key: string }) => {
@@ -32,14 +51,22 @@ function useInMemoryBucket(): Map<string, string> {
     if (value === undefined) {
       throw noSuchKey();
     }
-    return { Body: textBody(value) };
+    return { Body: textBody(value), ETag: etagOf(value) };
   });
-  s3Mock
-    .on(PutObjectCommand)
-    .callsFake((input: { Key: string; Body: string }) => {
-      store.set(input.Key, input.Body);
-      return {};
-    });
+  s3Mock.on(PutObjectCommand).callsFake((input: PutInput) => {
+    const current = store.get(input.Key);
+    if (input.IfNoneMatch === "*" && current !== undefined) {
+      throw preconditionFailed();
+    }
+    if (
+      input.IfMatch !== undefined &&
+      (current === undefined || etagOf(current) !== input.IfMatch)
+    ) {
+      throw preconditionFailed();
+    }
+    store.set(input.Key, input.Body);
+    return { ETag: etagOf(input.Body) };
+  });
   s3Mock.on(DeleteObjectCommand).callsFake((input: { Key: string }) => {
     store.delete(input.Key);
     return {};
@@ -217,6 +244,163 @@ describe("createS3Repository", () => {
     expect(store.get("a/key")).toEqual("1");
     expect(store.get("b/key")).toEqual("2");
     expect(await nested.get<number>("key")).toEqual(2);
+  });
+});
+
+describe("createS3Repository conditional writes", () => {
+  it("creates the key when it is absent and no token is expected", async () => {
+    const store = useInMemoryBucket();
+    const s3 = createS3Repository({ bucketName: "test-bucket", prefix: "p/" });
+
+    expect(await s3.getRevision("k")).toBeUndefined();
+    expect(await s3.compareAndSet("k", undefined, { n: 1 })).toBe(true);
+    expect(store.get("p/k")).toEqual(JSON.stringify({ n: 1 }));
+    expect(
+      s3Mock.commandCalls(PutObjectCommand, {
+        Bucket: "test-bucket",
+        Key: "p/k",
+        IfNoneMatch: "*",
+      }),
+    ).toHaveLength(1);
+  });
+
+  it("refuses to create over an existing key", async () => {
+    const store = useInMemoryBucket();
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+    await s3.set("k", { n: 1 });
+
+    expect(await s3.compareAndSet("k", undefined, { n: 2 })).toBe(false);
+    expect(store.get("k")).toEqual(JSON.stringify({ n: 1 }));
+  });
+
+  it("writes when the ETag still matches and returns a new ETag", async () => {
+    useInMemoryBucket();
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+    await s3.set("k", { n: 1 });
+
+    const revision = await s3.getRevision<{ n: number }>("k");
+    expect(revision).toEqual({
+      value: { n: 1 },
+      token: etagOf(JSON.stringify({ n: 1 })),
+    });
+    expect(await s3.compareAndSet("k", revision?.token, { n: 2 })).toBe(true);
+    expect(
+      s3Mock.commandCalls(PutObjectCommand, {
+        Key: "k",
+        IfMatch: revision?.token,
+      }),
+    ).toHaveLength(1);
+
+    const next = await s3.getRevision<{ n: number }>("k");
+    expect(next?.value).toEqual({ n: 2 });
+    expect(next?.token).not.toEqual(revision?.token);
+  });
+
+  it("resolves false on a stale ETag without writing", async () => {
+    const store = useInMemoryBucket();
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+    await s3.set("k", { n: 1 });
+    const stale = await s3.getRevision("k");
+    await s3.set("k", { n: 2 });
+
+    expect(await s3.compareAndSet("k", stale?.token, { n: 3 })).toBe(false);
+    expect(store.get("k")).toEqual(JSON.stringify({ n: 2 }));
+  });
+
+  it("resolves false on a 409 ConditionalRequestConflict", async () => {
+    s3Mock.on(PutObjectCommand).rejects(
+      Object.assign(new Error("Conditional request conflict"), {
+        name: "ConditionalRequestConflict",
+        $metadata: { httpStatusCode: 409 },
+      }),
+    );
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+
+    expect(await s3.compareAndSet("k", '"etag"', 1)).toBe(false);
+  });
+
+  it("resolves false on a bare 412 status", async () => {
+    s3Mock.on(PutObjectCommand).rejects(
+      Object.assign(new Error("412"), {
+        name: "UnknownError",
+        $metadata: { httpStatusCode: 412 },
+      }),
+    );
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+
+    expect(await s3.compareAndSet("k", undefined, 1)).toBe(false);
+  });
+
+  it("rethrows other putObject errors", async () => {
+    s3Mock
+      .on(PutObjectCommand)
+      .rejects(
+        Object.assign(new Error("Access Denied"), { name: "AccessDenied" }),
+      );
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+
+    await expect(s3.compareAndSet("k", undefined, 1)).rejects.toThrow(
+      "Access Denied",
+    );
+  });
+
+  it("throws from getRevision when S3 returns no ETag", async () => {
+    s3Mock.on(GetObjectCommand).resolves({ Body: textBody("1") });
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+
+    await expect(s3.getRevision("k")).rejects.toThrow(/no ETag/);
+  });
+
+  it("returns undefined from getRevision for a missing key or empty body", async () => {
+    s3Mock.on(GetObjectCommand).rejects(noSuchKey());
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+    expect(await s3.getRevision("k")).toBeUndefined();
+
+    s3Mock.on(GetObjectCommand).resolves({ ETag: '"x"' });
+    expect(await s3.getRevision("k")).toBeUndefined();
+  });
+
+  it("rethrows getRevision errors other than NoSuchKey", async () => {
+    s3Mock
+      .on(GetObjectCommand)
+      .rejects(
+        Object.assign(new Error("Access Denied"), { name: "AccessDenied" }),
+      );
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+
+    await expect(s3.getRevision("k")).rejects.toThrow("Access Denied");
+  });
+
+  it("keeps both writers' changes when document edits interleave", async () => {
+    useInMemoryBucket();
+    const s3 = createS3Repository({ bucketName: "test-bucket" });
+    // `b` reads, then `a` reads and writes, then `b`'s conditional write
+    // lands on an ETag it never saw: `b` must retry, not clobber `a`.
+    let aWrite: Promise<unknown> = Promise.resolve();
+    let firstWrite = true;
+    const raced = {
+      ...s3,
+      compareAndSet: async (
+        ...args: Parameters<typeof s3.compareAndSet>
+      ): Promise<boolean> => {
+        if (firstWrite) {
+          firstWrite = false;
+          await aWrite;
+        }
+        return s3.compareAndSet(...args);
+      },
+    };
+    const a = createMapDocument<number>({ repository: s3, key: "scores" });
+    const b = createMapDocument<number>({ repository: raced, key: "scores" });
+    await a.insertOrUpdate("seed", 5);
+
+    const bWrite = b.edit((values) => ({ ...values, b: 2 }));
+    aWrite = a.insertOrUpdate("a", 1);
+    const result = await bWrite;
+
+    expect(result.content).toEqual({ seed: 5, a: 1, b: 2 });
+    expect(result.version).toBe(3);
+    expect((await a.read()).content).toEqual({ seed: 5, a: 1, b: 2 });
   });
 });
 

@@ -1,9 +1,17 @@
 export type {
+  CasRepository,
+  CompareAndSetOptions,
   ExpirableRepository,
   KVPrimitives,
   Repository,
+  Revision,
 } from "./repository.js";
-export { createRepositoryFromKV } from "./repository.js";
+export {
+  createRepositoryFromKV,
+  isCasRepository,
+  isExpirableRepository,
+} from "./repository.js";
+export type { DocumentWriteOptions } from "./document/write.js";
 export { createInMemoryRepository, type InMemoryRepository } from "./memory.js";
 export {
   createListDocument,

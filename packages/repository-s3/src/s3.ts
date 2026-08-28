@@ -1,7 +1,8 @@
-import { S3 } from "@aws-sdk/client-s3";
+import { S3, type GetObjectCommandOutput } from "@aws-sdk/client-s3";
 import type { Codec } from "@yingyeothon/codec";
 import {
   createRepositoryFromKV,
+  type CasRepository,
   type KVPrimitives,
   type Repository,
 } from "@yingyeothon/repository";
@@ -13,7 +14,7 @@ export interface S3RepositoryOptions {
   codec?: Codec<string>;
 }
 
-export interface S3Repository extends Repository {
+export interface S3Repository extends Repository, CasRepository {
   withPrefix(prefix: string): S3Repository;
 }
 
@@ -23,6 +24,27 @@ function isNoSuchKeyError(error: unknown): boolean {
   return (
     error instanceof Error &&
     (error.name === "NoSuchKey" || NO_SUCH_KEY_MESSAGE.test(error.message))
+  );
+}
+
+function httpStatusOf(error: unknown): number | undefined {
+  return (error as { $metadata?: { httpStatusCode?: number } } | undefined)
+    ?.$metadata?.httpStatusCode;
+}
+
+// A conditional PUT that loses is reported as 412 PreconditionFailed; while
+// another conditional write on the same key is in flight S3 answers 409
+// ConditionalRequestConflict instead. Both mean "the write did not happen".
+function isConditionFailure(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const status = httpStatusOf(error);
+  return (
+    error.name === "PreconditionFailed" ||
+    error.name === "ConditionalRequestConflict" ||
+    status === 412 ||
+    status === 409
   );
 }
 
@@ -43,7 +65,7 @@ export function createS3Repository(options: S3RepositoryOptions): S3Repository {
     ? (body: string) => JSON.stringify(codec.decode(body))
     : (body: string) => body;
 
-  const primitives: KVPrimitives = {
+  const primitives = {
     async get(key) {
       try {
         const content = await s3.getObject({
@@ -76,7 +98,52 @@ export function createS3Repository(options: S3RepositoryOptions): S3Repository {
         Key: asS3Key(key),
       });
     },
-  };
+    async getRevision(key) {
+      let content: GetObjectCommandOutput;
+      try {
+        content = await s3.getObject({ Bucket: bucketName, Key: asS3Key(key) });
+      } catch (error) {
+        if (isNoSuchKeyError(error)) {
+          return undefined;
+        }
+        throw error;
+      }
+      if (!content.Body) {
+        return undefined;
+      }
+      // The ETag is kept verbatim (quotes included): that is the exact form
+      // `IfMatch` expects on the following conditional PUT.
+      if (!content.ETag) {
+        throw new Error(
+          `S3 returned no ETag for "${asS3Key(key)}"; conditional writes need one`,
+        );
+      }
+      return {
+        serialized: fromBody(await content.Body.transformToString("utf-8")),
+        token: content.ETag,
+      };
+    },
+    // `expiresInMillis` is ignored: S3 has no per-object TTL. Expire objects
+    // with a bucket lifecycle rule instead.
+    async compareAndSet(key, expectedToken, serialized) {
+      try {
+        await s3.putObject({
+          Bucket: bucketName,
+          Key: asS3Key(key),
+          Body: toBody(serialized),
+          ...(expectedToken === undefined
+            ? { IfNoneMatch: "*" }
+            : { IfMatch: expectedToken }),
+        });
+        return true;
+      } catch (error) {
+        if (isConditionFailure(error)) {
+          return false;
+        }
+        throw error;
+      }
+    },
+  } satisfies KVPrimitives;
 
   const repository = createRepositoryFromKV(primitives);
   return {
