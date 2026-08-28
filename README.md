@@ -73,6 +73,8 @@ pnpm install
 pnpm build        # tsup dual ESM+CJS+types for every package (topological order)
 pnpm lint         # eslint (type-aware)
 pnpm typecheck    # tsc --noEmit per package (build first: workspace types resolve from dist)
+node scripts/link-service.mjs link   # point ~/git/yyt.life/service (+ its examples) at this checkout instead of npm
+node scripts/link-service.mjs unlink # back to npm before committing there
 pnpm test         # vitest across all packages (spins up Redis containers)
 pnpm coverage     # with v8 coverage and thresholds
 ```

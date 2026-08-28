@@ -1,5 +1,9 @@
 # Release & Versioning
 
+Release only after the change was verified through the local link in the
+consumer repo ([manual-verification.md](manual-verification.md)); npm is not
+the place to find out.
+
 ## Versioning
 
 - All 20 packages share one version, and the version **is committed**: the

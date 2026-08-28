@@ -15,6 +15,19 @@ tests pass, exercise the change against the real build.
    `pnpm dlx @arethetypeswrong/cli --pack packages/<name>` (the dev dependency is
    already declared for this purpose).
 
+## Verify in the real consumer before publishing
+
+- A release is not the test bed. Point the service repo at this checkout
+  with `node scripts/link-service.mjs link` (writes a marked `overrides:`
+  block into each target's `pnpm-workspace.yaml` — pnpm 11 ignores
+  `pnpm.overrides` in `package.json` — and installs), run its typecheck and
+  tests, and deploy an example to the `dev` stage from the link when the
+  change touches runtime behaviour (reconnects, TTLs, protocol).
+- Consumers resolve `dist`, so `pnpm build` here after every edit.
+- `unlink` before committing in the consumer; the block and the lockfile
+  churn must never land there. Publish only after the linked verification
+  passed end to end.
+
 ## Making states reachable without infrastructure
 
 The library equivalents of debug-only state hooks are the injection seams; use
