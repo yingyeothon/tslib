@@ -429,19 +429,87 @@ describe("NaiveSocket", () => {
     expect(await ns.send({ message: "go", fulfill: 4 })).toBe("ABCD");
   });
 
-  it("rejects the active work when the write fails on a broken socket", async () => {
+  it("reconnects and resends when the socket was destroyed before the next send", async () => {
     const server = await echoServer();
     const ns = newSocket(server.port, { connectionRetryInterval: -1 });
     await ns.send({ message: "warmup" });
 
     // Destroy the underlying socket; its close event has not been handled
-    // yet, so the next send still writes to the destroyed socket and the
-    // write callback reports the error.
+    // yet, so the state still says Connected when the next send arrives.
     const internals = ns as unknown as { socket: Socket };
     internals.socket.destroy();
+    expect(await ns.send({ message: "again", timeoutMillis: 1000 })).toBe(
+      "again",
+    );
+    expect(server.clients).toHaveLength(2);
+  });
+
+  it("reconnects and resends when the peer ended the socket before the next send", async () => {
+    // A frozen Lambda container resumes with the peer's FIN already on the
+    // socket but not yet dispatched: the handler's first send would hit
+    // writeAfterFIN (EPIPE). Half-closing from our side puts the socket in
+    // the same ended-but-Connected state deterministically.
+    const server = await echoServer();
+    const ns = newSocket(server.port, { connectionRetryInterval: -1 });
+    await ns.send({ message: "warmup" });
+
+    const internals = ns as unknown as { socket: Socket };
+    internals.socket.end();
+    expect(internals.socket.writableEnded).toBe(true);
+    expect(await ns.send({ message: "again", timeoutMillis: 1000 })).toBe(
+      "again",
+    );
+    expect(server.clients).toHaveLength(2);
+    expect(server.messages).toEqual(["warmup", "again"]);
+  });
+
+  it("reconnects and resends once when the write itself reports a dead peer", async () => {
+    // The ended flags are still false when the container resumes before the
+    // poll phase; the kernel then answers the write with EPIPE/ECONNRESET.
+    const server = await echoServer();
+    const ns = newSocket(server.port, { connectionRetryInterval: -1 });
+    await ns.send({ message: "warmup" });
+
+    const internals = ns as unknown as { socket: Socket };
+    let failures = 0;
+    internals.socket.write = ((_chunk: unknown, cb?: (e?: Error) => void) => {
+      failures++;
+      const error = Object.assign(new Error("write EPIPE"), { code: "EPIPE" });
+      cb?.(error);
+      return false;
+    }) as Socket["write"];
+    expect(await ns.send({ message: "again", timeoutMillis: 1000 })).toBe(
+      "again",
+    );
+    expect(failures).toBe(1);
+    expect(server.clients).toHaveLength(2);
+  });
+
+  it("rejects when the resend fails again", async () => {
+    const server = await echoServer();
+    const poison = (socket: Socket) => {
+      socket.write = ((_chunk: unknown, cb?: (e?: Error) => void) => {
+        cb?.(Object.assign(new Error("write EPIPE"), { code: "EPIPE" }));
+        return false;
+      }) as Socket["write"];
+    };
+    let connections = 0;
+    const ns = newSocket(server.port, {
+      connectionRetryInterval: -1,
+      onConnectionStateChanged: ({ socket, state }) => {
+        // Poison every connection after the first, so the resend fails too.
+        if (state === ConnectionState.Connected && ++connections > 1) {
+          poison((socket as unknown as { socket: Socket }).socket);
+        }
+      },
+    });
+    await ns.send({ message: "warmup" });
+    const internals = ns as unknown as { socket: Socket };
+    poison(internals.socket);
     await expect(
-      ns.send({ message: "never-sent", timeoutMillis: 1000 }),
-    ).rejects.toThrow(/destroyed/i);
+      ns.send({ message: "again", timeoutMillis: 1000 }),
+    ).rejects.toThrow(/EPIPE/);
+    expect(connections).toBe(2);
   });
 
   it("ignores an error event while connected", async () => {

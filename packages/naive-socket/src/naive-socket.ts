@@ -120,6 +120,8 @@ interface SendWork {
   timer: NodeJS.Timeout | null;
   /** Already handed to the current socket; cleared when that socket dies. */
   written: boolean;
+  /** Set once a write failed before any byte left and the work was requeued. */
+  resent: boolean;
 }
 
 const noListener = (): void => undefined;
@@ -197,6 +199,7 @@ class NaiveSocketImpl implements NaiveSocket {
       dPromise: decomposePromise<string>(),
       timer: null,
       written: false,
+      resent: false,
     };
     if (timeoutMillis > 0) {
       newWork.timer = setTimeout(() => {
@@ -442,6 +445,21 @@ class NaiveSocketImpl implements NaiveSocket {
       this.connect();
       return;
     }
+    if (
+      this.socket.destroyed ||
+      this.socket.readableEnded ||
+      this.socket.writableEnded
+    ) {
+      // The peer closed while nobody was sending (a Redis restart under a
+      // frozen Lambda container is the usual case) and `close` has not been
+      // dispatched yet, so the state still says Connected. Writing would only
+      // fail with EPIPE/writeAfterFIN; nothing of this work has left the
+      // process, so reconnect at once and let the queue resend it.
+      this.logger.info(`[NaiveSocket]`, `Socket was ended; reconnect`);
+      this.doDisconnect();
+      this.connect();
+      return;
+    }
 
     // Drop works already settled by their timeout.
     while (this.sendWorks[0]?.dPromise.isSettled === true) {
@@ -458,6 +476,23 @@ class NaiveSocketImpl implements NaiveSocket {
     firstWork.written = true;
     this.socket.write(firstWork.message, (error?: Error | null) => {
       if (error) {
+        if (
+          isNothingSentError(error) &&
+          !firstWork.resent &&
+          this.sendWorks[0] === firstWork &&
+          this.alive
+        ) {
+          // The peer had already gone (RST/FIN undispatched when the write was
+          // issued): nothing reached it, so one reconnect and resend is safe.
+          firstWork.resent = true;
+          this.logger.info(
+            `[NaiveSocket]`,
+            `Write hit a dead socket; reconnect`,
+          );
+          this.doDisconnect();
+          this.connect();
+          return;
+        }
         if (this.sendWorks[0] === firstWork) {
           this.sendWorks.shift();
         }
@@ -494,6 +529,18 @@ class NaiveSocketImpl implements NaiveSocket {
  */
 export function createNaiveSocket(options: NaiveSocketOptions): NaiveSocket {
   return new NaiveSocketImpl(options);
+}
+
+const NOTHING_SENT_CODES = new Set([
+  "EPIPE",
+  "ECONNRESET",
+  "ERR_STREAM_WRITE_AFTER_END",
+  "ERR_STREAM_DESTROYED",
+]);
+
+function isNothingSentError(error: Error): boolean {
+  const code = (error as { code?: unknown }).code;
+  return typeof code === "string" && NOTHING_SENT_CODES.has(code);
 }
 
 function fulfillByRegex(regex: RegExp, buffer: string): number {
