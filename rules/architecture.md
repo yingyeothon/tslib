@@ -116,6 +116,17 @@ consequences of those rules.
 - The command that performs the recovery (`AUTH`) must be excluded from the
   recovery path (`recoverAuthentication: false`), or a wrong password
   reconnects recursively.
+- A frozen Lambda container resumes with the peer's FIN/RST already on the
+  socket but not yet dispatched, so the invocation's first `send` still sees
+  `Connected`. `NaiveSocket` checks `destroyed`/`readableEnded`/
+  `writableEnded` before writing and reconnects at once; when the flags are
+  still clear and the kernel answers the write with `EPIPE`/`ECONNRESET`
+  (`ERR_STREAM_WRITE_AFTER_END`, `ERR_STREAM_DESTROYED`), the head work is
+  requeued and resent once — nothing of it reached the peer. Found on the
+  yyt dev stage right after the `-NOAUTH` fix: the same Valkey restart then
+  failed with `writeAfterFIN` from `saveActorStartEvent`. Verified by
+  `tslib/scripts/link-service.mjs link`, deploying both samples, restarting
+  the store and re-running the smokes on warm containers.
 - `NaiveSocket.disconnect(reason?)` passes the cause to the pending requests;
   a bare `DeadSocket` hides why the caller's command died.
 - Socket event handlers are bound to the socket that raised them. `destroy()`
