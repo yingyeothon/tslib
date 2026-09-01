@@ -8,7 +8,11 @@ import { createRedisQueue } from "@yingyeothon/actor-system-redis";
 import type { GatewayCommand } from "@yingyeothon/lambda-gamebase";
 import { nullLogger } from "@yingyeothon/logger";
 import { createRedisConnection } from "@yingyeothon/naive-redis";
-import { buildUserMessage, queueKeyFor } from "./envelope.js";
+import {
+  buildUserMessage,
+  outboundChannelFor,
+  queueKeyFor,
+} from "./envelope.js";
 import {
   applyGatewayCommand,
   parseGatewayCommand,
@@ -28,6 +32,8 @@ interface Move {
 export interface ContractReport {
   /** The exact Redis key the gateway must RPUSH into. */
   queueKey: string;
+  /** The channel it must SUBSCRIBE to *before* that first push. */
+  outboundChannel: string;
   /** What the actor saw for a correctly wrapped push. */
   wrapped: (Move | undefined)[];
   /** What it saw for a bare payload — the silent failure. */
@@ -94,6 +100,7 @@ export async function runContract(): Promise<ContractReport> {
 
   return {
     queueKey: queueKeyFor(queueKeyPrefix, gameId),
+    outboundChannel: outboundChannelFor(channelPrefix, gameId),
     wrapped,
     bare,
     fanOut,
@@ -137,7 +144,10 @@ export async function runAgainstRedis(host: string): Promise<number> {
 
 export async function main(): Promise<void> {
   const report = await runContract();
-  console.log(`queue key the actor drains: ${report.queueKey}`);
+  console.log(`queue key the actor drains:  ${report.queueKey}`);
+  console.log(`channel to subscribe first: ${report.outboundChannel}`);
+  console.log("  inbound is a durable list, outbound pub/sub is lossy, so the");
+  console.log("  subscribe must happen before the first push or frames vanish");
   // Printed with String(), not JSON.stringify: an `undefined` inside an array
   // serialises as `null`, which would hide the very thing this demonstrates.
   const show = (items: (Move | undefined)[]) =>

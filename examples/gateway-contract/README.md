@@ -14,7 +14,10 @@ pnpm --filter yyt-example-gateway-contract start
 ```
 
 ```
-queue key the actor drains: game:dev:demo:queue:bridge-1
+queue key the actor drains:  game:dev:demo:queue:bridge-1
+channel to subscribe first: game:out:dev:demo:bridge-1
+  inbound is a durable list, outbound pub/sub is lossy, so the
+  subscribe must happen before the first push or frames vanish
   a UserMessage envelope -> [{"type":"move","connectionId":"c1","x":3}]
   a bare payload         -> [undefined]
     ^ one undefined, no error: the game simply never sees it
