@@ -59,6 +59,20 @@
 - The package's `tsconfig.json` `include` must list `vitest.config.ts`, or
   type-aware lint fails on it.
 
+## Writing an example that demonstrates something
+
+- **Feed input at the point the real system would.** `examples/actor-game`'s
+  first draft queued its attacks before the game started; the wait stage drains
+  the queue for `enter`/`leave` and discards the rest, so the raid ended on
+  `timeout` with nobody having hit anything and no error anywhere. An example
+  that models the wrong timing teaches the wrong thing and still passes.
+- **Make a race deterministic by holding one side open**, not by sleeping. Two
+  real writers interleave differently every run, so the interesting order shows
+  up rarely and cannot be asserted (`examples/repository-cas/src/stall.ts`).
+- **Record sends and drops in one ordered list.** Two arrays cannot answer
+  "did the result reach the party before their sockets closed", which is the
+  only question `endDropDelayMillis` is about.
+
 ## Prefer an injected seam to a module mock
 
 - `vi.mock` on a whole workspace package hides the seam and asserts call

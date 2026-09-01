@@ -124,7 +124,10 @@ Rules:
 - **One diagram per H2 at most, one per package README.** A page that is mostly
   diagrams has no argument in it.
 - Small: at most about twelve nodes, ten messages, or eight states. Split rather
-  than shrink the labels.
+  than shrink the labels. The one standing exception is a **routing map that has
+  to be exhaustive to be useful** — `docs/README.md`'s page-owns-package diagram
+  is deliberately one node per package, because a reader arriving from npm looks
+  up a name in it and a partial list would send them away empty.
 - Label every edge. An unlabelled arrow is a claim the reader has to guess.
 - **No `style`, `classDef`, `fill`, or colour.** GitHub renders in both light and
   dark themes and a hard-coded colour is unreadable in one of them.
@@ -197,6 +200,28 @@ production infrastructure on a machine that happens to have it exported.
   contradict it in package READMEs.
 - Do not create temporary tracking documents in the repo root — they were removed
   once already. Session-scoped notes belong in `.claude/` (git-ignored).
+
+## Writing the gate itself
+
+`scripts/check-docs.mjs` is small and its mistakes are expensive, because a
+false positive trains people to ignore it and a blind spot makes it decorative.
+Three lessons already paid for:
+
+- **Strip inline code spans before scanning links, and fences only before
+  slugging headings.** A page that documents link syntax inside backticks is
+  otherwise read as containing that link; and stripping spans from a heading
+  turns `## The \`queue:\` segment` into an anchor nothing can match.
+- **Scan the index files, not only the leaves.** `examples/README.md` was
+  neither `examples/*/README.md` nor under `docs/`, so it was the one file
+  nothing checked — and a dead link sat in it from the day it was created.
+- **Break every gate on purpose before trusting it.** A gate that has never
+  failed is not a gate. Each one here was confirmed by a deliberate edit that
+  produced exactly one `FAIL:` line.
+
+`mermaid.parse` needs a DOM that Node does not have, so a valid diagram rejects
+with a `TypeError` from DOMPurify. A **grammar** failure throws a jison error
+carrying `hash`, strictly earlier, so `error.hash !== undefined` is the
+discriminator — not the message text.
 
 ## What a doc review actually catches
 
