@@ -81,6 +81,16 @@ importers:
         specifier: ^4.19.2
         version: 4.23.13
 
+  examples/gateway-client:
+    dependencies:
+      "@yingyeothon/gamebase-client":
+        specifier: workspace:^
+        version: link:../../packages/gamebase-client
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.13
+
   examples/gateway-contract:
     dependencies:
       "@yingyeothon/actor-system":

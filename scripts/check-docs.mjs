@@ -57,6 +57,9 @@ const markdownFiles = () => {
   walk("docs");
   walk("rules");
   for (const name of packages) files.push(`packages/${name}/README.md`);
+  // The index itself, not only the leaves: a dead link sat in examples/README.md
+  // precisely because it was the one markdown file nothing checked.
+  files.push("examples/README.md");
   for (const name of examples) files.push(`examples/${name}/README.md`);
   return files.filter((path) => existsSync(join(root, path)));
 };
