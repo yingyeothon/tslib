@@ -430,6 +430,41 @@ for (const name of packages) {
   }
 }
 
+// ---- 7. every close code the SDK knows reaches the page that lists them ----
+//
+// The disposition table is the one place a reader looks. A code added to
+// close-codes.ts and not to the guide is a code nobody handles.
+{
+  const source = "packages/gamebase-client/src/close-codes.ts";
+  const page = "docs/realtime-client.md";
+  if (existsSync(join(root, source)) && existsSync(join(root, page))) {
+    const listed = read(page);
+    for (const match of read(source).matchAll(
+      /^\s{2}([a-zA-Z][\w$]*):\s*(\d{4}),/gm,
+    )) {
+      const [, name, code] = match;
+      if (!listed.includes(String(code))) {
+        fail(`${page} never mentions close code ${code} (${name})`);
+      }
+    }
+  }
+}
+
+// ---- 8. the repository writes in English -----------------------------------
+//
+// The project is worked on in Korean and written in English; a stray sentence
+// in the wrong one is easy to miss in review and impossible to miss for a
+// reader. The root README's one Korean gloss is deliberate and out of scope.
+for (const file of markdownFiles()) {
+  if (!/^(docs\/|packages\/)/.test(file)) continue;
+  const hangul = /[\u3131-\u318E\uAC00-\uD7A3]/.exec(read(file));
+  if (hangul) {
+    fail(
+      `${file} contains Hangul ("${hangul[0]}"); this repository writes English`,
+    );
+  }
+}
+
 // ---------------------------------------------------------------------------
 for (const message of failures) console.error(`FAIL: ${message}`);
 if (failures.length > 0) {
