@@ -12,7 +12,7 @@ files relevant to the task at hand. `CLAUDE.md` (with `AGENTS.md` as its symlink
 | [manual-verification.md](manual-verification.md) | Confirming a change actually works in a consumer, after tests pass           |
 | [security.md](security.md)                       | Touching wire protocols, auth, or logging of request data                    |
 | [tooling.md](tooling.md)                         | Build, typecheck, lint, format, or CI failures                               |
-| [documentation.md](documentation.md)             | Editing any README or public API listing                                     |
+| [documentation.md](documentation.md)             | Editing `docs/`, any README, a diagram, an example, or a public API listing  |
 | [release.md](release.md)                         | Versioning, publishing, or npm-facing changes                                |
 
 ## Maintenance

@@ -8,10 +8,14 @@
 - Every package is a library: no app, no runtime entry point. Build output is
   dual ESM+CJS+types via tsup; Node >= 20.
 - Source of truth documents:
+  - `docs/README.md` — the end-user guide's index; every guide page hangs off
+    it, and it says which page owns which package.
   - `CONVENTIONS.md` — v2 API design rules (factories, options objects, logger,
     env injection). Canonical; do not restate or contradict it.
   - `README.md` — package list, dependency graph, dev commands, release flow.
   - Each `packages/<name>/README.md` — that package's public API surface.
+  - `examples/*` — runnable, zero-infrastructure code the guide points at,
+    typechecked and smoke-tested in CI.
 
 ## Required Rule Lookup
 
@@ -29,6 +33,7 @@ pnpm build        # tsup, topological order — run before typecheck
 pnpm typecheck    # tsc --noEmit per package (workspace types resolve from dist)
 pnpm lint         # eslint, type-aware
 pnpm format:check # prettier (CI fails on unformatted files)
+pnpm check:docs   # mermaid parses, links/anchors, orphan pages, README<->exports
 pnpm test         # vitest across all packages (needs Docker for Redis)
 pnpm coverage     # vitest with per-package v8 thresholds
 ```
@@ -45,3 +50,8 @@ pnpm coverage     # vitest with per-package v8 thresholds
 - Follow the per-task completion ritual in `rules/workflow.md`.
 - Never edit `version` by hand; the Release workflow commits and tags it —
   see `rules/release.md`.
+- Docs are gated: `pnpm check:docs` must pass. Every package README carries
+  one mermaid diagram above `## Install`, and an export change updates that
+  README's `## Public API` in the same commit — see `rules/documentation.md`.
+- `examples/*` are `private: true` and never published. They must build and
+  run with no AWS credentials, no Docker and no deployed gateway.

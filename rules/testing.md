@@ -11,8 +11,17 @@
 
 - Tests live in `packages/<name>/test/*.test.ts` and import the package's public
   surface, not internal file paths.
-- `pnpm test` runs vitest across all packages via `projects: ["packages/*"]`.
+- `pnpm test` runs vitest via `projects: ["packages/*", "examples/*"]`.
   Run a single package with `pnpm vitest run packages/<name>`.
+- **`examples/*` carry one smoke test each that runs the example and asserts
+  its observable outcome.** That is what stops a documented snippet from
+  rotting; typechecking alone does not prove a program runs. An example's
+  Redis path is gated with `describe.skipIf(!process.env.REDIS_HOST)`, so
+  `pnpm coverage` needs no Docker beyond what `packages/*` already needs.
+- **An example can neither raise nor lower a coverage threshold.**
+  `coverage.include` is `packages/*/src/**`, and an example's import resolves
+  through the workspace symlink to `packages/*/dist/**`, so nothing it
+  executes is a covered file. Never add example code to `coverage.include`.
 - Coverage thresholds are enforced **per package** (`lines/functions/statements`
   80, `branches` 70) so no package hides behind the monorepo aggregate. Adding a
   package means adding enough tests to clear its own bar.

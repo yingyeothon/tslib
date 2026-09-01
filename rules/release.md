@@ -18,6 +18,12 @@ the place to find out.
   only, and the version must exceed every version already published on npm
   for every package (a name new to npm passes). If the tag already exists it
   must carry that version — that is the publish-retry path.
+- **`examples/*` are outside the release entirely.** They are `private: true`
+  with an unscoped `yyt-example-*` name and carry no shared version.
+  `set-version.mjs` and `verify-release-version.mjs` both read `packages/`
+  only, and the workflow stages `git add packages/*/package.json` — do not
+  widen any of the three. `private: true` is what makes `pnpm -r publish` skip
+  them, and npm has no unpublish, so treat it as load-bearing.
 
 ## Release flow (the user runs it)
 
@@ -67,7 +73,7 @@ the place to find out.
 ## Pre-release verification
 
 ```bash
-pnpm -r exec npm pack --dry-run              # tarballs contain dist + README + package.json only
+pnpm --filter "./packages/*" exec npm pack --dry-run              # tarballs contain dist + README + package.json only
 pnpm -r publish --dry-run --no-git-checks --access public
 pnpm dlx @arethetypeswrong/cli --pack packages/<name>   # export map / .d.cts sanity
 ```
