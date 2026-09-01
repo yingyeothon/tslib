@@ -81,6 +81,34 @@ importers:
         specifier: ^4.19.2
         version: 4.23.13
 
+  examples/gateway-contract:
+    dependencies:
+      "@yingyeothon/actor-system":
+        specifier: workspace:^
+        version: link:../../packages/actor-system
+      "@yingyeothon/actor-system-redis":
+        specifier: workspace:^
+        version: link:../../packages/actor-system-redis
+      "@yingyeothon/lambda-gamebase":
+        specifier: workspace:^
+        version: link:../../packages/lambda-gamebase
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../../packages/logger
+      "@yingyeothon/naive-redis":
+        specifier: workspace:^
+        version: link:../../packages/naive-redis
+    devDependencies:
+      "@aws-sdk/client-apigatewaymanagementapi":
+        specifier: ^3.879.0
+        version: 3.1113.0
+      "@aws-sdk/client-lambda":
+        specifier: ^3.879.0
+        version: 3.1113.0
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.13
+
   examples/repository-cas:
     dependencies:
       "@yingyeothon/naive-redis":

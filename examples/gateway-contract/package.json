@@ -1,0 +1,26 @@
+{
+  "name": "yyt-example-gateway-contract",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The gateway half of the actor bridge: the inbound envelope, the queue key, and both outbound send shapes.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@yingyeothon/actor-system": "workspace:^",
+    "@yingyeothon/actor-system-redis": "workspace:^",
+    "@yingyeothon/lambda-gamebase": "workspace:^",
+    "@yingyeothon/logger": "workspace:^",
+    "@yingyeothon/naive-redis": "workspace:^"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.879.0",
+    "@aws-sdk/client-lambda": "^3.879.0",
+    "tsx": "^4.19.2"
+  }
+}
