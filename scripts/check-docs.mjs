@@ -38,7 +38,10 @@ const dirsIn = (path) => {
 };
 
 const packages = dirsIn("packages");
-const examples = dirsIn("examples");
+// A leading underscore marks a scratch directory. Without this an untracked
+// `examples/_probe/` — the obvious place to verify a snippet — fails the gate
+// and therefore `.githooks/pre-push`, blocking every push until it is moved.
+const examples = dirsIn("examples").filter((name) => !name.startsWith("_"));
 
 /** Every markdown file this script is responsible for, repo-relative. */
 const markdownFiles = () => {
@@ -71,15 +74,26 @@ const markdownFiles = () => {
  * contained that link, and the checker reports a file nobody meant to link.
  */
 const stripFences = (source) => {
-  let inFence = false;
+  // The opening delimiter is remembered, because a fence closes only on one of
+  // the same character and at least as long. Toggling on any ``` desynced on a
+  // ````-wrapped block containing one — silently accepting every dead link
+  // after it — and ignoring ~~~ let a heading inside one become a real anchor.
+  let fence = null;
   return source
     .split("\n")
     .map((line) => {
-      if (/^\s*```/.test(line)) {
-        inFence = !inFence;
-        return "";
+      const mark = /^\s*(`{3,}|~{3,})/.exec(line);
+      if (fence === null) {
+        if (mark) {
+          fence = mark[1];
+          return "";
+        }
+        return line;
       }
-      return inFence ? "" : line;
+      if (mark && mark[1][0] === fence[0] && mark[1].length >= fence.length) {
+        fence = null;
+      }
+      return "";
     })
     .join("\n");
 };
@@ -126,6 +140,9 @@ const section = (source, heading) => {
   const end = rest.findIndex((line) => /^## /.test(line));
   return (end === -1 ? rest : rest.slice(0, end)).join("\n");
 };
+
+/** A markdown inline link: `](<target>)` or `](target "title")`. */
+const LINK = /\]\(\s*(?:<([^>]*)>|([^)\s]+))(?:\s+["'(][^)]*)?\s*\)/g;
 
 /** Every ```mermaid block, with the line it starts on. */
 const mermaidBlocks = (source) => {
@@ -189,8 +206,11 @@ let diagrams = 0;
 let links = 0;
 for (const file of markdownFiles()) {
   const from = dirname(join(root, file));
-  for (const match of stripCode(read(file)).matchAll(/\]\(([^)\s]+)\)/g)) {
-    const target = match[1];
+  // `[x](<a b.md>)` and `[x](page.md "title")` are both valid markdown that
+  // GitHub renders. The first version rejected the one outright and never saw
+  // the other, so a real file failed CI while a dead one passed.
+  for (const match of stripCode(read(file)).matchAll(LINK)) {
+    const target = match[1] ?? match[2];
     if (/^(https?:|mailto:|#)/.test(target)) continue;
     links += 1;
     const [path, fragment] = target.split("#");
@@ -223,8 +243,8 @@ if (existsSync(join(root, "docs"))) {
     fail(`${index} is missing; it is the guide index`);
   } else {
     const linked = new Set();
-    for (const match of stripCode(read(index)).matchAll(/\]\(([^)\s]+)\)/g)) {
-      const path = match[1].split("#")[0];
+    for (const match of stripCode(read(index)).matchAll(LINK)) {
+      const path = (match[1] ?? match[2]).split("#")[0];
       if (path && !/^(https?:|mailto:)/.test(path)) {
         linked.add(resolve(join(root, "docs"), path));
       }
@@ -402,7 +422,7 @@ for (const name of packages) {
     }
   }
   for (const declaration of source.matchAll(
-    /^export\s+(?:declare\s+)?(?:async\s+)?(?:function|const|let|var|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm,
+    /^export\s+(?:declare\s+)?(?:async\s+)?(?:abstract\\s+)?(?:function\\s*\\*?|const|let|var|class|interface|type|enum)\s+([A-Za-z_$][\w$]*)/gm,
   )) {
     names.add(declaration[1]);
   }
@@ -414,7 +434,12 @@ for (const name of packages) {
     continue;
   }
   const missing = [...names].filter(
-    (exported) => !new RegExp(`\\b${exported}\\b`).test(publicApi),
+    // `\b` before a `$` never matches, so a `$`-prefixed export could never be
+    // reported as documented — an unfixable CI failure waiting to happen.
+    (exported) =>
+      !new RegExp(
+        `(^|[^\\w$])${exported.replace(/\$/g, "\\$")}([^\\w$]|$)`,
+      ).test(publicApi),
   );
   if (missing.length > 0) {
     fail(
@@ -470,12 +495,45 @@ for (const name of packages) {
 // in the wrong one is easy to miss in review and impossible to miss for a
 // reader. The root README's one Korean gloss is deliberate and out of scope.
 for (const file of markdownFiles()) {
-  if (!/^(docs\/|packages\/)/.test(file)) continue;
-  const hangul = /[\u3131-\u318E\uAC00-\uD7A3]/.exec(read(file));
+  // The root README's one Korean gloss is deliberate; everything else — rules
+  // and examples included, which the first version skipped — is English. Prose
+  // only: a Korean string literal inside a code sample is data, not writing.
+  if (file === "README.md") continue;
+  const hangul = /[\u3131-\u318E\uAC00-\uD7A3]/.exec(stripFences(read(file)));
   if (hangul) {
     fail(
-      `${file} contains Hangul ("${hangul[0]}"); this repository writes English`,
+      `${file} contains Hangul ("${hangul[0]}") outside a code block; ` +
+        "this repository writes English",
     );
+  }
+}
+
+// ---- 9. every workspace project outside packages/ is unpublishable --------
+//
+// npm has no unpublish, so this is worth checking from the workspace file
+// rather than from a directory listing: adding a glob is the one edit that
+// could carry something new into `pnpm -r publish` without touching anything
+// else this script looks at.
+{
+  const workspace = read("pnpm-workspace.yaml");
+  const globs = [...workspace.matchAll(/^\s*-\s*["']?([^"'\s]+)["']?\s*$/gm)]
+    .map((match) => match[1])
+    .filter((glob) => glob.endsWith("/*"));
+  for (const glob of globs) {
+    const dir = glob.slice(0, -2);
+    if (dir === "packages") continue;
+    for (const name of dirsIn(dir)) {
+      if (name.startsWith("_")) continue;
+      const manifestPath = join(root, dir, name, "package.json");
+      if (!existsSync(manifestPath)) continue;
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+      if (manifest.private !== true) {
+        fail(`${dir}/${name} is in the workspace and is not "private": true`);
+      }
+      if (String(manifest.name).startsWith("@yingyeothon/")) {
+        fail(`${dir}/${name} is in the workspace and uses the published scope`);
+      }
+    }
   }
 }
 
