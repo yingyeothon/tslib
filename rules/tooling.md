@@ -6,7 +6,7 @@
   through each package's `dist`, so a stale or missing build produces confusing
   `TS2307`/`TS7016` errors — especially right after a rename.
 - CI (`.github/workflows/ci.yml`) runs, in order:
-  install → build → lint → format:check → typecheck → coverage, on Node 20 and 22.
+  install → build → lint → format:check → typecheck → coverage, on Node 22 and 24.
   `format:check` is a hard gate: run `pnpm format` before committing.
 
 ## Package manifest invariants

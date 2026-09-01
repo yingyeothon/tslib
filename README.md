@@ -31,18 +31,21 @@ TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) 
 
 ```mermaid
 graph LR
+  naive-socket --> logger
   naive-redis --> logger
   naive-redis --> naive-socket
   logger-slack --> logger
   logger-s3 --> logger
   logger-s3 --> s3-cache-bridge-client
   repository-redis --> codec
+  repository-redis --> logger
   repository-redis --> naive-redis
   repository-redis --> repository
   repository-s3 --> codec
   repository-s3 --> repository
   repository-dynamodb --> codec
   repository-dynamodb --> repository
+  actor-system --> logger
   actor-system-redis --> actor-system
   actor-system-redis --> codec
   actor-system-redis --> logger

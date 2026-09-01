@@ -46,6 +46,6 @@
   "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/naive-socket#readme",
   "dependencies": {
     "@types/node": "^24.3.0",
-    "@yingyeothon/logger": "workspace:*"
+    "@yingyeothon/logger": "workspace:^"
   }
 }
