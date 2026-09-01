@@ -163,9 +163,19 @@ the sibling `service` repository (`examples/sample-dungeon`,
 `examples/sample-morpg`) — do not duplicate them here.
 
 Every example needs a `README.md` linked from `examples/README.md`, a docs page
-that points at it, and a smoke test that runs it. See
-[tooling.md](tooling.md) for the manifest rules and [testing.md](testing.md) for
-why an example cannot move a coverage threshold.
+that points at it, and a smoke test that runs it. See [tooling.md](tooling.md)
+for the manifest rules and [testing.md](testing.md) for why an example cannot
+move a coverage threshold.
+
+**Links run one way: `docs/` points into `examples/`, and an example points at
+package READMEs.** An example never links forward into `docs/`, so neither half
+can be written into a state that fails the link gate while the other is still
+being drafted.
+
+**Namespace an example's environment variables `YYT_EXAMPLE_*`.** A bare
+`REDIS_HOST` is already set to a real store in the environments this repository
+is developed in, so an unnamespaced opt-in makes `pnpm start` reach for
+production infrastructure on a machine that happens to have it exported.
 
 ## Keeping docs true
 

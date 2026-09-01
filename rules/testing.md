@@ -11,7 +11,11 @@
 
 - Tests live in `packages/<name>/test/*.test.ts` and import the package's public
   surface, not internal file paths.
-- `pnpm test` runs vitest via `projects: ["packages/*", "examples/*"]`.
+- `pnpm test` runs vitest via
+  `projects: ["packages/*", "examples/*", "!**/*.md"]`. The negation is
+  load-bearing: those globs match files as well as directories, so without it
+  vitest tries to load `examples/README.md` as a project config and dies with
+  "No loader is configured for .md files".
   Run a single package with `pnpm vitest run packages/<name>`.
 - **`examples/*` carry one smoke test each that runs the example and asserts
   its observable outcome.** That is what stops a documented snippet from

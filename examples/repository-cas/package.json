@@ -1,0 +1,22 @@
+{
+  "name": "yyt-example-repository-cas",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Two writers racing on one document, and the conditional write that keeps both of their changes.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@yingyeothon/naive-redis": "workspace:^",
+    "@yingyeothon/repository": "workspace:^",
+    "@yingyeothon/repository-redis": "workspace:^"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}
