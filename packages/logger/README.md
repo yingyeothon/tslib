@@ -2,6 +2,17 @@
 
 Minimal structured logger with severity filtering, writer composition, and pluggable log writers. Built for tiny serverless bundles: zero dependencies, a few hundred bytes of code.
 
+One threshold, then any number of writers; an omitted `logger` option becomes `nullLogger`.
+
+```mermaid
+flowchart LR
+  A["logger.info(message, context)"] --> F["createFilteredLogger<br/>severity threshold"]
+  F --> C["combine"]
+  C --> W1["consoleWriter"]
+  C --> W2["your own LogWriter"]
+  N["nullLogger"] -.->|"the default when logger is omitted"| A
+```
+
 ## Install
 
 ```bash

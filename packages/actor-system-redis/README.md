@@ -2,6 +2,16 @@
 
 Redis-backed queue, lock, and awaiter implementations for [`@yingyeothon/actor-system`](../actor-system), built on the minimal [`@yingyeothon/naive-redis`](../naive-redis) client. It lets multiple processes (for example, concurrent AWS Lambda invocations) share one actor's message queue, exclusive lock, and message-completion signals through a single Redis server.
 
+The keys this subsystem owns, and the one segment that differs from `lambda-gamebase`'s layout.
+
+```mermaid
+flowchart LR
+  P["keyPrefix"] --> Q["keyPrefix + queue: + actorId<br/>a Redis list, TTL required"]
+  P --> L["lock key<br/>random token, lockTimeout required"]
+  P --> A["awaiter key"]
+  N["note: createActorSubsystem in lambda-gamebase<br/>appends no queue: segment"]
+```
+
 ## Install
 
 ```bash

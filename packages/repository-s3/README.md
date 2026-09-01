@@ -2,6 +2,24 @@
 
 S3-backed implementation of the `@yingyeothon/repository` abstractions: a `Repository` that stores each value as one S3 object (key = optional prefix + repository key), encodes values with a pluggable `Codec` (JSON by default), and treats a missing key (`NoSuchKey`) as `undefined`. It is a `CasRepository`: conditional writes ride on S3's own `If-Match`/`If-None-Match` ETag checks, so `createListDocument`/`createMapDocument` from `@yingyeothon/repository` retry instead of clobbering when two writers race on one document.
 
+Conditional writes ride on S3's own ETag checks, so two writers on one document retry instead of clobbering.
+
+```mermaid
+sequenceDiagram
+  participant R as createS3Repository
+  participant S as S3
+  R->>S: HEAD or GET
+  S-->>R: the object and its ETag
+  Note over R: the ETag is the revision token
+  R->>S: PUT with If-Match
+  alt the ETag still matches
+    S-->>R: written
+  else it moved
+    S-->>R: refused, compareAndSet resolves false
+  end
+  Note over R,S: If-None-Match star is how absence is required
+```
+
 ## Install
 
 ```bash

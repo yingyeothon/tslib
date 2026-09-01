@@ -2,6 +2,18 @@
 
 Redis-backed implementation of the `@yingyeothon/repository` abstractions: a `Repository` that stores each value as one Redis string (key = `repo:` + optional prefix + repository key), encodes values with a pluggable `Codec` (JSON by default), and stores every key with a TTL (`setWithExpire`; a TTL-less `set` throws). It is also a `CasRepository`: `getRevision`/`compareAndSet` do conditional writes through one Lua script, so versioned documents from `@yingyeothon/repository` retry instead of overwriting each other. Because it satisfies the `Repository` contract, versioned list/map documents from `@yingyeothon/repository` work out of the box. Redis I/O goes through `@yingyeothon/naive-redis`, so a single lightweight socket connection is shared by everything.
 
+One Redis string per value, a TTL on every write, and a conditional write that compares a hash of the stored bytes.
+
+```mermaid
+flowchart LR
+  K["repo:prefix:key"] --> V[("one Redis string")]
+  SW["setWithExpire"] --> V
+  S["set()"] -.->|"throws, nothing is sent"| V
+  GR["getRevision"] --> T["token: redis.sha1hex of the stored bytes"]
+  T --> CAS["compareAndSet, one Lua script"]
+  CAS --> V
+```
+
 ## Install
 
 ```bash

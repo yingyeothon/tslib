@@ -2,6 +2,15 @@
 
 Client SDK for the yyt WebSocket gateway. It speaks the gateway's two channel kinds — the **lobby** (positions, chat, parties, game events) and the **dungeon `q` bridge** to a `@yingyeothon/lambda-gamebase` actor — with typed frames, the bearer-subprotocol handshake, reconnect with backoff, a ghost-free peer map, and the distinction between a run that was _aborted_ and one that _finished_. It runs in browsers, on Node >= 22 as is, and on Node 20 with an injected `WebSocket`, with no dependency beyond `@yingyeothon/codec` and `@yingyeothon/logger`; it does not depend on `lambda-gamebase`. The normative wire spec is the gateway's own README in the service repository.
 
+The two clients differ in what `connect()` waits for, and that difference is the channel kind.
+
+```mermaid
+flowchart LR
+  LC["createGatewayLobbyClient"] -->|"resolves on hello"| H["hello<br/>userId, connectionId, tick,<br/>mapUrl, zone, capabilities"]
+  GC["createGatewayGameClient"] -->|"resolves on socket open"| O["a q channel has no hello"]
+  O --> W["wait for the actor's first frame:<br/>a connected socket is not a joined run"]
+```
+
 ## Install
 
 ```bash

@@ -5,6 +5,18 @@ JWT-based AWS API Gateway custom authorizers built on [`@yingyeothon/lambda-auth
 - `createJwtAuthorizer` — a **TOKEN** authorizer for REST APIs. `Basic` is checked against your `login` callback and, on success, a freshly signed JWT is returned as the context value `token`; `Bearer` is verified and its claims published through `buildContext`.
 - `createJwtRequestAuthorizer` — a **REQUEST** authorizer that verifies only. This is the one to attach to a WebSocket API's `$connect` route, because a WebSocket API supports no other _Lambda_ authorizer type. It never issues: a handshake has no response body to hand a token back through, so keep the login exchange behind a REST endpoint using `createJwtAuthorizer`.
 
+A verified token must yield an identity and an expiry; anything less is a Deny, and a Deny carries no context.
+
+```mermaid
+flowchart TD
+  T["the credential"] --> V["verify signature, exp, issuer, audience"]
+  V -->|"invalid or expired"| U["Unauthorized, 401"]
+  V -->|"valid"| C["buildContext, memberIdFromSubject by default"]
+  C -->|"empty result"| DEN["Deny: it established nobody"]
+  C -->|"memberId"| ALW["Allow, principalId set"]
+  DEN --> NC["the context is stripped from a Deny"]
+```
+
 ## Install
 
 ```bash

@@ -2,6 +2,19 @@
 
 Lightweight actor system built on three pluggable abstractions — a per-actor message queue, a per-actor lock, and an awaiter that lets senders wait for their message's completion. Any backing store (in-memory, Redis, DynamoDB, ...) can drive it by implementing a handful of small interfaces; in-memory implementations are included.
 
+Three pluggable pieces, and three ways in that differ only in how long the caller waits.
+
+```mermaid
+flowchart LR
+  E["enqueue"] --> Q[("queue")]
+  P["post"] --> Q
+  S["send"] --> Q
+  Q --> D["tryToProcess or eventLoop<br/>holds the lock for the whole call"]
+  D --> H["your handler"]
+  H --> A[("awaiter")]
+  A -.->|"only post and send wait"| S
+```
+
 ## Install
 
 ```bash

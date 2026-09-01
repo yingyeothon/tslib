@@ -409,15 +409,24 @@ for (const name of packages) {
   }
 }
 
-// ---- 6. a diagram in every package README ----------------------------------
+// ---- 6. exactly one diagram in every package README, above ## Install ------
 //
-// Staged: rules/documentation.md requires one, but they are being written a
-// batch at a time. Add each package here as its diagram lands, then delete the
-// list and enforce for all of them.
-const withDiagram = [];
-for (const name of withDiagram) {
-  if (mermaidBlocks(read(`packages/${name}/README.md`)).length !== 1) {
-    fail(`packages/${name}/README.md must carry exactly one mermaid diagram`);
+// One, not "at least one": rules/documentation.md fixes the section order, and
+// the diagram is the newest part of it and so the easiest to drop in a rewrite.
+for (const name of packages) {
+  const readme = `packages/${name}/README.md`;
+  const source = read(readme);
+  const blocks = mermaidBlocks(source);
+  if (blocks.length !== 1) {
+    fail(
+      `${readme} must carry exactly one mermaid diagram, not ${blocks.length}`,
+    );
+    continue;
+  }
+  const install = source.split("\n").findIndex((line) => line === "## Install");
+  const first = blocks[0];
+  if (install !== -1 && first !== undefined && first.line > install) {
+    fail(`${readme}'s diagram must sit above "## Install"`);
   }
 }
 

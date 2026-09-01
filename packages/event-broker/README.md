@@ -2,6 +2,22 @@
 
 A tiny, type-safe event broker: define your events as a TypeScript event map, create a broker with `createEventBroker`, and fire events into synchronous or asynchronous handlers. Handlers run in registration order and each async handler is awaited before the next one runs.
 
+Firing an event is a sequencing point: handlers run in registration order and each is awaited before the next.
+
+```mermaid
+sequenceDiagram
+  participant P as your code
+  participant B as the broker
+  participant H1 as handler 1
+  participant H2 as handler 2
+  P->>B: fire
+  B->>H1: await
+  H1-->>B: done
+  B->>H2: await
+  H2-->>B: done
+  B-->>P: resolves only now
+```
+
 ## Install
 
 ```bash

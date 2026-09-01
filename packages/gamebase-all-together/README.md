@@ -6,6 +6,23 @@ This package decides **when** things happen — a tick, a snapshot, a stage chan
 
 This package was formerly published as `@yingyeothon/do-game-all-together`.
 
+One pass of the running stage; this package decides when each step happens, and the hooks decide what goes out.
+
+```mermaid
+sequenceDiagram
+  participant L as the loop
+  participant Q as the queue
+  participant C as your controller
+  participant H as your hooks
+  L->>Q: pollMessages
+  Q-->>L: a batch
+  L->>C: processMessage, per message
+  L->>C: updateTimeDelta, per the tick policy
+  L->>H: onSnapshot, if snapshotIntervalMillis allows
+  H-->>L: a broadcast of your own shape
+  L->>C: isGameOver
+```
+
 ## Install
 
 ```bash

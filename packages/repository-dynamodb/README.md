@@ -2,6 +2,18 @@
 
 DynamoDB-backed implementation of the `@yingyeothon/repository` abstractions: an `ExpirableRepository` + `CasRepository` that stores each value as one item (partition key = optional prefix + repository key), encodes values with a pluggable `Codec` (JSON by default), expires items through the table's TTL attribute, and does conditional writes with a per-item revision token. It composes with `createListDocument`/`createMapDocument` from `@yingyeothon/repository` for versioned documents.
 
+One item per value: the payload, a random revision attribute, and the table's TTL attribute.
+
+```mermaid
+erDiagram
+  ITEM {
+    string partitionKey "prefix plus the repository key"
+    string value "codec-encoded payload"
+    string rev "random, replaced on every write"
+    number ttl "epoch seconds, the table's TTL attribute"
+  }
+```
+
 ## Install
 
 ```bash

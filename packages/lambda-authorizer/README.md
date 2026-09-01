@@ -11,6 +11,20 @@ Two authorizer types ship here, and which one you may use is decided by the API,
 
 A WebSocket API does not support `TOKEN` authorizers at all, so `createAuthorizer` cannot be attached to `$connect`.
 
+Which authorizer you may use is decided by the API, not by preference.
+
+```mermaid
+flowchart TD
+  A{"which API?"}
+  A -->|"REST"| B["createAuthorizer, TOKEN<br/>or createRequestAuthorizer"]
+  A -->|"WebSocket $connect"| C["createRequestAuthorizer only"]
+  S["AuthorizationSource<br/>header, queryString or subprotocol"] --> R["readAuthorization"]
+  R --> P["parseAuthorization"]
+  P --> D{"Basic, Bearer or Unknown"}
+  D --> Y["your authorize callback"]
+  Y --> POL["an Allow or Deny policy"]
+```
+
 ## Install
 
 ```bash

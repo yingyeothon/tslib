@@ -2,6 +2,14 @@
 
 Tiny codec abstraction: a generic `Codec<B>` interface for encoding domain values into a base representation `B` (and decoding them back), plus a `jsonCodec` implementation that uses JSON strings.
 
+A codec is a pair, not a serializer: whoever holds one can both write and read the same representation.
+
+```mermaid
+flowchart LR
+  T["your value"] -->|"encode"| B["the base representation<br/>a string, for jsonCodec"]
+  B -->|"decode"| T2["your value"]
+```
+
 ## Install
 
 ```bash

@@ -2,6 +2,25 @@
 
 AWS Lambda glue for [`@yingyeothon/actor-system`](../actor-system): an API Gateway proxy handler that turns HTTP requests into actor messages, a Lambda handler that processes an actor's queue within the invocation's lifetime, and a shift function that hands remaining work to a fresh asynchronous Lambda invocation when the current one runs out of time.
 
+When the invocation runs out of budget it releases first, then hands the rest to a fresh one.
+
+```mermaid
+sequenceDiagram
+  participant API as API event
+  participant H as createActorAPIEventHandler
+  participant Q as queue
+  participant I as this invocation
+  participant N as a fresh invocation
+  API->>H: request
+  H->>Q: post
+  H->>I: invoke
+  I->>Q: drain while createTimeline has budget
+  Note over I: aliveMillis runs out
+  I->>I: release the lock first
+  I->>N: createLambdaShift re-invokes
+  N->>Q: keep draining
+```
+
 ## Install
 
 ```bash

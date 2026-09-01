@@ -2,6 +2,16 @@
 
 Slack incoming-webhook backend for the `@yingyeothon/logger` contract. `createSlackLogWriter` returns a `LogWriter` that batches every record onto a single promise chain posting to the webhook, plus a `flush()` handle so serverless handlers can await delivery before exiting. `createSlackLogger` wraps it in a severity-filtered `Logger`. When `webhookUrl` is missing, Slack delivery is silently skipped; library code reads no environment variables — use `slackLogWriterOptionsFromEnv()` if you want the classic env-based configuration.
 
+Records batch onto one promise chain, and `flush()` is what a serverless handler awaits before it freezes.
+
+```mermaid
+flowchart LR
+  L["Logger"] --> F["severity filter"]
+  F --> W["createSlackLogWriter<br/>one promise chain"]
+  W --> H["the incoming webhook"]
+  W -.->|"flush() before the handler returns"| H
+```
+
 ## Install
 
 ```bash

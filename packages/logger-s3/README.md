@@ -2,6 +2,16 @@
 
 Buffered log writer that flushes structured JSON log records into S3 through an [s3-cache-bridge](https://github.com/yingyeothon/s3-cache-bridge) server. Records are buffered in memory, auto-flushed by time or buffer size, aggregated per S3 key, and appended as JSON lines — with a Lambda-flavored variant that stamps each record with system/handler/lambda identity.
 
+Buffered, aggregated per key, and appended as JSON lines; the flush has to be awaited or a frozen container writes nothing.
+
+```mermaid
+flowchart LR
+  R["log records"] --> B["createBufferedWriter<br/>by time and by size"]
+  B --> F["createS3cbLogFlush"]
+  F --> BR["s3-cache-bridge"]
+  BR --> S3[("S3, JSON lines per key")]
+```
+
 ## Install
 
 ```bash

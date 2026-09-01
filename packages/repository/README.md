@@ -2,6 +2,31 @@
 
 Key-value repository abstractions for asynchronous storage backends: a minimal `Repository` interface, an `ExpirableRepository` extension for TTL-based entries, a `CasRepository` extension for conditional (compare-and-set) writes, a `createRepositoryFromKV` building block that turns primitive string get/set/delete operations into a full JSON repository, versioned list/map document helpers, and a `createInMemoryRepository` implementation useful for tests and local development.
 
+One interface with two optional extensions, and the documents that use them when they are there.
+
+```mermaid
+classDiagram
+  class Repository {
+    get(key)
+    set(key, value)
+    delete(key)
+  }
+  class ExpirableRepository {
+    setWithExpire(key, value, expiresInMillis)
+  }
+  class CasRepository {
+    getRevision(key) Revision
+    compareAndSet(key, expectedToken, value) boolean
+  }
+  Repository <|-- ExpirableRepository
+  Repository <|-- CasRepository
+  class MapDocument {
+    insertOrUpdate(key, value)
+    edit(modifier)
+  }
+  CasRepository <.. MapDocument : retries on false
+```
+
 ## Install
 
 ```bash

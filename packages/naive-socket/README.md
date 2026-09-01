@@ -2,6 +2,20 @@
 
 Minimal TCP socket client over `node:net` (with an opt-in `node:tls` path) and a serialized request queue, per-request timeouts, pluggable response matching (regex, fixed length, or a custom function), and automatic reconnection. Useful for talking to simple line- or length-based text protocols (for example Redis) without pulling in a full client library.
 
+The edge that matters is the one out of `Connected`: a resumed container looks connected while the stream has already ended.
+
+```mermaid
+stateDiagram-v2
+  [*] --> Connecting: first send
+  Connecting --> Connected
+  Connected --> Connected: queued requests, one at a time
+  Connected --> Reconnecting: destroyed, readableEnded or writableEnded
+  Connected --> Reconnecting: EPIPE or ECONNRESET on the write
+  Reconnecting --> Connected: requeue the head, resend it once
+  Connected --> Disconnected: disconnect with a reason
+  Disconnected --> Connecting: the next send
+```
+
 ## Install
 
 ```bash

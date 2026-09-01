@@ -2,6 +2,20 @@
 
 Minimal Redis client built on [`@yingyeothon/naive-socket`](../naive-socket): strings, lists, sets, INCR, pub/sub, and a "simple" layer that opens a connection per operation and adds JSON-encoded caching helpers. It speaks a small subset of the RESP protocol directly, so it stays tiny enough for serverless bundles.
 
+Every argument travels as a length-prefixed bulk string, and a poisoned connection resets itself.
+
+```mermaid
+sequenceDiagram
+  participant A as your call
+  participant E as the encoder
+  participant R as Redis
+  A->>E: command name and arguments
+  E->>R: RESP array, byte-counted lengths
+  R-->>A: reply, framed then matched
+  Note over A,R: a -NOAUTH reply drops the socket
+  A->>R: reconnect, AUTH, retry once
+```
+
 ## Install
 
 ```bash

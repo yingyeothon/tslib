@@ -2,6 +2,23 @@
 
 HTTP client for the [s3-cache-bridge](https://github.com/yingyeothon) server: read, write, delete, and append cached objects, patch JSON documents in place, control per-key locks, and trigger cache sync or invalidation — all over plain HTTP with optional basic auth. Built on the global `fetch` with zero runtime dependencies.
 
+The bridge answers from its cache when it can, and reaches S3 when it cannot.
+
+```mermaid
+sequenceDiagram
+  participant C as createS3cbClient
+  participant B as the bridge server
+  participant S as S3
+  C->>B: read a key
+  alt cached
+    B-->>C: the value
+  else not cached
+    B->>S: GET
+    S-->>B: the object
+    B-->>C: the value
+  end
+```
+
 ## Install
 
 ```bash

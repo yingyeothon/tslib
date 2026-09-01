@@ -2,6 +2,18 @@
 
 Serverless WebSocket game framework on AWS Lambda: an actor-based game loop backed by Redis, API Gateway WebSocket connection handling (`$connect`, `$disconnect`, `$default`), broadcasting/replying to connections, and the base game context/user/observer models shared by game implementations.
 
+Three keys are the whole interface to whatever terminates the sockets; note that the queue key gains no extra segment.
+
+```mermaid
+flowchart LR
+  A["your actor"] -->|"writes"| E["eventKeyPrefix + gameId<br/>the start event"]
+  G["the gateway"] -->|"reads"| E
+  G -->|"RPUSH, durable"| Q["queueKeyPrefix + gameId<br/>a Redis list, no queue: segment"]
+  A -->|"drains"| Q
+  A -->|"PUBLISH, lossy"| CH["channelPrefix + gameId<br/>pub/sub"]
+  G -->|"subscribes first"| CH
+```
+
 ## Install
 
 ```bash
