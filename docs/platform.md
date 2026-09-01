@@ -34,9 +34,31 @@ flowchart TD
 
 Two consequences run through everything below. **The platform generalises
 storage shapes and transport scopes, never game rules** — it never learns what a
-"character" or an "item" is. And **the client ships with no content**: it
+"character" or an "item" is. And the client ships with no content: it
 receives its map, its capability set and its protocol from the server, which is
 what makes one client SDK work across games.
+
+## The words this guide uses
+
+Six of them come from the platform rather than from tslib, and every later page
+spends them freely.
+
+| Term          | Means                                                                            |
+| ------------- | -------------------------------------------------------------------------------- |
+| **channel**   | What you provision per game: an id, an endpoint, and a credential scoped to it   |
+| **member**    | One player of one run, named in its start event by a `memberId`. Not an account  |
+| **zone**      | A named area of a map. The lobby relays positions and chat within one            |
+| **party**     | A group a player belongs to, and therefore a relay scope the gateway understands |
+| **entry API** | An endpoint of _yours_ that allocates a run and hands a client its `gameId`      |
+| **tick**      | One pass of a loop: the gateway's position flush, or your game's simulation step |
+
+Three more are tslib's own and are defined where they are used: an **actor**
+([The game actor](game-actor.md)), the **lease** on its lock and the **awaiter**
+that resolves a waiting sender ([Actor system](actor-system.md)).
+
+**`stage` means two unrelated things**, which is worth knowing before you meet
+the second. A deployment stage (`dev`, `prod`) appears in your Redis key
+prefixes; a game stage is `wait`, `running` or `end`.
 
 ## The two channel kinds
 
@@ -59,12 +81,12 @@ flowchart LR
   end
 ```
 
-On a **lobby** channel the gateway knows scopes, not semantics: it routes to a
+On a `lobby` channel the gateway knows scopes, not semantics: it routes to a
 zone, a party or a user, and never interprets a payload. It also synthesises the
 `enter`, `leave` and `snapshot` frames, which is the part clients must not
 reimplement — without them a player who walks away freezes on every screen.
 
-On a **`q`** channel the gateway understands nothing. It carries frames between
+On a `q` channel the gateway understands nothing. It carries frames between
 the player and a `@yingyeothon/lambda-gamebase` actor running in your account,
 and reads none of them.
 
@@ -143,8 +165,7 @@ The Unity half of the client SDK is
 [`csharplib`](https://github.com/yingyeothon/csharplib), whose `docs/` is this
 same guide from the client side.
 
-When this guide and the gateway README disagree, the gateway README is right —
-and that is a bug here worth reporting.
+When this page and the gateway README disagree, the gateway README is right.
 
 ## Read next
 
