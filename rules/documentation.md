@@ -131,8 +131,10 @@ Rules:
 - `flowchart LR` for pipelines, `flowchart TD` for trees. Prefer `flowchart` over
   `graph` for new diagrams; the root `README.md` keeps `graph LR` because its
   dependency graph predates this rule.
-- **Never name a node or a state `end`.** It is a mermaid keyword and it breaks
-  the parse — the game's third stage is written `Ending`, not `end`.
+- **Never name a flowchart node `end`.** It is a keyword there and it breaks the
+  parse outright; `flowchart TD` with `running --> end` does not render. A
+  `stateDiagram-v2` does accept it, but write `Ending` in both so the game's
+  third stage reads the same wherever it appears.
 - **Quote any label containing `(`, `)`, `:`, `,`, `{`, `}` or `#`** —
   `A["poll() returns undefined"]`. An unquoted parenthesis is the most common
   parse failure, and a failed block degrades silently into a grey code fence.

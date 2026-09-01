@@ -10,10 +10,11 @@ fi
 
 cd "$(git rev-parse --show-toplevel)"
 
-echo "pre-push: running CI gate (build, lint, format:check, typecheck, coverage)"
+echo "pre-push: running CI gate (build, lint, format:check, check:docs, typecheck, coverage)"
 pnpm install --frozen-lockfile
 pnpm build
 pnpm lint
 pnpm format:check
+pnpm check:docs
 pnpm typecheck
 pnpm coverage

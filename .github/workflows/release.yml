@@ -56,6 +56,7 @@ jobs:
       - run: pnpm build
       - run: pnpm lint
       - run: pnpm format:check
+      - run: pnpm check:docs
       - run: pnpm typecheck
       - run: pnpm test
       - name: Commit, tag, and push atomically
