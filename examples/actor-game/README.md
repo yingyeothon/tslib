@@ -12,12 +12,18 @@ pnpm --filter yyt-example-actor-game start
 ```
 
 ```
-  -> local:m1  {"type":"snapshot","payload":{"bossHp":12,...}}
+  -> local:m1  {"type":"snapshot","payload":{"bossHp":12,"bossMaxHp":12,...}}
+  -> local:m2  {"type":"snapshot","payload":{"bossHp":12,"bossMaxHp":12,...}}
+  -> local:m1,local:m2  {"type":"stage","payload":{"stage":"wait","age":0}}
   -> local:m1,local:m2  {"type":"stage","payload":{"stage":"running","age":0}}
   -> local:m1,local:m2  {"type":"hit","payload":{"memberId":"m1","dealt":2}}
-  ...
+  ...four more hits...
   -> local:m1,local:m2  {"type":"result","payload":{"reason":"cleared",...}}
+  -> local:m1,local:m2  {"type":"stage","payload":{"stage":"end","age":5}}
   xx local:m1 dropped
+  xx local:m2 dropped
+
+boss hp 0/12, cleared=true, 12 frames, 2 connections dropped
 ```
 
 ## What is real, and what is swapped out

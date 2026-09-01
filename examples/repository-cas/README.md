@@ -23,10 +23,15 @@ interleaving is not worth asserting.
 Expected output:
 
 ```
-scores:  {"alice":1,"bob":2}
+backend: in-memory
+scores:  {"bob":2,"alice":1}
 version: 2 (one write each)
 the stale write was refused: true
 ```
+
+Bob's key comes first because Bob's write committed first, and Alice's retry
+re-applied hers on top of it. That order _is_ the result: a store that lost the
+race would show one name, not both.
 
 **Without the conditional write, `alice` would be gone.** The second writer
 would send a whole document built from what it read before the first writer

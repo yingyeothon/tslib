@@ -21,6 +21,9 @@ peers after move: [{"userId":"u2","x":4,"y":1}]
 how a dungeon run ends:
   close 1000 -> finished  event=finished
   close 4001 -> aborted   event=aborted
+  1000 finished the run; 4001 means the actor died and a retry
+  needs a NEW gameId — the old queue key is gone. Neither
+  reconnects; every other code does, with backoff.
 ```
 
 ## Why a fake socket rather than a real one
