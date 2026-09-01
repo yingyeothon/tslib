@@ -7,9 +7,11 @@ smoke-tested in CI, so a snippet the documentation depends on cannot rot.
 
 | Example                                    | Shows                                                                         | Guide page                    |
 | ------------------------------------------ | ----------------------------------------------------------------------------- | ----------------------------- |
+| [actor-game](actor-game/README.md)         | A whole game through the real `handleActor`, with no AWS and no Redis         |
 | [repository-cas](repository-cas/README.md) | Two writers racing on one document, and the conditional write that keeps both | [Storage](../docs/storage.md) |
 
 ```bash
+pnpm --filter yyt-example-actor-game start
 pnpm --filter yyt-example-repository-cas start
 ```
 

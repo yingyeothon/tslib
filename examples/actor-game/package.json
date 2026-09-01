@@ -1,0 +1,25 @@
+{
+  "name": "yyt-example-actor-game",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A whole game actor in one process: handleActor and runGameAllTogether, with no AWS and no Redis.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@yingyeothon/actor-system": "workspace:^",
+    "@yingyeothon/gamebase-all-together": "workspace:^",
+    "@yingyeothon/lambda-gamebase": "workspace:^",
+    "@yingyeothon/logger": "workspace:^"
+  },
+  "devDependencies": {
+    "@aws-sdk/client-apigatewaymanagementapi": "^3.879.0",
+    "@aws-sdk/client-lambda": "^3.879.0",
+    "tsx": "^4.19.2"
+  }
+}
