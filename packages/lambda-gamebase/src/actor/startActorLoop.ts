@@ -21,11 +21,16 @@ export interface StartActorLoopOptions<M> {
   onReady?: () => Promise<unknown>;
   /** Heartbeat interval for the actor lock; see `eventLoop`. */
   lockRenewIntervalMillis?: number;
-  redisConnection: RedisConnection;
+  /**
+   * Only used to build the default `deleteStartEvent`. Required unless
+   * `deleteStartEvent` is supplied, which is what lets an in-memory subsystem
+   * run this loop with no Redis at all.
+   */
+  redisConnection?: RedisConnection;
   gameMain: (args: GameMainOptions<M>) => Promise<unknown>;
   /**
    * Deletes the persisted start event when the game ends. Defaults to
-   * `redisDel` on `redisConnection`; override it in tests to avoid Redis.
+   * `redisDel` on `redisConnection`; supply it to avoid needing one.
    */
   deleteStartEvent?: (key: string) => Promise<unknown>;
 }
@@ -45,8 +50,11 @@ export async function startActorLoop<M>({
   eventKeyPrefix,
   redisConnection,
   gameMain,
-  deleteStartEvent = (key) => redisDel(redisConnection, key),
+  deleteStartEvent,
 }: StartActorLoopOptions<M>): Promise<void> {
+  // Resolved up front, so a missing connection fails before the lock is taken
+  // rather than at the end of a game that has already been played.
+  const del = deleteStartEvent ?? defaultDeleteStartEvent(redisConnection);
   await eventLoop<M>({
     ...subsystem,
     id: gameId,
@@ -77,11 +85,18 @@ export async function startActorLoop<M>({
         logger.error("unexpected error from game", { gameId, error });
       }
       logger.info("end of the game", { gameId, memberCount: members.length });
-      await clearActorStartEvent({
-        gameId,
-        del: deleteStartEvent,
-        eventKeyPrefix,
-      });
+      await clearActorStartEvent({ gameId, del, eventKeyPrefix });
     },
   });
+}
+
+function defaultDeleteStartEvent(
+  connection: RedisConnection | undefined,
+): (key: string) => Promise<unknown> {
+  if (!connection) {
+    throw new Error(
+      "startActorLoop requires redisConnection unless deleteStartEvent is supplied",
+    );
+  }
+  return (key) => redisDel(connection, key);
 }

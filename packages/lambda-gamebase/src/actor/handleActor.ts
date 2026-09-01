@@ -40,7 +40,11 @@ export interface HandleActorOptions<M> {
   gameMain: (args: GameMainOptions<M>) => Promise<unknown>;
   logger?: Logger;
   actorLogger?: Logger;
-  /** Supplies the shared Redis connection when `redisConnection` is unset. */
+  /**
+   * Supplies the shared Redis connection when `redisConnection` is unset.
+   * Required unless `subsystem`, `saveStartEvent` and `deleteStartEvent` are
+   * all supplied — together those are every use this function has for one.
+   */
   context?: GamebaseContext;
   /** Overrides the context's Redis connection, e.g. in tests. */
   redisConnection?: RedisConnection;
@@ -90,21 +94,31 @@ export async function handleActor<M>({
 
   const aliveSeconds = lifetimeSeconds + aliveMarginSeconds;
   const connection = redisConnection ?? context?.getRedisConnection();
-  if (!connection) {
-    throw new Error("handleActor requires either redisConnection or context");
+  // A connection is needed for exactly three things, each of which the caller
+  // may supply instead. Demanding one regardless made an in-memory run
+  // impossible even though nothing would have used it.
+  const connectionOrThrow = (): RedisConnection => {
+    if (!connection) {
+      throw new Error(
+        "handleActor requires either redisConnection or context, unless " +
+          "subsystem, saveStartEvent and deleteStartEvent are all supplied",
+      );
+    }
+    return connection;
+  };
+
+  let set = saveStartEvent;
+  if (!set) {
+    const store = connectionOrThrow();
+    set = (key, value) =>
+      redisSet(store, key, value, { expirationMillis: aliveSeconds * 1000 });
   }
+  // Fail here rather than inside startActorLoop, so the message names the
+  // function the caller actually called.
+  if (!deleteStartEvent) connectionOrThrow();
 
   // First, store the game context into Redis.
-  await saveActorStartEvent({
-    event,
-    set:
-      saveStartEvent ??
-      ((key, value) =>
-        redisSet(connection, key, value, {
-          expirationMillis: aliveSeconds * 1000,
-        })),
-    eventKeyPrefix,
-  });
+  await saveActorStartEvent({ event, set, eventKeyPrefix });
 
   const { callbackUrl } = event;
   await startActorLoop<M>({
@@ -121,14 +135,14 @@ export async function handleActor<M>({
         lockTimeoutSeconds,
         queueTtlSeconds: queueTtlSeconds ?? aliveSeconds,
         logger: actorLogger,
-        redisConnection: connection,
+        redisConnection: connectionOrThrow(),
       }),
     // A third of the lease, so one lost heartbeat is not a lost lock.
     lockRenewIntervalMillis: Math.max(
       1000,
       Math.floor((lockTimeoutSeconds * 1000) / 3),
     ),
-    redisConnection: connection,
+    ...(connection ? { redisConnection: connection } : {}),
     ...(deleteStartEvent ? { deleteStartEvent } : {}),
     // Signal the lobby only once this invocation owns the game. Fired
     // before the lock, a duplicate invocation announces "ready" too, and

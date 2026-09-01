@@ -26,6 +26,35 @@ function newSubsystem() {
 }
 
 describe("startActorLoop", () => {
+  it("needs no redisConnection when deleteStartEvent is supplied", async () => {
+    const deleteStartEvent = vi.fn().mockResolvedValue(1);
+    await startActorLoop<BaseGameRequest>({
+      gameId: "game-1",
+      members,
+      eventKeyPrefix: "event:",
+      logger,
+      subsystem: newSubsystem(),
+      deleteStartEvent,
+      gameMain: () => Promise.resolve(),
+    });
+    expect(deleteStartEvent).toHaveBeenCalledWith("event:game-1");
+  });
+
+  it("refuses before taking the lock when it has neither", async () => {
+    const gameMain = vi.fn().mockResolvedValue(undefined);
+    await expect(
+      startActorLoop<BaseGameRequest>({
+        gameId: "game-1",
+        members,
+        eventKeyPrefix: "event:",
+        logger,
+        subsystem: newSubsystem(),
+        gameMain,
+      }),
+    ).rejects.toThrow(/requires redisConnection unless deleteStartEvent/);
+    expect(gameMain).not.toHaveBeenCalled();
+  });
+
   it("runs gameMain with polled messages and clears the start event", async () => {
     const subsystem = newSubsystem();
     await enqueue(
@@ -120,6 +149,69 @@ describe("handleActor", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   const startEvent: GameActorStartEvent = { gameId: "game-1", members };
+
+  it("runs with no Redis connection when nothing would have used one", async () => {
+    const store = new Map<string, string>();
+    const deleted: string[] = [];
+    const gameMain = vi.fn().mockResolvedValue(undefined);
+
+    // No redisConnection and no context: the three things a connection is for
+    // are all supplied, so demanding one would be demanding it for nothing.
+    await handleActor({
+      event: startEvent,
+      eventKeyPrefix: "event:",
+      awaiterKeyPrefix: "awaiter:",
+      queueKeyPrefix: "queue:",
+      lockKeyPrefix: "lock:",
+      lifetimeSeconds: 30,
+      gameMain,
+      logger,
+      actorLogger: logger,
+      subsystem: newSubsystem(),
+      saveStartEvent: (key, value) => {
+        store.set(key, value);
+        return Promise.resolve(true);
+      },
+      deleteStartEvent: (key) => {
+        deleted.push(key);
+        return Promise.resolve(1);
+      },
+    });
+
+    expect(gameMain).toHaveBeenCalledTimes(1);
+    expect(store.has("event:game-1")).toBe(true);
+    expect(deleted).toEqual(["event:game-1"]);
+  });
+
+  it.each([
+    ["subsystem", { subsystem: undefined }],
+    ["saveStartEvent", { saveStartEvent: undefined }],
+    ["deleteStartEvent", { deleteStartEvent: undefined }],
+  ])(
+    "still refuses to run with no connection when %s is left to its default",
+    async (_name, override) => {
+      const gameMain = vi.fn().mockResolvedValue(undefined);
+      await expect(
+        handleActor({
+          event: startEvent,
+          eventKeyPrefix: "event:",
+          awaiterKeyPrefix: "awaiter:",
+          queueKeyPrefix: "queue:",
+          lockKeyPrefix: "lock:",
+          lifetimeSeconds: 30,
+          gameMain,
+          logger,
+          actorLogger: logger,
+          subsystem: newSubsystem(),
+          saveStartEvent: () => Promise.resolve(true),
+          deleteStartEvent: () => Promise.resolve(1),
+          ...override,
+        }),
+      ).rejects.toThrow(/requires either redisConnection or context/);
+      // And it refused before running anything, not half way through a game.
+      expect(gameMain).not.toHaveBeenCalled();
+    },
+  );
 
   it("saves the start event, runs the game, and clears it at the end", async () => {
     const store = new Map<string, string>();

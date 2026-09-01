@@ -107,7 +107,7 @@ exports.hello = async (connectionId) => {
 Actor loop
 
 - `handleActor` / `HandleActorOptions` — game actor Lambda entry point: persists the start event, acquires the actor lock, signals the lobby, runs the actor loop. The lock lease is `lockTimeoutSeconds` (default 30) and is heartbeated while the game runs, so a crashed actor frees its `gameId` in seconds rather than for the game's whole lifetime. A live actor that outlives its own lease (a Redis failover, a network gap) re-acquires and keeps playing; only a successor actually holding the game stops it
-- `startActorLoop` / `StartActorLoopOptions` — runs `gameMain` inside the actor event loop and clears the start event at the end
+- `startActorLoop` / `StartActorLoopOptions` — runs `gameMain` inside the actor event loop and clears the start event at the end. `redisConnection` is optional and only builds the default `deleteStartEvent`; supply that instead and the loop needs no Redis
 - `createActorSubsystem` / `ActorSubsystemOptions` / `ActorSubsystem` — Redis-backed queue/lock/awaiter with per-component key prefixes; `queueTtlSeconds` is **required** (`handleActor` defaults its own to `lifetimeSeconds + 10`)
 - `saveActorStartEvent`, `loadActorStartEvent`, `clearActorStartEvent` — start-event persistence helpers
 - `authorizeGameConnection` / `AuthorizeGameConnectionOptions` / `GameConnectionAuthorization` (types) — the "may this member speak for this game" check `handleConnect` makes, exported so a custom gateway runs the same one instead of re-deriving it
@@ -347,6 +347,17 @@ player mid-game is the game loop's job, through `Transport.drop`.
 
 ## Behavior changes
 
+- **A Redis connection is required only when something would use it.**
+  `handleActor` used to throw `requires either redisConnection or context`
+  before doing anything, even when `subsystem`, `saveStartEvent` and
+  `deleteStartEvent` were all supplied — which is every use it has for one. It
+  now demands a connection only for the defaults the caller left in place, so an
+  in-memory subsystem runs the real entry point with no Redis at all, which is
+  what `examples/actor-game` does. Leave any of the three to its default and the
+  refusal is unchanged, and still happens before the lock is taken rather than
+  at the end of a game that has already been played. `StartActorLoopOptions`'s
+  `redisConnection` became optional for the same reason: it only ever built the
+  default `deleteStartEvent`.
 - **A short, heartbeated actor lock.** The lease was the game's whole
   lifetime (`lifetimeSeconds + 10`, up to ~730 s), so a crash at t=30s left
   the `gameId` unstartable for the remaining minutes. It is now
