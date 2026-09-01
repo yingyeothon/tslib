@@ -1,5 +1,9 @@
 import { nullLogger, type Logger } from "@yingyeothon/logger";
-import { redisSet, type RedisConnection } from "@yingyeothon/naive-redis";
+import {
+  redisDel,
+  redisSet,
+  type RedisConnection,
+} from "@yingyeothon/naive-redis";
 import type { GamebaseContext } from "../context.js";
 import type { GameMainOptions } from "../models/GameMainOptions.js";
 import { createActorSubsystem } from "./createActorSubsystem.js";
@@ -93,31 +97,53 @@ export async function handleActor<M>({
   }
 
   const aliveSeconds = lifetimeSeconds + aliveMarginSeconds;
-  const connection = redisConnection ?? context?.getRedisConnection();
   // A connection is needed for exactly three things, each of which the caller
   // may supply instead. Demanding one regardless made an in-memory run
   // impossible even though nothing would have used it.
+  //
+  // Resolved lazily, and only when a default actually needs it: a context whose
+  // options carry no `redis` throws when asked for a connection, so asking
+  // eagerly would defeat the escape hatch for every caller that passes one —
+  // and `context` is exactly what `reply` and `broadcast` need.
+  let resolved: RedisConnection | undefined;
   const connectionOrThrow = (): RedisConnection => {
-    if (!connection) {
+    resolved ??= redisConnection ?? context?.getRedisConnection();
+    if (!resolved) {
       throw new Error(
         "handleActor requires either redisConnection or context, unless " +
           "subsystem, saveStartEvent and deleteStartEvent are all supplied",
       );
     }
-    return connection;
+    return resolved;
   };
 
-  let set = saveStartEvent;
-  if (!set) {
-    const store = connectionOrThrow();
-    set = (key, value) =>
-      redisSet(store, key, value, { expirationMillis: aliveSeconds * 1000 });
-  }
-  // Fail here rather than inside startActorLoop, so the message names the
+  // Every default that needs a connection is resolved here, before the first
+  // side effect. Resolving them later left a persisted start event behind when
+  // the call turned out to be misconfigured.
+  const actorSubsystem =
+    subsystem ??
+    createActorSubsystem({
+      awaiterKeyPrefix,
+      lockKeyPrefix,
+      queueKeyPrefix,
+      lockTimeoutSeconds,
+      queueTtlSeconds: queueTtlSeconds ?? aliveSeconds,
+      logger: actorLogger,
+      redisConnection: connectionOrThrow(),
+    });
+  const set =
+    saveStartEvent ??
+    ((key: string, value: string) =>
+      redisSet(connectionOrThrow(), key, value, {
+        expirationMillis: aliveSeconds * 1000,
+      }));
+  // Resolved here rather than inside startActorLoop, so the message names the
   // function the caller actually called.
-  if (!deleteStartEvent) connectionOrThrow();
+  const del =
+    deleteStartEvent ?? ((key: string) => redisDel(connectionOrThrow(), key));
+  if (!saveStartEvent || !deleteStartEvent) connectionOrThrow();
 
-  // First, store the game context into Redis.
+  // Only now, with nothing left that can refuse, does anything get written.
   await saveActorStartEvent({ event, set, eventKeyPrefix });
 
   const { callbackUrl } = event;
@@ -126,24 +152,14 @@ export async function handleActor<M>({
     members,
     logger,
     eventKeyPrefix,
-    subsystem:
-      subsystem ??
-      createActorSubsystem({
-        awaiterKeyPrefix,
-        lockKeyPrefix,
-        queueKeyPrefix,
-        lockTimeoutSeconds,
-        queueTtlSeconds: queueTtlSeconds ?? aliveSeconds,
-        logger: actorLogger,
-        redisConnection: connectionOrThrow(),
-      }),
+    subsystem: actorSubsystem,
     // A third of the lease, so one lost heartbeat is not a lost lock.
     lockRenewIntervalMillis: Math.max(
       1000,
       Math.floor((lockTimeoutSeconds * 1000) / 3),
     ),
-    ...(connection ? { redisConnection: connection } : {}),
-    ...(deleteStartEvent ? { deleteStartEvent } : {}),
+    // Always supplied, so startActorLoop never needs a connection of its own.
+    deleteStartEvent: del,
     // Signal the lobby only once this invocation owns the game. Fired
     // before the lock, a duplicate invocation announces "ready" too, and
     // the lobby hands clients a game that this call will never run.

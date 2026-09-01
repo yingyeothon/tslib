@@ -157,12 +157,26 @@ let diagrams = 0;
   for (const file of markdownFiles()) {
     for (const block of mermaidBlocks(read(file))) {
       diagrams += 1;
+      if (block.source.trim() === "") {
+        fail(`${file}:${block.line} mermaid block is empty`);
+        continue;
+      }
       try {
         await mermaid.parse(block.source);
       } catch (error) {
-        if (error?.hash === undefined) continue; // not a grammar error
-        const detail = String(error.message).split("\n")[0];
-        fail(`${file}:${block.line} mermaid block does not parse — ${detail}`);
+        // Admit only the one failure we know is ours, not mermaid's: parsing
+        // succeeds and then the sanitiser reaches for a DOM this process does
+        // not have. Anything else is the diagram's fault.
+        //
+        // The first version of this excluded known-bad instead — "no `hash`,
+        // so not a grammar error" — and `grpah TD` sailed through, because a
+        // misspelled diagram type raises UnknownDiagramError, which carries no
+        // `hash`. That is exactly the grey-code-block case this gate is for.
+        const message = String(error?.message ?? error);
+        if (/DOMPurify/.test(message)) continue;
+        fail(
+          `${file}:${block.line} mermaid block does not parse — ${message.split("\n")[0]}`,
+        );
       }
     }
   }

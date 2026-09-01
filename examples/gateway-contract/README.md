@@ -49,20 +49,24 @@ array of `undefined` items, which is the second line of output above.
 speaks for from them, so a gateway synthesises them itself and refuses them from
 clients.
 
-## 2. The key has no `queue:` segment
+## 2. Nothing is appended to the queue prefix
 
-The actor drains `{queueKeyPrefix}{gameId}` and nothing else.
-`createRedisSubsystem` appends a `queue:` segment to the prefix it is given;
-`createActorSubsystem` in `lambda-gamebase` and `handleConnect` do **not**. A
-gateway that copies the subsystem layout pushes into a key nobody reads.
+The actor drains `{queueKeyPrefix}{gameId}` and nothing else — so with the
+prefix `game:dev:demo:queue:` the key is `game:dev:demo:queue:bridge-1`. The
+`queue:` here is part of the prefix _you_ configured, and that is the point:
+`createRedisSubsystem` **adds** a `queue:` segment of its own to whatever prefix
+it is given, while `createActorSubsystem` in `lambda-gamebase` and
+`handleConnect` pass yours straight through. Configure a gateway from the
+subsystem's half of that and it pushes into a key nobody reads.
 
-Verified against a real Redis — the key, its TTL, and the bytes:
+This example computes the key the actor side computes; it does not reproduce the
+mismatch. Verified against a real Redis, before the run flushes it — the key, its
+TTL, and the stored bytes:
 
 ```
-$ redis-cli keys '*'
 game:dev:demo:queue:bridge-1
-$ redis-cli ttl game:dev:demo:queue:bridge-1
-60
+ttl 60
+{"messageId":"…","awaitPolicy":0,"awaitTimeoutMillis":0,"item":{…}}
 ```
 
 The TTL is the producer's job. The actor only drains, so the `ttlSeconds` on

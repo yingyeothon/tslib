@@ -13,6 +13,9 @@ import {
 } from "@yingyeothon/logger";
 ```
 
+**Reference:** [`logger`](../packages/logger/README.md), [`logger-slack`](../packages/logger-slack/README.md), [`logger-s3`](../packages/logger-s3/README.md) — each carries its own
+`## Public API`, its options and defaults, and its migration notes.
+
 ## Composition
 
 ```mermaid
@@ -30,9 +33,27 @@ Call style is **message first, structured context second**:
 form, and not a pre-formatted string — a writer that ships to Slack or S3 needs
 the fields separable.
 
-Every package that logs takes `logger?: Logger` and defaults to `nullLogger`.
-There are no `console.*` fallbacks and no env-gated console output anywhere in
-the library: a consumer that wants output passes `createConsoleLogger("info")`.
+Every package that logs takes `logger?: Logger` and defaults to `nullLogger`,
+and nothing writes to the console because of an environment variable: a consumer
+that wants output passes `createConsoleLogger("info")`.
+
+**One shipped helper is louder than that by default.** `createLambdaS3Logger`
+turns `withConsole` on, so every record it buffers is also printed with
+`console[severity]` — convenient in CloudWatch, and a surprise if you assumed the
+library never prints. Pass `withConsole: false` to silence it.
+
+```ts
+const logger = createFilteredLogger({
+  severity: "info",
+  writer: combine(consoleWriter, createSlackLogWriter({ webhookUrl })),
+});
+
+// Message first, structured context second.
+logger.info("actor started", { gameId, memberCount: members.length });
+
+// Every option bag that logs takes one, and defaults to nullLogger without it.
+await handleActor({ ...actorOptions, logger, actorLogger: logger });
+```
 
 ## What must never be logged
 
@@ -58,6 +79,13 @@ email. Log the decision, not the object that carried it.
 
 Redact at the call site, not in the writer. The writer is the consumer's, and it
 may well be a file that never rotates.
+
+**Two shipped packages break the payload rule at `debug`, so set their severity
+deliberately.** `createApiGatewayTransport` logs the outbound frame it is
+delivering, and `@yingyeothon/actor-system-lambda`'s API handler logs the request
+body and the parsed message. Both are useful while developing a game and both are
+game payloads; a `debug`-level logger wired to a durable writer in production
+will collect them.
 
 ## Slack
 

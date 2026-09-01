@@ -16,6 +16,9 @@ import { broadcast, handleActor, reply } from "@yingyeothon/lambda-gamebase";
 A whole game you can run right now, with no AWS and no Redis, is
 [`examples/actor-game`](../examples/actor-game/README.md).
 
+**Reference:** [`lambda-gamebase`](../packages/lambda-gamebase/README.md), [`gamebase-all-together`](../packages/gamebase-all-together/README.md) — each carries its own `## Public API`, its
+options and defaults, and its migration notes.
+
 ## The life of one invocation
 
 ```mermaid
@@ -74,6 +77,7 @@ sequenceDiagram
   participant G as gateway
   participant R as Redis
   participant A as actor
+  Note over A: an entry API of yours writes the start event, then invokes
   A->>R: SET the start event
   C->>G: connect with a gameId
   G->>R: GET the start event
@@ -83,7 +87,8 @@ sequenceDiagram
   G->>R: RPUSH a UserMessage envelope
   Note over R: the queue key has no extra queue: segment
   G->>A: invoke
-  A->>R: acquire the lock, then readyCall
+  A->>R: acquire the lock
+  A->>C: readyCall, an HTTP PUT to callbackUrl
   A->>R: drain the list
   A->>R: PUBLISH a GatewayCommand
   R-->>G: send or drop
@@ -92,8 +97,13 @@ sequenceDiagram
   G->>R: UNSUBSCRIBE
 ```
 
-Every trap on that diagram fails silently. There is a runnable proof of each in
-[`examples/gateway-contract`](../examples/gateway-contract/README.md).
+Three of the four traps on that diagram fail **silently**; there is a runnable
+proof of each in
+[`examples/gateway-contract`](../examples/gateway-contract/README.md). The
+outbound one is the exception: `createRedisPubSubTransport` checks how many
+subscribers `PUBLISH` reached and logs `warn` with `"no gateway is listening"`
+when the answer is zero — so if you passed it a logger, a missing subscriber is
+the one mistake here that tells you.
 
 **Subscribe before the first push.** Inbound is durable, so a gateway may push
 before the actor is running; outbound is lossy, so a publish with no subscriber
@@ -156,16 +166,28 @@ yours, through hooks.
 ```mermaid
 stateDiagram-v2
   [*] --> Wait
-  Wait --> Running: minPlayers connected
-  Wait --> Ending: gameWaitingSeconds elapsed, notEnoughPlayers
+  Wait --> Running: everyone connected, early
+  Wait --> Running: gameWaitingSeconds elapsed, at least minPlayers
+  Wait --> Ending: gameWaitingSeconds elapsed, fewer, notEnoughPlayers
   Running --> Running: processMessage, then updateTimeDelta
   Running --> Ending: isGameOver, cleared
   Running --> Ending: gameRunningSeconds elapsed, timeout
-  Running --> Ending: a hook threw, error
+  Running --> Ending: isGameOver or the queue threw, error
   Ending --> Announcing: broadcast the end, endRepeatCount times
   Announcing --> Dropping: wait endDropDelayMillis, default 1000
   Dropping --> [*]
 ```
+
+**`minPlayers` relaxes the verdict, not the schedule.** The wait stage ends
+early only when _every_ member has connected; otherwise it runs the full
+`gameWaitingSeconds` and then asks whether at least `minPlayers` made it. A
+latecomer therefore always costs the whole window.
+
+**A throw from your hooks does not end the game.** `processMessage`,
+`updateTimeDelta` and `onSnapshot` are each wrapped: the error is logged and the
+loop continues. The `error` reason comes from a throw somewhere the loop cannot
+absorb — `isGameOver`, the queue poll losing its lease, the stage announcer, or
+an invalid tick policy.
 
 The tick policy is a choice, not a default to accept. `perMessage` calls
 `updateTimeDelta` once per processed message — turn-based games want it, since
@@ -200,7 +222,8 @@ gateway restart would evict the whole party.
 ## Who the connection speaks for
 
 By default `handleConnect` reads `memberId` from the client's `x-member-id`
-header and only checks that it appears in the game's start event. **That is not
+header **or query string** — and a query string is written to access logs — then
+only checks that the value appears in the game's start event. **That is not
 authentication** — anyone who knows another member's id can connect as that
 member, and member ids are broadcast to every player by default.
 

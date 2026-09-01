@@ -3,6 +3,9 @@
 Three small packages with no yyt in them at all. They appear on other packages'
 public surfaces, so you will meet them whatever you build.
 
+**Reference:** [`codec`](../packages/codec/README.md), [`event-broker`](../packages/event-broker/README.md), [`s3-cache-bridge-client`](../packages/s3-cache-bridge-client/README.md) — each carries its own `## Public API`, its
+options and defaults, and its migration notes.
+
 ## `codec` — an encoder and a decoder, together
 
 ```mermaid
@@ -19,6 +22,11 @@ in the store without touching the code above.
 
 Encoding `undefined` returns the literal string `"undefined"`; decoding
 `undefined` throws, and decoding invalid JSON throws a `SyntaxError`.
+
+```ts
+const encoded = jsonCodec.encode({ a: 10, b: "hello" });
+const decoded = jsonCodec.decode<{ a: number; b: string }>(encoded);
+```
 
 ## `event-broker` — type-keyed, and awaited
 

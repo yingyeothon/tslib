@@ -16,6 +16,9 @@ import {
 A runnable race between two writers is
 [`examples/repository-cas`](../examples/repository-cas/README.md).
 
+**Reference:** [`repository`](../packages/repository/README.md), [`repository-redis`](../packages/repository-redis/README.md), [`repository-s3`](../packages/repository-s3/README.md), [`repository-dynamodb`](../packages/repository-dynamodb/README.md) — each carries its own `## Public API`, its
+options and defaults, and its migration notes.
+
 ## Three interfaces
 
 ```mermaid
@@ -50,6 +53,28 @@ operations — supply `setWithExpire` and the result is expirable, supply
 `getRevision` **and** `compareAndSet` and it is a `CasRepository`. That is how
 every backend below is written.
 
+Reading, writing, and editing a document:
+
+```ts
+const repository = createInMemoryRepository();
+
+await repository.setWithExpire("session", { token: "…" }, 60_000);
+const session = await repository.get<{ token: string }>("session");
+
+// A conditional write, by hand.
+const revision = await repository.getRevision<number>("score");
+const won = await repository.compareAndSet("score", revision?.token, 42);
+
+// Or let a document do the read-modify-write, and the retry, for you.
+const scores = createMapDocument<number>({
+  repository,
+  key: "scores",
+  expiresInMillis: 60_000, // required by repository-redis
+});
+await scores.insertOrUpdate("alice", 10);
+const { version, content } = await scores.read();
+```
+
 ## Choosing a backend
 
 ```mermaid
@@ -60,7 +85,7 @@ flowchart TD
   Q0 -->|"yes"| Q1{"how big is one value?"}
   Q1 -->|"small, and many of them"| DDB["repository-dynamodb"]
   Q1 -->|"blobs, read far more than written"| S3["repository-s3"]
-  RED --> RW["set throws, call setWithExpire<br/>keys are repo:prefix:key"]
+  RED --> RW["set throws, call setWithExpire<br/>keys are repo: then prefix then key"]
   DDB --> DW["a random rev attribute plus a ConditionExpression"]
   S3 --> SW["ETag If-Match, or If-None-Match star to require absence"]
   MEM --> MW["has CAS, so documents behave as they will in production"]
@@ -121,7 +146,12 @@ writers yourself there. An actor lock does.
 
 `repository-redis`'s `set()` throws, and nothing is sent to Redis. Use
 `setWithExpire`, or pass `expiresInMillis` to `compareAndSet` and to the
-document factories. Keys are laid out as `repo:<prefix>:<key>`.
+document factories.
+
+Two details the throw hides: `set(key, undefined)` is the one call that does not
+throw — it deletes, which is the same thing `delete` does — and the key layout is
+`repo:` plus the optional prefix plus the key, so with no prefix it is
+`repo:<key>` rather than `repo::<key>`.
 
 This is the same rule as everywhere else on the platform: the instance is shared
 and runs `allkeys-lru`, and the participant credential denies key enumeration —

@@ -9,11 +9,10 @@ stateDiagram-v2
   [*] --> Connecting: first send
   Connecting --> Connected
   Connected --> Connected: queued requests, one at a time
-  Connected --> Reconnecting: destroyed, readableEnded or writableEnded
-  Connected --> Reconnecting: EPIPE or ECONNRESET on the write
-  Reconnecting --> Connected: requeue the head, resend it once
+  Connected --> Disconnected: destroyed, readableEnded or writableEnded
+  Connected --> Disconnected: the write failed with nothing sent
   Connected --> Disconnected: disconnect with a reason
-  Disconnected --> Connecting: the next send
+  Disconnected --> Connecting: reconnect, requeueing the head once
 ```
 
 ## Install

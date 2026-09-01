@@ -8,7 +8,7 @@ Conditional writes ride on S3's own ETag checks, so two writers on one document 
 sequenceDiagram
   participant R as createS3Repository
   participant S as S3
-  R->>S: HEAD or GET
+  R->>S: GET
   S-->>R: the object and its ETag
   Note over R: the ETag is the revision token
   R->>S: PUT with If-Match

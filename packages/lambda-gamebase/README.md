@@ -366,10 +366,14 @@ player mid-game is the game loop's job, through `Transport.drop`.
   now demands a connection only for the defaults the caller left in place, so an
   in-memory subsystem runs the real entry point with no Redis at all, which is
   what `examples/actor-game` does. Leave any of the three to its default and the
-  refusal is unchanged, and still happens before the lock is taken rather than
-  at the end of a game that has already been played. `StartActorLoopOptions`'s
-  `redisConnection` became optional for the same reason: it only ever built the
-  default `deleteStartEvent`.
+  refusal is unchanged — and it now happens **before the start event is
+  written**, not merely before the lock is taken, so a misconfigured call no
+  longer leaves a persisted start event holding its `gameId` until the key
+  expires. The connection is resolved lazily and only when a default actually
+  needs one, so a `context` built without `redis` options — which is still what
+  `reply` and `broadcast` want — does not defeat the escape hatch.
+  `StartActorLoopOptions`'s `redisConnection` became optional for the same
+  reason: it only ever built the default `deleteStartEvent`.
 - **A short, heartbeated actor lock.** The lease was the game's whole
   lifetime (`lifetimeSeconds + 10`, up to ~730 s), so a crash at t=30s left
   the `gameId` unstartable for the remaining minutes. It is now

@@ -22,7 +22,9 @@ flowchart TD
   R --> P["parseAuthorization"]
   P --> D{"Basic, Bearer or Unknown"}
   D --> Y["your authorize callback"]
-  Y --> POL["an Allow or Deny policy"]
+  Y -->|"allow"| POL["an Allow policy"]
+  Y -->|"deny"| DEN["a Deny policy, context stripped"]
+  Y -->|"it threw"| ERR["Unauthorized, 401, no policy at all"]
 ```
 
 ## Install

@@ -138,9 +138,11 @@ Rules:
   parse outright; `flowchart TD` with `running --> end` does not render. A
   `stateDiagram-v2` does accept it, but write `Ending` in both so the game's
   third stage reads the same wherever it appears.
-- **Quote any label containing `(`, `)`, `:`, `,`, `{`, `}` or `#`** —
+- **Quote any label containing `(`, `)`, `:`, `,`, `{`, `}`, `;` or `#`** —
   `A["poll() returns undefined"]`. An unquoted parenthesis is the most common
-  parse failure, and a failed block degrades silently into a grey code fence.
+  parse failure, and a failed block degrades silently into a grey code fence. A
+  semicolon is a statement separator even inside a `sequenceDiagram` note, so it
+  breaks the block from the middle of an otherwise ordinary English sentence.
 - The only HTML allowed inside a label is `<br/>`.
 - Every diagram gets a one-line lead-in naming what it settles, so a renderer
   that does not draw it still leaves a readable page.

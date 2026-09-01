@@ -183,6 +183,73 @@ describe("handleActor", () => {
     expect(deleted).toEqual(["event:game-1"]);
   });
 
+  it("writes no start event when it is going to refuse", async () => {
+    const store = new Map<string, string>();
+    const gameMain = vi.fn().mockResolvedValue(undefined);
+
+    await expect(
+      handleActor({
+        event: startEvent,
+        eventKeyPrefix: "event:",
+        awaiterKeyPrefix: "awaiter:",
+        queueKeyPrefix: "queue:",
+        lockKeyPrefix: "lock:",
+        lifetimeSeconds: 30,
+        gameMain,
+        logger,
+        actorLogger: logger,
+        // No connection, and no subsystem to stand in for one.
+        saveStartEvent: (key, value) => {
+          store.set(key, value);
+          return Promise.resolve(true);
+        },
+        deleteStartEvent: () => Promise.resolve(1),
+      }),
+    ).rejects.toThrow(/requires either redisConnection or context/);
+
+    // The refusal must come before the first side effect: a persisted start
+    // event with no actor behind it holds its gameId until the key expires.
+    expect([...store.keys()]).toEqual([]);
+    expect(gameMain).not.toHaveBeenCalled();
+  });
+
+  it("does not ask a context for a connection it will not use", async () => {
+    const deleted: string[] = [];
+    const gameMain = vi.fn().mockResolvedValue(undefined);
+    // A context configured without Redis throws when asked for a connection.
+    const context = {
+      options: {} as never,
+      getRedisConnection: vi.fn(() => {
+        throw new Error("GamebaseOptions.redis is required");
+      }),
+      getApiGatewayManagementClient: vi.fn(),
+    } as unknown as Parameters<typeof handleActor>[0]["context"];
+
+    await handleActor({
+      event: startEvent,
+      eventKeyPrefix: "event:",
+      awaiterKeyPrefix: "awaiter:",
+      queueKeyPrefix: "queue:",
+      lockKeyPrefix: "lock:",
+      lifetimeSeconds: 30,
+      gameMain,
+      logger,
+      actorLogger: logger,
+      context,
+      subsystem: newSubsystem(),
+      saveStartEvent: () => Promise.resolve(true),
+      deleteStartEvent: (key) => {
+        deleted.push(key);
+        return Promise.resolve(1);
+      },
+    });
+
+    // `context` is what reply/broadcast need, so a caller that passes one must
+    // still reach the no-Redis path.
+    expect(gameMain).toHaveBeenCalledTimes(1);
+    expect(deleted).toEqual(["event:game-1"]);
+  });
+
   it.each([
     ["subsystem", { subsystem: undefined }],
     ["saveStartEvent", { saveStartEvent: undefined }],

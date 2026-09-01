@@ -53,8 +53,13 @@ published.
 | `4001` | `aborted`  | the actor stopped consuming its queue   | **allocate a new `gameId`** |
 
 Neither reconnects. A retry after an abort with the same `gameId` is refused:
-the gateway deleted the queue key. Every other code reconnects with backoff —
-500 ms, ×2, capped at 15 s, ±20 % jitter — until `backoff.maxAttempts` runs out.
+the gateway deleted the queue key.
+
+Nor does everything else. `4000` (replaced) and `4004` (channel gone) stop, and
+`4003`, `1003` and `1009` report a **client bug** — a distinct disposition,
+because the frame you sent was the problem. Only `4002`, `1001`, `1011` and
+unrecognised codes reconnect, with backoff: 500 ms, ×2, capped at 15 s, ±20 %
+jitter, until `backoff.maxAttempts` runs out.
 This example passes `maxAttempts: 0`, so a closed run stops immediately instead
 of retrying a socket the test will never reopen.
 

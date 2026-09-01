@@ -23,6 +23,9 @@ import {
 Both clients, driven against a fake socket with no network, are
 [`examples/gateway-client`](../examples/gateway-client/README.md).
 
+**Reference:** [`gamebase-client`](../packages/gamebase-client/README.md) — each carries its own `## Public API`, its
+options and defaults, and its migration notes.
+
 ## Two clients, and when `connect()` resolves
 
 ```mermaid
@@ -39,6 +42,43 @@ that frame, and a new map is a config edit.
 
 On a `q` channel the gateway pushes `enter` to your actor _after_ the upgrade,
 which is why a failure there arrives as a close and not as a refused handshake.
+
+Connecting to a lobby and to a run:
+
+```ts
+const lobby = createGatewayLobbyClient({
+  url: "wss://gw.yyt.life", // origin only; the SDK adds the query string
+  channelId: "lobby_0123456789abcdef",
+  token: channelJwt, // rides in the subprotocol list, never logged
+});
+
+lobby.on("peerEnter", (peer) => spawn(peer));
+lobby.on("peerMove", (peers) => peers.forEach(move));
+lobby.on("peerLeave", (userId) => despawn(userId));
+lobby.on("say", (frame) => showChat(frame.from, frame.text));
+// Fires again after every reconnect, which is where you re-announce.
+lobby.on("connected", () => lobby.pos({ zone: hello.zone, x, y, dir: "n" }));
+
+const hello = await lobby.connect(); // resolves on the `hello` frame
+const map = await lobby.map(); // fetches hello.mapUrl once, no credentials
+if (lobby.capabilities?.party === false) hidePartyUi();
+```
+
+```ts
+const game = createGatewayGameClient({
+  url: "wss://gw.yyt.life",
+  channelId: "q_0123456789abcdef",
+  gameId, // from your entry API; you must be in its start event
+  token: channelJwt,
+});
+
+game.on("frame", (frame) => applySnapshot(frame)); // your own schema, verbatim
+game.on("finished", () => showResult()); // close 1000
+game.on("aborted", () => backToLobby()); // close 4001: needs a NEW gameId
+
+await game.connect(); // resolves on the socket opening; there is no `hello`
+game.send({ type: "attack", power: 3 });
+```
 
 ## The connection state machine
 
@@ -75,15 +115,19 @@ flowchart TD
   K -->|"1011 enter failed"| RE
   K -->|"4002 idle"| RE
   K -->|"4000 replaced"| ST2["stopped: a newer socket of the same user"]
-  K -->|"4001 actor abort"| AB["aborted: allocate a NEW gameId"]
-  K -->|"4003 policy"| BUG["stopped: a client bug"]
+  K -->|"4001 actor abort"| CH2{"channel kind"}
+  CH2 -->|"q"| AB["aborted: allocate a NEW gameId"]
+  CH2 -->|"lobby"| ST5["stopped"]
+  K -->|"4003 policy"| BUG["clientBug: a bug on your side"]
   K -->|"1003 or 1009"| BUG
   K -->|"4004 channel gone"| ST3["stopped: expired or disabled"]
   K -->|"anything else"| RE
 ```
 
 `classifyClose(code, kind)` is that tree as a function, and `GatewayCloseCode`
-holds the `4000`–`4004` constants.
+holds the `4000`–`4004` constants. It answers five dispositions, not three:
+`reconnect`, `stop`, `finished`, `aborted`, and **`clientBug`** — which is
+separate from `stop` because it says the frame you sent was the problem.
 
 **This is the distinction the whole client exists to make.** `1000` means the
 game ended and dropped you — show the result. `4001` means the actor stopped

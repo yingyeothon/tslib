@@ -18,9 +18,10 @@ sequenceDiagram
   Q-->>L: a batch
   L->>C: processMessage, per message
   L->>C: updateTimeDelta, per the tick policy
+  L->>C: isGameOver
+  Note over L,C: true ends the pass here, with no snapshot of a finished game
   L->>H: onSnapshot, if snapshotIntervalMillis allows
   H-->>L: a broadcast of your own shape
-  L->>C: isGameOver
 ```
 
 ## Install

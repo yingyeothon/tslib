@@ -59,9 +59,10 @@ flowchart LR
 Those are ownership, not dependencies: the [root README](../README.md) has the
 exact edge list, and it is the only place that does.
 
-Only `lambda-gamebase`, `gamebase-all-together` and `gamebase-client` know
-anything about yyt. Everything else is a general library that a game happens to
-need, and each is usable on its own.
+Only `gamebase-client` names the platform at all; `lambda-gamebase` and
+`gamebase-all-together` are shaped by it without depending on it, and everything
+else is a general library that a game happens to need. Each is usable on its
+own.
 
 ## Worked examples
 

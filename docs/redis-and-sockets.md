@@ -9,6 +9,25 @@ and the two failure modes they exist to survive.
 import { createRedisConnection, redisGet } from "@yingyeothon/naive-redis";
 ```
 
+**Reference:** [`naive-socket`](../packages/naive-socket/README.md), [`naive-redis`](../packages/naive-redis/README.md) — each carries its own `## Public API`, its
+options and defaults, and its migration notes.
+
+```ts
+const connection = createRedisConnection({
+  host: process.env.REDIS_HOST!,
+  port: 6379,
+  password: process.env.REDIS_PASSWORD,
+  timeoutMillis: 1000,
+});
+
+await redisSet(connection, "greeting", "hello", { expirationMillis: 60_000 });
+const value = await redisGet(connection, "greeting");
+connection.socket.disconnect();
+```
+
+One connection is meant to be long-lived and shared — that is what
+`GamebaseContext` holds for an actor Lambda.
+
 ## The socket, and the frozen container
 
 ```mermaid
@@ -16,11 +35,11 @@ stateDiagram-v2
   [*] --> Connecting: first send
   Connecting --> Connected
   Connected --> Connected: queued requests, one at a time
-  Connected --> Reconnecting: destroyed, readableEnded or writableEnded
-  Connected --> Reconnecting: EPIPE or ECONNRESET on the write
-  Reconnecting --> Connected: requeue the head and resend it once
+  Connected --> Disconnected: destroyed, readableEnded or writableEnded
+  Connected --> Disconnected: the write failed with nothing sent
   Connected --> Disconnected: disconnect, with a reason
-  Disconnected --> Connecting: the next send
+  Disconnected --> Connecting: reconnect, requeueing the head once
+  Connecting --> Connected: listeners re-authenticate on this edge
 ```
 
 **A frozen Lambda container resumes with the peer's FIN already on the socket
@@ -28,8 +47,14 @@ but not yet dispatched**, so the invocation's first `send` still sees a
 connection that looks `Connected`. That is the bug this state machine exists
 for: the client checks `destroyed` / `readableEnded` / `writableEnded` before
 writing and reconnects at once; and when those flags are still clear and the
-kernel answers the write with `EPIPE` or `ECONNRESET`, the head request is
-requeued and resent **once**, because nothing of it reached the peer.
+write fails with an error that proves nothing was sent — `EPIPE`, `ECONNRESET`,
+`ERR_STREAM_WRITE_AFTER_END` or `ERR_STREAM_DESTROYED` — the head request is
+requeued and resent **once**.
+
+**There is no `Reconnecting` state.** `ConnectionState` is exactly `Connecting`,
+`Connected` and `Disconnected`; both recovery paths disconnect and then connect,
+so a listener observes the pair. That transition is what
+`createRedisConnection` hangs its re-`AUTH` on.
 
 It was found on a dev stage right after the auth fix below: the same store
 restart then failed with `writeAfterFIN` from a start-event save.
@@ -53,16 +78,23 @@ sequenceDiagram
   S-->>A: framed, then matched
 ```
 
-**User data is never interpolated into a command string.** Every command goes
-through one escaping choke-point. The inline form is safe only for arguments
-free of whitespace, quotes, backslashes and control characters — a `\r\n` inside
-a key or a value would inject arbitrary Redis commands, and _both_ quote
-characters break it: Redis's inline parser treats `'` as a delimiter anywhere in
-a token, so one form is answered with "unbalanced quotes" and another merges two
-arguments into one **with no error at all**.
+**There are two wire forms, and the inline one is the common path.** When every
+argument is free of whitespace, quotes, backslashes and control characters, and
+the whole command fits the inline limit, it goes out as plain text —
+`SET key value`. Anything else falls back to the length-prefixed RESP array,
+where bulk lengths are **byte** counts, not string lengths, or a multi-byte
+UTF-8 argument desynchronises the stream.
 
-Bulk lengths are **byte** counts, not string lengths, or a multi-byte UTF-8
-argument desynchronises the stream.
+**User data is never interpolated unescaped** — which is a narrower claim than
+it looks, because there are two escaping paths rather than one. A command built
+as a whole array goes through the serializer; the single-key helpers
+(`redisGet`, `redisDel`, `redisRpush` and the rest) build their line directly
+and escape the key with `quoteArg`. Both matter: a `\r\n` inside a key or a
+value would inject arbitrary Redis commands, and _both_ quote characters break
+the inline form — Redis's inline parser treats `'` as a delimiter anywhere in a
+token, so one shape is answered with "unbalanced quotes" and another merges two
+arguments into one **with no error at all**. A new command uses one of the two
+paths, never a raw template string.
 
 A reply matcher must consume the **whole** reply, not the shape you expected. A
 one-line matcher pointed at a command whose reply may be a bulk string _or_ an
@@ -75,7 +107,11 @@ shape you cannot use.
 A connection that can be poisoned must reset itself rather than report forever.
 The client drops the socket when `AUTH` fails or times out, and when any reply
 is `-NOAUTH` or `-WRONGPASS`, so the next command reconnects and authenticates
-again; a command that hit `-NOAUTH` is retried once.
+again.
+
+**The automatic retry happens only on a connection that has credentials.** With
+no password there is nothing to re-authenticate with, so the socket is still
+dropped but the error reaches the caller unretried.
 
 Before this, a Redis restart left every warm Lambda container answering
 `-NOAUTH` until it was recycled.
@@ -94,9 +130,10 @@ reason the subscribe must happen before the first inbound push.
 
 ## The simple layer
 
-`createRedisSimple` and `redisSimpleWork` open a connection per operation and
-JSON-encode values; `redisSimpleCache` memoises an async function into Redis
-with `peek`, `refresh` and `clear`. Convenient for a script or a cold path — but
+`createRedisSimple` opens a connection per operation and JSON-encodes values;
+`redisSimpleCache` memoises an async function into Redis with `peek`, `refresh`
+and `clear`. `redisSimpleWork` is lower level than either: it opens **one**
+connection, hands it to your callback raw, and closes it after — no encoding. Convenient for a script or a cold path — but
 a game loop wants one long-lived connection, which is what `GamebaseContext`
 holds.
 

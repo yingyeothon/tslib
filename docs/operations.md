@@ -14,8 +14,10 @@ flowchart LR
   ENV -.->|"never"| F
 ```
 
-**Library code never reads `process.env`, never calls `console.*`, and never
-reaches for a global clock.** A package may export exactly one
+**Library code never reads `process.env` and never reaches for a global clock**,
+and nothing prints because of an environment variable. (One helper,
+`createLambdaS3Logger`, does print to the console by default — see
+[Logging](logging.md#composition).) A package may export exactly one
 `<name>OptionsFromEnv()` helper for callers who want env wiring, and only that
 helper touches the environment. Calling it is your choice; the library's own
 path is the options object.
@@ -102,15 +104,19 @@ flowchart LR
 ```
 
 The Lambda timeout must exceed `gameWaitingSeconds + gameRunningSeconds` plus a
-margin, and the start-event TTL uses the same sum. Set `maximumRetryAttempts` to
+margin. The start-event TTL is a _different_ number — `lifetimeSeconds + 10`,
+from `handleActor`'s own option — so keep `lifetimeSeconds` at or above the sum
+of the two stage budgets, or the start event can expire under a game that is
+still being played. Set `maximumRetryAttempts` to
 0 on the actor: a retried invocation would replay the game from the start.
 
 ## Never log
 
 The short version, because it is an operational property and not only a coding
-one: no credential, no request event, no connection-id list, no payload — not
-even at `debug`. [Logging](logging.md) has the full list and what to log
-instead.
+one: no credential, no request event, no connection-id list, and no payload.
+Two shipped packages do log a payload at `debug`, so a production logger's
+severity is a real decision — [Logging](logging.md#what-must-never-be-logged)
+has the full list, the exceptions, and what to log instead.
 
 ## Read next
 

@@ -3,7 +3,9 @@
 Runnable programs the guide points at. **Every one of them
 runs with no AWS credentials, no Docker and no deployed gateway**; Redis or a
 real gateway is opt-in behind an environment variable. They are typechecked and
-smoke-tested in CI, so a snippet the documentation depends on cannot rot.
+smoke-tested in CI, so a snippet the documentation depends on cannot rot. Two of
+them can be pointed at a Redis you started yourself, with
+`YYT_EXAMPLE_REDIS_HOST`; none of them talks to a deployed gateway.
 
 | Example                                        | Shows                                                                         |
 | ---------------------------------------------- | ----------------------------------------------------------------------------- |

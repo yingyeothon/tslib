@@ -1,8 +1,9 @@
 # Troubleshooting
 
-Symptom first, because that is what you have. Almost everything below fails
+Symptom first, because that is what you have. Most of what follows fails
 **silently** — no exception, no log line — which is why the symptom is usually
-"nothing happened" rather than an error.
+"nothing happened" rather than an error. Where something _does_ say so, the
+entry names the line to look for, because finding it is faster than any of this.
 
 One cause, one check, one link each. The explanation lives on the page that owns
 it.
@@ -38,7 +39,8 @@ Check that the consumer branches on whether `connectionIds` is present.
 ## The first frames of a run are missing
 
 **You subscribed after the first push.** Outbound is pub/sub and has no
-redelivery.
+redelivery. With a logger attached, `createRedisPubSubTransport` says so:
+`warn` with `"no gateway is listening"`.
 
 Check the order: `SUBSCRIBE` the outbound channel before the first `RPUSH` for
 that `gameId`.
@@ -94,8 +96,12 @@ denied, so you cannot search for what you wrote.
 ## Two actors are simulating the same game
 
 **No heartbeat.** The lease expired mid-run and a second invocation acquired it.
+This one is loud: the actor system logs `"actor lock is held without a
+heartbeat"` when a long-running drain has no renewal interval, and
+`"lost the actor lock"` when ownership actually goes.
 
 Pass `lockRenewIntervalMillis` whenever the lease is shorter than the work.
+`handleActor` always passes one, so a game actor should not reach this.
 [Actor system § The lease, and why a short one is safe](actor-system.md#the-lease-and-why-a-short-one-is-safe)
 
 ## `createRedisQueue` throws at startup

@@ -12,9 +12,10 @@ sequenceDiagram
   participant I as this invocation
   participant N as a fresh invocation
   API->>H: request
-  H->>Q: post
-  H->>I: invoke
-  I->>Q: drain while createTimeline has budget
+  H->>Q: post, or send and drain inline
+  Note over H,I: this handler never invokes a Lambda, you wire that yourself
+  API->>I: your own invoke
+  I->>Q: drain until aliveMillis runs out
   Note over I: aliveMillis runs out
   I->>I: release the lock first
   I->>N: createLambdaShift re-invokes

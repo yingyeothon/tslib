@@ -16,6 +16,9 @@ import {
 } from "@yingyeothon/actor-system";
 ```
 
+**Reference:** [`actor-system`](../packages/actor-system/README.md), [`actor-system-redis`](../packages/actor-system-redis/README.md), [`actor-system-lambda`](../packages/actor-system-lambda/README.md) — each carries its own `## Public API`, its
+options and defaults, and its migration notes.
+
 ## The three pieces, and the three ways in
 
 ```mermaid
@@ -25,22 +28,53 @@ flowchart LR
   S["send"] --> Q
   Q --> L["tryToProcess or eventLoop<br/>holds the lock"]
   L --> H["your handler"]
-  H --> AW[("awaiter")]
-  AW -->|"only send and post wait"| S
+  H --> AW[("awaiter, tryToProcess only")]
+  AW -->|"resolves a waiting post or send"| S
 ```
 
-`enqueue` appends and returns the queue depth after the push. `post` enqueues
+**`eventLoop` has no awaiter at all.** Only `tryToProcess` resolves one, so a
+`post` or `send` with `AwaitPolicy.Act` or `Commit` against an `eventLoop`-driven
+actor — which is what `handleActor` runs — waits out its timeout and is never
+resolved. Use `Forget` there.
+
+`enqueue` appends and resolves the message plus the queue depth after the push. `post` enqueues
 and optionally waits for another processor. `send` enqueues and then tries to
 process the queue in the calling thread. `AwaitPolicy` decides how long a sender
 waits: `Forget` not at all, `Act` until its handler ran, `Commit` until the
 whole pass finished. It is a **numeric** enum, and `Forget` is `0`.
 
+Serialising work per key, with nothing but memory:
+
+```ts
+let total = 0;
+const actor = {
+  ...singleConsumer,
+  id: "counter-1",
+  queue: createInMemoryQueue(),
+  lock: createInMemoryLock(),
+  awaiter: createInMemoryAwaiter(),
+  onMessage: ({ delta }: { delta: number }) => {
+    total += delta;
+  },
+};
+
+// Enqueue and drain in this thread, waiting until the message is committed.
+await send(actor, { item: { delta: 1 }, awaitPolicy: AwaitPolicy.Commit });
+
+// Or enqueue elsewhere and let a dedicated processor drain it.
+await tryToProcess(actor, { aliveMillis: 10_000 });
+```
+
+Swap the three in-memory pieces for `createRedisSubsystem` and the same actor
+runs across processes; nothing above changes.
+
 ## Two drains, and they are not interchangeable
 
-| Entry point    | Drain                                   | On a crash mid-batch                                              |
-| -------------- | --------------------------------------- | ----------------------------------------------------------------- |
-| `tryToProcess` | peek, handle, pop                       | **at-least-once**: still queued, handled again                    |
-| `eventLoop`    | flush, then hand the batch to your loop | **at-most-once**: the batch left the queue before your loop acted |
+| Entry point            | Drain                           | On a crash mid-batch                             |
+| ---------------------- | ------------------------------- | ------------------------------------------------ |
+| `tryToProcess`, single | peek, handle, pop               | **at-least-once**: still queued, handled again   |
+| `tryToProcess`, bulk   | flush, then hand over the batch | **at-most-once**: the batch left the queue first |
+| `eventLoop`            | flush, then hand over the batch | **at-most-once**: the batch left the queue first |
 
 `lambda-gamebase` uses `eventLoop`, so a game that cannot lose input needs an
 ack of its own above it, or `tryToProcess`.
@@ -72,6 +106,8 @@ releasing between cycles would let ownership migrate to a process holding
 different state.
 
 **Pass `lockRenewIntervalMillis` whenever the lease is shorter than the work.**
+There is no default here — `handleActor` picks a third of its own lease, but
+that is its choice, not this package's.
 Without a heartbeat the lease expires mid-run and a second invocation starts
 draining the same queue.
 
@@ -122,16 +158,21 @@ sequenceDiagram
   participant I as invocation
   participant N as a fresh invocation
   API->>H: request
-  H->>Q: post
-  H->>I: invoke
-  I->>Q: drain while createTimeline has budget
+  H->>Q: post, or send and drain inline
+  Note over H,I: nothing here invokes a Lambda, you wire that yourself
+  API->>I: your own invoke
+  I->>Q: drain until aliveMillis runs out
   Note over I: aliveMillis runs out
   I->>I: release the lock
   I->>N: createLambdaShift re-invokes
   N->>Q: keep draining
 ```
 
-A shift happens **after** the release, so the successor can acquire.
+`createActorAPIEventHandler` only enqueues (`post`) or drains inline (`send`) —
+**it never invokes a Lambda.** The single invoke in the package is the shift.
+
+A shift happens **after** the release, so the successor can acquire. The drain
+is bounded by `aliveMillis`, captured when the handler starts.
 
 **This path is not reachable from `handleActor`.** A game is capped at one
 invocation: the actor loop has no shift and no hand-off, so the game ends when

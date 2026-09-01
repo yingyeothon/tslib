@@ -9,12 +9,13 @@ A verified token must yield an identity and an expiry; anything less is a Deny, 
 
 ```mermaid
 flowchart TD
-  T["the credential"] --> V["verify signature, exp, issuer, audience"]
-  V -->|"invalid or expired"| U["Unauthorized, 401"]
+  T["the credential"] --> V["verify the signature, then exp<br/>issuer and audience only if pinned"]
+  V -->|"invalid, expired or wrong issuer"| U["throws Unauthorized, 401<br/>no policy is built"]
+  V -->|"not a Bearer scheme"| DEN
+  V -->|"no exp claim"| DEN
   V -->|"valid"| C["buildContext, memberIdFromSubject by default"]
-  C -->|"empty result"| DEN["Deny: it established nobody"]
+  C -->|"empty result"| DEN["a Deny policy, context stripped"]
   C -->|"memberId"| ALW["Allow, principalId set"]
-  DEN --> NC["the context is stripped from a Deny"]
 ```
 
 ## Install

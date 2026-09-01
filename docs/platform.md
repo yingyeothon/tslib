@@ -98,8 +98,9 @@ prevent. [Storage](storage.md) is how tslib does it.
 
 ## Where tslib fits
 
-Only three packages know anything about yyt. Everything else is a general
-library that a game happens to need, and each is usable on its own.
+Only `gamebase-client` names the platform in its source; `lambda-gamebase` and
+`gamebase-all-together` are shaped by it without depending on it. Everything
+else is a general library that a game happens to need.
 
 ```mermaid
 flowchart BT

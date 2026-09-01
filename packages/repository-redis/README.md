@@ -6,9 +6,10 @@ One Redis string per value, a TTL on every write, and a conditional write that c
 
 ```mermaid
 flowchart LR
-  K["repo:prefix:key"] --> V[("one Redis string")]
+  K["repo: then the optional prefix then the key"] --> V[("one Redis string")]
   SW["setWithExpire"] --> V
-  S["set()"] -.->|"throws, nothing is sent"| V
+  S["set(key, value)"] -.->|"throws, nothing is sent"| V
+  D["set(key, undefined)"] -->|"deletes, like delete()"| V
   GR["getRevision"] --> T["token: redis.sha1hex of the stored bytes"]
   T --> CAS["compareAndSet, one Lua script"]
   CAS --> V
