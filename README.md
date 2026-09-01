@@ -1,6 +1,23 @@
 # tslib
 
-TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) (잉여톤) hackathons, consolidated into a single monorepo. These packages started life as scattered standalone repositories built between hackathons; this repository modernizes them (TypeScript 5.9, ESM+CJS dual output, Node >= 20) and publishes them all under the `@yingyeothon` npm scope with a single shared version.
+TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) (잉여톤) hackathons, consolidated into a single monorepo. They are the **server half of the yyt platform** — a game runs as an actor in your own AWS account, talking to a realtime gateway you did not have to build — plus `gamebase-client`, its browser half. The platform itself is specified in [`yingyeothon/service`](https://github.com/yingyeothon/service); the Unity client half is [`yingyeothon/csharplib`](https://github.com/yingyeothon/csharplib). These packages started life as scattered standalone repositories built between hackathons; this repository modernizes them (TypeScript 5.9, ESM+CJS dual output, Node >= 20) and publishes them all under the `@yingyeothon` npm scope with a single shared version.
+
+## Documentation
+
+**[Start here](docs/README.md)** — the guide is written to be enough on its own.
+
+|                                                                                             |                                                                 |
+| ------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [The platform](docs/platform.md)                                                            | the whole yyt picture, and where these packages sit in it       |
+| [Getting started](docs/getting-started.md)                                                  | an empty repository to a game running on a `q` channel          |
+| [The game actor](docs/game-actor.md) / [Actor system](docs/actor-system.md)                 | the game loop on Lambda, and the substrate under it             |
+| [The realtime client](docs/realtime-client.md)                                              | the browser client: states, close codes, backoff                |
+| [Storage](docs/storage.md) / [Authentication](docs/auth.md) / [Logging](docs/logging.md)    | repositories and CAS, `$connect` authorizers, what never to log |
+| [Redis and sockets](docs/redis-and-sockets.md) / [Building blocks](docs/building-blocks.md) | the transport floor, and the three small leaves                 |
+| [Operations](docs/operations.md) / [Troubleshooting](docs/troubleshooting.md)               | limits, TTLs, concurrency, and symptom to cause                 |
+
+Runnable, compiled examples live in [`examples/`](examples/README.md), and every
+one of them runs with no AWS credentials, no Docker and no deployed gateway.
 
 ## Packages
 
@@ -65,6 +82,9 @@ graph LR
   gamebase-client --> logger
 ```
 
+That graph is the only exact edge list; [The platform](docs/platform.md) shows
+the same packages by role instead, so there is never a second one to keep true.
+
 API design rules shared by all packages are documented in [CONVENTIONS.md](CONVENTIONS.md).
 
 ## Development
@@ -75,6 +95,7 @@ Requirements: Node >= 20, pnpm 11 (pinned via `packageManager`), Docker (for Red
 pnpm install
 pnpm build        # tsup dual ESM+CJS+types for every package (topological order)
 pnpm lint         # eslint (type-aware)
+pnpm check:docs   # mermaid parses, links/anchors, orphan pages, README<->exports
 pnpm typecheck    # tsc --noEmit per package (build first: workspace types resolve from dist)
 node scripts/link-service.mjs link   # point ~/git/yyt.life/service (+ its examples) at this checkout instead of npm
 node scripts/link-service.mjs unlink # back to npm before committing there

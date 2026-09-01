@@ -70,7 +70,7 @@ const markdownFiles = () => {
  * which the guide's own conventions section does — is scanned as if it
  * contained that link, and the checker reports a file nobody meant to link.
  */
-const stripCode = (source) => {
+const stripFences = (source) => {
   let inFence = false;
   return source
     .split("\n")
@@ -79,16 +79,28 @@ const stripCode = (source) => {
         inFence = !inFence;
         return "";
       }
-      return inFence ? "" : line.replace(/`[^`]*`/g, "");
+      return inFence ? "" : line;
     })
     .join("\n");
 };
+
+/**
+ * Fences plus inline code spans, for link scanning only.
+ *
+ * Headings must NOT go through this: `## The \`queue:\` segment` would lose the
+ * word the anchor is named after, and every link to it would be reported dead.
+ */
+const stripCode = (source) =>
+  stripFences(source)
+    .split("\n")
+    .map((line) => line.replace(/`[^`]*`/g, ""))
+    .join("\n");
 
 /** GitHub's heading slugs, including its `-1`/`-2` suffix for repeats. */
 const anchorsOf = (source) => {
   const seen = new Map();
   const anchors = new Set();
-  for (const line of stripCode(source).split("\n")) {
+  for (const line of stripFences(source).split("\n")) {
     const heading = /^#{1,6}\s+(.*)$/.exec(line);
     if (!heading) continue;
     const base = heading[1]
