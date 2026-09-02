@@ -47,10 +47,18 @@
 ## Redis integration tests
 
 - `naive-redis`, `repository-redis`, `actor-system-redis`, and
-  `lambda-gamebase` use `@testcontainers/redis` via `test/global-setup.ts`,
-  which provides `redisHost`/`redisPort` through vitest's `ProvidedContext`.
-  `lambda-gamebase` needs it only for the Redis pub/sub transport, but a
-  `globalSetup` is per project, so its whole suite runs against a container.
+  `lambda-gamebase` use `@testcontainers/redis`, providing `redisHost`/
+  `redisPort` through vitest's `ProvidedContext`. The container code lives
+  once in `test-support/redis-global-setup.ts`; each package's
+  `test/global-setup.ts` only re-exports it, and each `test/fixture.ts` wraps
+  `withFlushedRedis` from `test-support/redis-fixture.ts` (FLUSHALL +
+  disconnect in `finally`) with its own work signature. `lambda-gamebase`
+  needs the container only for the Redis pub/sub transport, but a
+  `globalSetup` is per project, so its whole suite runs against one.
+- `test-support/` is not a workspace package: it has its own `tsconfig.json`
+  for type-aware lint, cannot import `@yingyeothon/*` (helpers are typed
+  structurally), and never import `redis-global-setup` from a fixture — that
+  would load testcontainers in every test worker.
 - Those packages pin `fileParallelism: false` + `pool: "forks"` +
   `singleFork: true` because all test files share one container and flush it
   between tests. Do not remove those settings or add concurrent tests there.

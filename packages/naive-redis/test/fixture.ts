@@ -1,4 +1,8 @@
-import { inject, test } from "vitest";
+import { test } from "vitest";
+import {
+  redisConnectionOptionsFromEnv as sharedOptionsFromEnv,
+  withFlushedRedis,
+} from "../../../test-support/redis-fixture.js";
 import {
   createRedisConnection,
   type RedisConnectionOptions,
@@ -6,7 +10,7 @@ import {
 } from "../src/index.js";
 
 export function redisConnectionOptionsFromEnv(): RedisConnectionOptions {
-  return { host: inject("redisHost"), port: inject("redisPort") };
+  return sharedOptionsFromEnv();
 }
 
 export function testbed(
@@ -22,18 +26,7 @@ export function fixture(
   testName: string,
   connectionWork: (connection: RedisConnection) => Promise<void>,
 ): void {
-  testbed(testName, async (config) => {
-    const connection = createRedisConnection(config);
-    try {
-      await connectionWork(connection);
-    } finally {
-      // Clear all entries after the test.
-      await connection.socket.send({
-        message: "FLUSHALL\r\n",
-        fulfill: "+OK\r\n".length,
-        timeoutMillis: 1000,
-      });
-      connection.socket.disconnect();
-    }
-  });
+  testbed(testName, (config) =>
+    withFlushedRedis(createRedisConnection(config), connectionWork),
+  );
 }
