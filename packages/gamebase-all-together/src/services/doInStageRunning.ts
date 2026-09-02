@@ -120,6 +120,21 @@ export async function doInStageRunning<M extends GameMessageBase>({
   let lastSnapshotMillis = startedMillis;
   let owedMillis = 0;
 
+  async function applyTimeDelta(delta: number): Promise<void> {
+    if (updateTimeDelta === undefined) {
+      return;
+    }
+    try {
+      await updateTimeDelta({ context, delta });
+    } catch (error) {
+      logger.error("Cannot update with time-delta", {
+        ...describeGame(context),
+        delta,
+        error,
+      });
+    }
+  }
+
   /**
    * Converts elapsed wall-clock time into whole simulation steps. Time
    * left over stays owed, so the simulation never drifts away from the
@@ -142,15 +157,7 @@ export async function doInStageRunning<M extends GameMessageBase>({
     while (owedMillis >= intervalMillis && steps < maxSteps) {
       owedMillis -= intervalMillis;
       ++steps;
-      try {
-        await updateTimeDelta({ context, delta });
-      } catch (error) {
-        logger.error("Cannot update with time-delta", {
-          ...describeGame(context),
-          delta,
-          error,
-        });
-      }
+      await applyTimeDelta(delta);
       if (isGameOver({ context })) {
         stopped = true;
         break;
@@ -216,16 +223,7 @@ export async function doInStageRunning<M extends GameMessageBase>({
         });
       }
       if (tick.mode === "perMessage" && updateTimeDelta) {
-        const delta = timeDelta.getDelta();
-        try {
-          await updateTimeDelta({ context, delta });
-        } catch (error) {
-          logger.error("Cannot update with time-delta", {
-            ...describeGame(context),
-            delta,
-            error,
-          });
-        }
+        await applyTimeDelta(timeDelta.getDelta());
       }
     }
 

@@ -96,6 +96,31 @@ export function buildGatewayUrl(
   return target.toString();
 }
 
+/**
+ * Copies the transport options a client passes straight through to the
+ * socket, adding a key only when the caller set one so an explicit
+ * `undefined` cannot shadow the socket's own default.
+ */
+export function pickSocketOptions(
+  options: Pick<
+    GatewaySocketOptions,
+    "WebSocket" | "backoff" | "maxHandshakeFailures"
+  >,
+): Pick<
+  GatewaySocketOptions,
+  "WebSocket" | "backoff" | "maxHandshakeFailures"
+> {
+  return {
+    ...(options.WebSocket === undefined
+      ? {}
+      : { WebSocket: options.WebSocket }),
+    ...(options.backoff === undefined ? {} : { backoff: options.backoff }),
+    ...(options.maxHandshakeFailures === undefined
+      ? {}
+      : { maxHandshakeFailures: options.maxHandshakeFailures }),
+  };
+}
+
 export function createGatewaySocket(
   options: GatewaySocketOptions,
 ): GatewaySocket {

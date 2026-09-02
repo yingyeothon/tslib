@@ -10,7 +10,7 @@ import type {
   ReconnectingEvent,
   StoppedEvent,
 } from "./gateway-socket.js";
-import { createGatewaySocket } from "./gateway-socket.js";
+import { createGatewaySocket, pickSocketOptions } from "./gateway-socket.js";
 import type { MapFetcher } from "./map-fetch.js";
 import { createMapFetcher } from "./map-fetch.js";
 import type { PeerMap, PeerMapFrame } from "./peer-map.js";
@@ -164,13 +164,7 @@ export function createGatewayLobbyClient(
     channelId: options.channelId,
     token: options.token,
     kind: "lobby",
-    ...(options.WebSocket === undefined
-      ? {}
-      : { WebSocket: options.WebSocket }),
-    ...(options.backoff === undefined ? {} : { backoff: options.backoff }),
-    ...(options.maxHandshakeFailures === undefined
-      ? {}
-      : { maxHandshakeFailures: options.maxHandshakeFailures }),
+    ...pickSocketOptions(options),
     ...(options.helloTimeoutMs === undefined
       ? {}
       : { helloTimeoutMs: options.helloTimeoutMs }),

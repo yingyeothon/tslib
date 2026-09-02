@@ -1,5 +1,3 @@
-import { enqueue } from "@yingyeothon/actor-system";
-import { createRedisQueue } from "@yingyeothon/actor-system-redis";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
 import {
   redisGet,
@@ -8,6 +6,7 @@ import {
 } from "@yingyeothon/naive-redis";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
 import { authorizeGameConnection } from "../actor/authorizeGameConnection.js";
+import { enqueueToActor } from "../actor/enqueueToActor.js";
 import { requireRedisOptions, type GamebaseContext } from "../context.js";
 import { useRedis } from "../infra/useRedis.js";
 import { BadRequest, OK } from "./responses.js";
@@ -214,19 +213,14 @@ export async function handleConnect({
       checkedGameId,
       { expirationMillis: connectionMappingTtlMillis },
     );
-    await enqueue(
-      {
-        id: checkedGameId,
-        queue: createRedisQueue({
-          connection,
-          keyPrefix: actorQueueKeyPrefix,
-          logger,
-          ttlSeconds: queueTtlSeconds,
-        }),
-        logger,
-      },
-      { item: { type: "enter", connectionId, memberId } },
-    );
+    await enqueueToActor({
+      connection,
+      gameId: checkedGameId,
+      actorQueueKeyPrefix,
+      queueTtlSeconds,
+      logger,
+      item: { type: "enter", connectionId, memberId },
+    });
     logger.info("game logged", { gameId, connectionId });
     return accepted;
   }

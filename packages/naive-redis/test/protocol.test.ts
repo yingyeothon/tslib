@@ -222,6 +222,33 @@ describe("command serialization and reply parsing", () => {
     expect(sent).toEqual(['SADD "s" "a\\"b"\r\n', 'SREM "s" "a\\\\b"\r\n']);
   });
 
+  it("quotes every inline key argument, including one with whitespace", async () => {
+    const { connection, sent } = fakeConnection((message) =>
+      message.startsWith("SMEMBERS")
+        ? "*0\r\n"
+        : message.startsWith("LTRIM")
+          ? "+OK\r\n"
+          : ":1\r\n",
+    );
+    await expect(redisIncr(connection, "a b")).resolves.toBe(1);
+    await expect(redisSmembers(connection, 'a"b')).resolves.toEqual([]);
+    await expect(redisLtrim(connection, "q", 1, 2)).resolves.toBe(true);
+    await expect(redisLtrim(connection, "q", 1)).resolves.toBe(true);
+    expect(sent).toEqual([
+      'INCR "a b"\r\n',
+      'SMEMBERS "a\\"b"\r\n',
+      'LTRIM "q" 1 2\r\n',
+      'LTRIM "q" 1 -1\r\n',
+    ]);
+  });
+
+  it("keeps the separator before an empty variadic list", async () => {
+    const { connection, sent } = fakeConnection(() => ":0\r\n");
+    await expect(redisDel(connection)).resolves.toBe(0);
+    await expect(redisRpush(connection, "q")).resolves.toBe(0);
+    expect(sent).toEqual(["DEL \r\n", 'RPUSH "q" \r\n']);
+  });
+
   it("exposes raw exchanges through redisSend", async () => {
     const { connection, sent } = fakeConnection(() => "+PONG\r\n");
     await expect(

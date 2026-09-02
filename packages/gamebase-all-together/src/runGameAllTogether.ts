@@ -184,17 +184,14 @@ export async function runGameAllTogether<M extends GameMessageBase>({
   // sockets that are already closed, which is the half of the loss the
   // repeat exists to cover.
   const repeats = Math.max(1, Math.floor(endRepeatCount));
-  for (let attempt = 0; attempt < repeats; attempt++) {
-    if (attempt > 0) {
-      await sleep(endRepeatIntervalMillis);
-    }
-    await announce({
+  await repeatWithInterval(repeats, endRepeatIntervalMillis, () =>
+    announce({
       context,
       age: gameRunningSeconds,
       stage: GameStage.End,
       network,
-    });
-  }
+    }),
+  );
   if (endDropDelayMillis > 0) {
     await sleep(endDropDelayMillis);
   }
@@ -202,16 +199,27 @@ export async function runGameAllTogether<M extends GameMessageBase>({
   // undelivered users is still reflected exactly as it was before repeats
   // existed.
   const endingConnections = Object.keys(context.connectedUsers);
-  for (let attempt = 0; attempt < repeats; attempt++) {
-    if (attempt > 0) {
-      await sleep(endRepeatIntervalMillis);
-    }
-    await Promise.all(
+  await repeatWithInterval(repeats, endRepeatIntervalMillis, () =>
+    Promise.all(
       endingConnections.map((connectionId) =>
         dropConnection(connectionId, network),
       ),
-    );
-  }
+    ),
+  );
   // `members` carries names and e-mail addresses; only counts go out.
   logger.info("Game end", { gameId, ...describeGame(context), reason });
+}
+
+/** Runs `work` `times` times, sleeping `intervalMillis` between runs. */
+async function repeatWithInterval(
+  times: number,
+  intervalMillis: number,
+  work: () => Promise<unknown>,
+): Promise<void> {
+  for (let attempt = 0; attempt < times; attempt++) {
+    if (attempt > 0) {
+      await sleep(intervalMillis);
+    }
+    await work();
+  }
 }

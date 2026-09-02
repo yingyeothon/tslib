@@ -1,10 +1,10 @@
 import type { RedisConnection } from "./connection.js";
+import { inlineCommand } from "./exchange/inline.js";
 import { singleCount } from "./exchange/singleCount.js";
-import { quoteArg } from "./exchange/quote.js";
 
 export function redisLlen(
   connection: RedisConnection,
   key: string,
 ): Promise<number> {
-  return singleCount(connection, [`LLEN ${quoteArg(key)}`]);
+  return singleCount(connection, [inlineCommand("LLEN", [key])]);
 }

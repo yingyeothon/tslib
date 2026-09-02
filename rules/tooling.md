@@ -79,3 +79,17 @@
   the runtime global the way `gamebase-client` itself does, through a typed
   `globalThis` cast; the DOM lib is forbidden by
   [architecture.md](architecture.md).
+
+## Duplication
+
+- `nose` (`~/.cargo/bin/nose`) finds clone families; it finds, you judge.
+  Baseline: `nose query packages --exclude '**/dist/**' --exclude '**/*.md'
+--format markdown`; add `--min-size 12` for smaller repeats.
+- Refactor a family only when the extracted helper keeps wire bytes, log
+  lines, and call order identical, and pin the old bytes in a test first
+  (`naive-redis/test/protocol.test.ts` is the model). Internal helpers stay out
+  of `index.ts` so `## Public API` and `check:docs` are untouched.
+- Accepted families, with reasons: `repository-s3`/`-dynamodb` `set(undefined)`
+  override (sharing it would add a public export for five lines);
+  `doInStageRunning` vs `doInStageWait` (nose flags it high-parameter; a
+  shared loop would be less readable); per-command `naive-redis` one-liners.

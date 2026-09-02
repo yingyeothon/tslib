@@ -1,10 +1,10 @@
 import type { RedisConnection } from "./connection.js";
+import { inlineCommand } from "./exchange/inline.js";
 import { singleCount } from "./exchange/singleCount.js";
-import { quoteArg } from "./exchange/quote.js";
 
 export function redisIncr(
   connection: RedisConnection,
   key: string,
 ): Promise<number> {
-  return singleCount(connection, [`INCR ${quoteArg(key)}`]);
+  return singleCount(connection, [inlineCommand("INCR", [key])]);
 }

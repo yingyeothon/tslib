@@ -1,12 +1,10 @@
 import type { RedisConnection } from "./connection.js";
+import { inlineCommand } from "./exchange/inline.js";
 import { singleCount } from "./exchange/singleCount.js";
-import { quoteArg } from "./exchange/quote.js";
 
 export function redisExists(
   connection: RedisConnection,
   ...keys: string[]
 ): Promise<number> {
-  return singleCount(connection, [
-    `EXISTS ${keys.map((key) => `${quoteArg(key)}`).join(" ")}`,
-  ]);
+  return singleCount(connection, [inlineCommand("EXISTS", [], keys)]);
 }

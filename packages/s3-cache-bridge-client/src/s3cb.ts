@@ -62,76 +62,59 @@ export function s3cbClientOptionsFromEnv(): S3cbClientOptions {
 
 export function createS3cbClient(options: S3cbClientOptions): S3cbClient {
   const headers = () => authorizationHeader(options);
+  // Every call hits `<apiUrl><key>?<params>` with the same credentials;
+  // only the method, body and response handling differ per operation.
+  const request = <R = string>(
+    key: string,
+    method: string,
+    params: Parameters<typeof buildQueryParams>[0],
+    extra: Pick<
+      Parameters<typeof httpRequest<R>>[0],
+      "body" | "handleResponse"
+    > = {},
+  ): Promise<R> =>
+    httpRequest<R>({
+      url: options.apiUrl + key + buildQueryParams(params),
+      method,
+      headers: headers(),
+      ...extra,
+    });
 
   const get = (key: string, { noLock = false }: LockOptions = {}) =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ noLock }),
-      method: "GET",
-      headers: headers(),
-    });
+    request(key, "GET", { noLock });
 
   const put = (
     key: string,
     body: string | Buffer | Uint8Array,
     { noLock = false, sync = false }: LockOptions & SyncOptions = {},
   ) =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ noLock, sync }),
-      // Note: unlike the legacy client, Content-Length is not set manually;
-      // fetch derives the identical value from the buffered body, and setting
-      // it explicitly would duplicate the header on the wire.
-      method: "PUT",
-      headers: headers(),
-      body: makeBodyAsBuffer(body),
-    });
+    // Note: unlike the legacy client, Content-Length is not set manually;
+    // fetch derives the identical value from the buffered body, and setting
+    // it explicitly would duplicate the header on the wire.
+    request(key, "PUT", { noLock, sync }, { body: makeBodyAsBuffer(body) });
 
   const del = (key: string, { noLock = false }: LockOptions = {}) =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ noLock }),
-      method: "DELETE",
-      headers: headers(),
-    });
+    request(key, "DELETE", { noLock });
 
   const append = (
     key: string,
     body: string,
     { noLock = false, sync = false }: LockOptions & SyncOptions = {},
   ) =>
-    httpRequest({
-      url:
-        options.apiUrl + key + buildQueryParams({ append: true, noLock, sync }),
-      method: "PUT",
-      headers: headers(),
-      body: makeBodyAsBuffer(body),
-    });
+    request(
+      key,
+      "PUT",
+      { append: true, noLock, sync },
+      { body: makeBodyAsBuffer(body) },
+    );
 
-  const sync = (key: string) =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ sync: true }),
-      method: "POST",
-      headers: headers(),
-    });
+  const sync = (key: string) => request(key, "POST", { sync: true });
 
-  const invalidate = (key: string) =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ cache: true }),
-      method: "DELETE",
-      headers: headers(),
-    });
+  const invalidate = (key: string) => request(key, "DELETE", { cache: true });
 
-  const lock = (key: string) =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ lock: "acquire" }),
-      method: "POST",
-      headers: headers(),
-    });
+  const lock = (key: string) => request(key, "POST", { lock: "acquire" });
 
-  const unlock = (key: string) =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ lock: "release" }),
-      method: "POST",
-      headers: headers(),
-    });
+  const unlock = (key: string) => request(key, "POST", { lock: "release" });
 
   const patch = <T>(
     key: string,
@@ -142,12 +125,14 @@ export function createS3cbClient(options: S3cbClientOptions): S3cbClient {
       fetch = modRequest.operation === "fetch",
     }: LockOptions & SyncOptions & FetchOptions = {},
   ): Promise<T | null> =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ noLock, sync, fetch }),
-      method: "PATCH",
-      headers: headers(),
-      body: makeBodyAsBuffer(JSON.stringify(modRequest)),
-    }).then((response) => {
+    request(
+      key,
+      "PATCH",
+      { noLock, sync, fetch },
+      {
+        body: makeBodyAsBuffer(JSON.stringify(modRequest)),
+      },
+    ).then((response) => {
       if (!fetch) {
         return null;
       }
@@ -163,44 +148,44 @@ export function createS3cbClient(options: S3cbClientOptions): S3cbClient {
     });
 
   const getBuffer = (key: string, { noLock = false }: LockOptions = {}) =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ noLock }),
-      method: "GET",
-      headers: headers(),
-      handleResponse: (response) =>
-        response.body !== null
-          ? buffer(response.body)
-          : Promise.resolve(Buffer.alloc(0)),
-    });
+    request(
+      key,
+      "GET",
+      { noLock },
+      {
+        handleResponse: (response) =>
+          response.body !== null
+            ? buffer(response.body)
+            : Promise.resolve(Buffer.alloc(0)),
+      },
+    );
 
   const download = (
     key: string,
     downloadPath: string,
     { noLock = false }: LockOptions = {},
   ): Promise<string> =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ noLock }),
-      method: "GET",
-      headers: headers(),
-      handleResponse: async (response) => {
-        const source =
-          response.body !== null
-            ? Readable.fromWeb(response.body)
-            : Readable.from([]);
-        await pipeline(source, createWriteStream(downloadPath));
-        return downloadPath;
+    request(
+      key,
+      "GET",
+      { noLock },
+      {
+        handleResponse: async (response) => {
+          const source =
+            response.body !== null
+              ? Readable.fromWeb(response.body)
+              : Readable.from([]);
+          await pipeline(source, createWriteStream(downloadPath));
+          return downloadPath;
+        },
       },
-    });
+    );
 
   const exists = (
     key: string,
     { noLock = false }: LockOptions = {},
   ): Promise<boolean> =>
-    httpRequest({
-      url: options.apiUrl + key + buildQueryParams({ noLock }),
-      method: "HEAD",
-      headers: headers(),
-    })
+    request(key, "HEAD", { noLock })
       .then(() => true)
       .catch((error: Error) => {
         if (/^404 /.test(error.message)) {

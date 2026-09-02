@@ -148,6 +148,8 @@ export function createS3Repository(options: S3RepositoryOptions): S3Repository {
   const repository = createRepositoryFromKV(primitives);
   return {
     ...repository,
+    // Deliberately mirrors `repository-dynamodb`: `undefined` deletes rather than
+    // throwing. Kept local so `@yingyeothon/repository` gains no export for it.
     set<T>(key: string, value: T): Promise<void> {
       if (value === undefined) {
         return repository.delete(key);

@@ -8,7 +8,7 @@ import type {
   ReconnectingEvent,
   StoppedEvent,
 } from "./gateway-socket.js";
-import { createGatewaySocket } from "./gateway-socket.js";
+import { createGatewaySocket, pickSocketOptions } from "./gateway-socket.js";
 import type { GatewayClientBaseOptions } from "./lobby-client.js";
 import type { ErrorFrame, GameClientFrame, GameServerFrame } from "./types.js";
 import { reservedGameFrameTypes } from "./types.js";
@@ -86,13 +86,7 @@ export function createGatewayGameClient(
     gameId,
     token: options.token,
     kind: "q",
-    ...(options.WebSocket === undefined
-      ? {}
-      : { WebSocket: options.WebSocket }),
-    ...(options.backoff === undefined ? {} : { backoff: options.backoff }),
-    ...(options.maxHandshakeFailures === undefined
-      ? {}
-      : { maxHandshakeFailures: options.maxHandshakeFailures }),
+    ...pickSocketOptions(options),
     logger,
   });
 

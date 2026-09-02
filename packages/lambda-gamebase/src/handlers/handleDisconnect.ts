@@ -1,5 +1,3 @@
-import { enqueue } from "@yingyeothon/actor-system";
-import { createRedisQueue } from "@yingyeothon/actor-system-redis";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
 import {
   redisDel,
@@ -7,6 +5,7 @@ import {
   type RedisConnection,
 } from "@yingyeothon/naive-redis";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { enqueueToActor } from "../actor/enqueueToActor.js";
 import { requireRedisOptions, type GamebaseContext } from "../context.js";
 import { useRedis } from "../infra/useRedis.js";
 import { OK } from "./responses.js";
@@ -55,19 +54,14 @@ export async function handleDisconnect({
     if (!gameId) {
       return;
     }
-    await enqueue(
-      {
-        id: gameId,
-        queue: createRedisQueue({
-          connection,
-          keyPrefix: actorQueueKeyPrefix,
-          logger,
-          ttlSeconds: queueTtlSeconds,
-        }),
-        logger,
-      },
-      { item: { type: "leave", connectionId } },
-    );
+    await enqueueToActor({
+      connection,
+      gameId,
+      actorQueueKeyPrefix,
+      queueTtlSeconds,
+      logger,
+      item: { type: "leave", connectionId },
+    });
     await redisDel(connection, connectionIdAndGameIdKeyPrefix + connectionId);
     logger.info("cleanup and game leaved", { connectionId, gameId });
   }

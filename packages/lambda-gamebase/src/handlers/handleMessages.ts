@@ -1,5 +1,3 @@
-import { enqueue } from "@yingyeothon/actor-system";
-import { createRedisQueue } from "@yingyeothon/actor-system-redis";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
 import {
   redisExpire,
@@ -7,6 +5,7 @@ import {
   type RedisConnection,
 } from "@yingyeothon/naive-redis";
 import type { APIGatewayProxyEvent, APIGatewayProxyResult } from "aws-lambda";
+import { enqueueToActor } from "../actor/enqueueToActor.js";
 import type { GamebaseContext } from "../context.js";
 import { isReservedRequestType } from "../requests/reserved.js";
 import { defaultConnectionMappingTtlMillis } from "./handleConnect.js";
@@ -107,19 +106,14 @@ export async function handleMessages<M>({
   }
 
   // Encode the game message and send it to the actor queue.
-  await enqueue(
-    {
-      id: gameId,
-      queue: createRedisQueue({
-        connection,
-        keyPrefix: actorQueueKeyPrefix,
-        logger,
-        ttlSeconds: queueTtlSeconds,
-      }),
-      logger,
-    },
-    { item: { ...request, connectionId } },
-  );
+  await enqueueToActor({
+    connection,
+    gameId,
+    actorQueueKeyPrefix,
+    queueTtlSeconds,
+    logger,
+    item: { ...request, connectionId },
+  });
 
   // Keep the routing entry alive for as long as the connection is used;
   // without this a session outliving the mapping stops resolving its game.
