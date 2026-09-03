@@ -77,8 +77,8 @@ credentials, no Docker and no deployed gateway.**
 | [`repository-cas`](../examples/repository-cas/README.md)     | Two writers racing on one document, and the write that keeps both |
 
 The full deployable stacks — a Serverless deployment, an auth service, a real
-channel — live in the [`service`](https://github.com/yingyeothon/service)
-repository as `examples/sample-dungeon` and `examples/sample-morpg`.
+channel — live in the [`examples`](https://github.com/yingyeothon/examples)
+repository as `sample-dungeon` and `sample-morpg`.
 
 ## Reference
 

@@ -3,8 +3,8 @@
 A whole game — wait, play, end, drop — running through the **real
 `handleActor`** in one process, with no AWS, no Redis and no gateway.
 
-The deployable version of this is `examples/sample-dungeon` in the `service`
-repository: the same two functions, wired to a Serverless stack, an auth service
+The deployable version of this is `sample-dungeon` in the
+[`examples`](https://github.com/yingyeothon/examples) repository: the same two functions, wired to a Serverless stack, an auth service
 and a `q` channel.
 
 ```bash

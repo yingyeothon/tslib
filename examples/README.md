@@ -23,8 +23,8 @@ pnpm --filter yyt-example-repository-cas start
 
 These are deliberately single-purpose. The full deployable stacks — a real
 Serverless deployment, an auth service, a gateway channel — live in the
-[`service`](https://github.com/yingyeothon/service) repository as
-`examples/sample-dungeon` and `examples/sample-morpg`, and are not duplicated
+[`examples`](https://github.com/yingyeothon/examples) repository as
+`sample-dungeon` and `sample-morpg`, and are not duplicated
 here.
 
 Links run one way: the guide points into these, and these point at the package

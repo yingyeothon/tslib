@@ -149,17 +149,17 @@ tslib follows the platform; it never defines it. These are the normative
 documents, all public, in
 [`yingyeothon/service`](https://github.com/yingyeothon/service):
 
-| Document                          | What it settles                                                        |
-| --------------------------------- | ---------------------------------------------------------------------- |
-| `gateway/README.md`               | **The wire spec.** Frame tables both directions, refusals, close codes |
-| `docs/realtime-gateway-design.md` | The two channel kinds, and what the gateway does on your behalf        |
-| `docs/auth-game-contract.md`      | The channel JWT's claims, lifetime and reuse rules                     |
-| `services/auth/README.md`         | The sign-in endpoints and the token they issue                         |
-| `services/state/README.md`        | The doc store: versioned JSON, mandatory `If-Match`                    |
-| `services/console/README.md`      | Channels, secrets, and the Redis prefixes it prints as one block       |
-| `services/match/README.md`        | The matchmaking socket, one source of a `gameId`                       |
-| `cli/README.md`                   | The `yyt` CLI: provisioning channels and publishing map assets         |
-| `examples/sample-dungeon`         | A whole game on this stack: auth, match, callback, actor               |
+| Document                           | What it settles                                                        |
+| ---------------------------------- | ---------------------------------------------------------------------- |
+| `gateway/README.md`                | **The wire spec.** Frame tables both directions, refusals, close codes |
+| `docs/realtime-gateway-design.md`  | The two channel kinds, and what the gateway does on your behalf        |
+| `docs/auth-game-contract.md`       | The channel JWT's claims, lifetime and reuse rules                     |
+| `services/auth/README.md`          | The sign-in endpoints and the token they issue                         |
+| `services/state/README.md`         | The doc store: versioned JSON, mandatory `If-Match`                    |
+| `services/console/README.md`       | Channels, secrets, and the Redis prefixes it prints as one block       |
+| `services/match/README.md`         | The matchmaking socket, one source of a `gameId`                       |
+| `cli/README.md`                    | The `yyt` CLI: provisioning channels and publishing map assets         |
+| `sample-dungeon` (`examples` repo) | A whole game on this stack: auth, match, callback, actor               |
 
 The Unity half of the client SDK is
 [`csharplib`](https://github.com/yingyeothon/csharplib), whose `docs/` is this

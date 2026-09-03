@@ -164,8 +164,8 @@ codes), and `lambda-authorizer-jwt` (the verify decision) vs `auth.md` (the
 Runnable examples live in `examples/*` and are the code the guide points at. Each
 is single-purpose and **runs with zero infrastructure by default**; Redis or a
 deployed gateway is opt-in behind an env var. The full deployable stacks stay in
-the sibling `service` repository (`examples/sample-dungeon`,
-`examples/sample-morpg`) — do not duplicate them here.
+the sibling `examples` repository (`sample-dungeon`, `sample-morpg`; the
+platform itself is `service`) — do not duplicate them here.
 
 Every example needs a `README.md` linked from `examples/README.md`, a docs page
 that points at it, and a smoke test that runs it. See [tooling.md](tooling.md)

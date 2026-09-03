@@ -3,8 +3,8 @@
 Two writers edit one document from the same starting revision, and both of their
 changes survive. Runs in one process with no Redis, no AWS and no Docker.
 
-The deployable version of this idea is the character sheet in the `service`
-repository's `examples/sample-morpg` — the same conditional write, against the
+The deployable version of this idea is the character sheet in `sample-morpg` in the
+[`examples`](https://github.com/yingyeothon/examples) repository — the same conditional write, against the
 platform's doc store.
 
 ```bash

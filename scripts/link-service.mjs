@@ -7,8 +7,8 @@
 //   node scripts/link-service.mjs unlink  [dir ...]
 //   node scripts/link-service.mjs status  [dir ...]
 //
-// Default targets are the yyt service repo and its two examples, which are
-// separate pnpm projects. `link` appends a marked `overrides:` block with
+// Default targets are the yyt service repo and the two samples in the yyt
+// examples repo (a sibling checkout), which are separate pnpm projects. `link` appends a marked `overrides:` block with
 // `"@yingyeothon/<pkg>": "link:<relative path>"` for every package here to the
 // target's `pnpm-workspace.yaml` (pnpm 11 reads overrides only from there)
 // and runs `pnpm install`; `unlink` removes exactly that block and installs
@@ -27,11 +27,11 @@ const tslibRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const serviceRoot = path.join(homedir(), "git", "yyt.life", "service");
+const yytRoot = path.join(homedir(), "git", "yyt.life");
 const defaultTargets = [
-  serviceRoot,
-  path.join(serviceRoot, "examples", "sample-dungeon"),
-  path.join(serviceRoot, "examples", "sample-morpg"),
+  path.join(yytRoot, "service"),
+  path.join(yytRoot, "examples", "sample-dungeon"),
+  path.join(yytRoot, "examples", "sample-morpg"),
 ];
 
 const BEGIN =

@@ -206,7 +206,7 @@ The gateway reads that start event to decide who may connect, so **a member not
 listed in it is refused**. `RPUSH` is not a trigger — the invoke is explicit.
 See [The game actor § The three Redis keys](game-actor.md#the-three-redis-keys).
 
-`examples/sample-dungeon` in the `service` repository is a complete worked
+`sample-dungeon` in the [`examples`](https://github.com/yingyeothon/examples) repository is a complete worked
 version of this half, including its deployment.
 
 ## 5. Deploy, with the ceilings respected
