@@ -12,12 +12,14 @@ them can be pointed at a Redis you started yourself, with
 | [actor-game](actor-game/README.md)             | A whole game through the real `handleActor`, with no AWS and no Redis         |
 | [gateway-client](gateway-client/README.md)     | A lobby and a dungeon client, and a finished run against an aborted one       |
 | [gateway-contract](gateway-contract/README.md) | The three ways a WebSocket gateway silently fails to reach an actor           |
+| [kvstore-client](kvstore-client/README.md)     | Announcements read, a player's record saved, and a stale write that loses     |
 | [repository-cas](repository-cas/README.md)     | Two writers racing on one document, and the conditional write that keeps both |
 
 ```bash
 pnpm --filter yyt-example-actor-game start
 pnpm --filter yyt-example-gateway-client start
 pnpm --filter yyt-example-gateway-contract start
+pnpm --filter yyt-example-kvstore-client start
 pnpm --filter yyt-example-repository-cas start
 ```
 

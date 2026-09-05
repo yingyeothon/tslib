@@ -81,6 +81,20 @@
   "did the result reach the party before their sockets closed", which is the
   only question `endDropDelayMillis` is about.
 
+## Env-gated integration tests
+
+- A live-stage test lives in the same `test/` directory behind
+  `describe.skipIf(!process.env.YYT_KV_BASE_URL || !process.env.YYT_KV_TOKEN)`
+  (`packages/kvstore-client/test/integration.test.ts`). **The `describe` body
+  still runs when every test is skipped**, so construct the client inside each
+  `it` (or a lazy helper), or the suite fails at collection time on the missing
+  env instead of skipping.
+- Namespace the variables `YYT_*` and give them no default: a default pointed
+  at a real stage is a network test that runs by accident.
+- The fixtures such a test needs on dev (a project, an auth channel, the
+  collections, a player JWT) are provisioned and torn down by a scratch script
+  — see [manual-verification.md](manual-verification.md) — never committed.
+
 ## Prefer an injected seam to a module mock
 
 - `vi.mock` on a whole workspace package hides the seam and asserts call

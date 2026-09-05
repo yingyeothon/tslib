@@ -1,0 +1,20 @@
+{
+  "name": "yyt-example-kvstore-client",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reading announcements and saving a player's own record through the kv client, against an in-memory stand-in for the state stack.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@yingyeothon/kvstore-client": "workspace:^"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

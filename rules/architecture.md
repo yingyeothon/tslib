@@ -168,6 +168,23 @@ consequences of those rules.
   service repo, not only its README. A smoke that never sends the optional
   field (`dir`) does not catch a type mismatch; the test that sends it does.
 
+## An error type without an exported class
+
+- `kvstore-client` throws one `KvStoreError`, but the rule is "no exported
+  classes", so it ships as an exported **interface** (`name: "KvStoreError"`,
+  `status`, `code`, `reason?`, `currentVersion?`), an internal factory that
+  decorates a plain `Error`, and a duck-typed `isKvStoreError` predicate.
+  Duck-type on `name` + field types, never `instanceof`: a browser SDK's error
+  can cross a realm (iframe, worker, jsdom), and the server's own `isAppError`
+  works the same way.
+- Keep `message` to the code and status (`kv conflict (409)`). Attach a `cause`
+  only when it cannot carry data: a `fetch` rejection is fine, a `SyntaxError`
+  from parsing a response body is not (its message quotes the body).
+- `put(key, value, options?)` and `incr(key, delta, options?)` are an accepted
+  exemption from the `(requiredMainThing, options?)` rule, like
+  `compareAndSet(key, token, value)`: the two positionals are the operation's
+  subject and object, and folding `value` into options would read worse.
+
 ## Naming a factory that returns a handler
 
 `CONVENTIONS.md` reserves `create*Handler` for factories whose product is

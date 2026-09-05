@@ -119,6 +119,16 @@ importers:
         specifier: ^4.19.2
         version: 4.23.13
 
+  examples/kvstore-client:
+    dependencies:
+      "@yingyeothon/kvstore-client":
+        specifier: workspace:^
+        version: link:../../packages/kvstore-client
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.13
+
   examples/repository-cas:
     dependencies:
       "@yingyeothon/naive-redis":
@@ -190,6 +200,12 @@ importers:
       "@yingyeothon/codec":
         specifier: workspace:^
         version: link:../codec
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
+
+  packages/kvstore-client:
+    dependencies:
       "@yingyeothon/logger":
         specifier: workspace:^
         version: link:../logger

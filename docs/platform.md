@@ -120,15 +120,15 @@ prevent. [Storage](storage.md) is how tslib does it.
 
 ## Where tslib fits
 
-Only `gamebase-client` names the platform in its source; `lambda-gamebase` and
-`gamebase-all-together` are shaped by it without depending on it. Everything
-else is a general library that a game happens to need.
+Only `gamebase-client` and `kvstore-client` name the platform in their source;
+`lambda-gamebase` and `gamebase-all-together` are shaped by it without depending
+on it. Everything else is a general library that a game happens to need.
 
 ```mermaid
 flowchart BT
   found["foundation<br/>codec · logger · event-broker<br/>repository · actor-system · naive-socket"]
   back["backends and transport<br/>naive-redis · repository-* · actor-system-*<br/>logger-* · s3-cache-bridge-client · lambda-authorizer"]
-  edge["platform edges<br/>lambda-gamebase · lambda-authorizer-jwt · gamebase-client"]
+  edge["platform edges<br/>lambda-gamebase · lambda-authorizer-jwt<br/>gamebase-client · kvstore-client"]
   loop["game loop<br/>gamebase-all-together"]
   found --> back
   back --> edge
@@ -155,7 +155,7 @@ documents, all public, in
 | `docs/realtime-gateway-design.md`  | The two channel kinds, and what the gateway does on your behalf        |
 | `docs/auth-game-contract.md`       | The channel JWT's claims, lifetime and reuse rules                     |
 | `services/auth/README.md`          | The sign-in endpoints and the token they issue                         |
-| `services/state/README.md`         | The doc store: versioned JSON, mandatory `If-Match`                    |
+| `services/state/README.md`         | The doc store and the KV routes: versioned JSON, `If-Match`, scopes    |
 | `services/console/README.md`       | Channels, secrets, and the Redis prefixes it prints as one block       |
 | `services/match/README.md`         | The matchmaking socket, one source of a `gameId`                       |
 | `cli/README.md`                    | The `yyt` CLI: provisioning channels and publishing map assets         |

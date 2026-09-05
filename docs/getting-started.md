@@ -271,5 +271,7 @@ first frame.
   silently when a gateway gets it wrong.
 - [Authentication](auth.md) — closing the identity gap that `resolveMemberId`
   leaves open by default.
-- [Storage](storage.md) — anything that must outlive the run.
+- [Storage](storage.md) — anything that must outlive the run, on your side.
+- [Key-value store](kvstore.md) — announcements and each player's own record,
+  read and written by the client with the same channel JWT it connected with.
 - [Troubleshooting](troubleshooting.md) — when a frame does not arrive.

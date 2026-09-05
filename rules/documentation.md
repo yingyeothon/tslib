@@ -33,6 +33,8 @@ asserts this list covers `packages/` exactly once each:
   `actor-system-lambda`)
 - `realtime-client.md` — the browser client: states, close codes, backoff
   (`gamebase-client`)
+- `kvstore.md` — the platform key-value store from a game: principals and
+  scopes, the two cases, versions, TTL, errors (`kvstore-client`)
 - `storage.md` — repositories, revisions, CAS, documents, choosing a backend
   (`repository`, `repository-redis`, `repository-s3`, `repository-dynamodb`)
 - `auth.md` — the channel JWT and the two authorizer shapes
@@ -152,12 +154,13 @@ Rules:
 
 When a package README and a guide page cover the same subject, they get
 _different_ diagrams — static structure in the README, order or disposition in
-the guide — and each links to the other. Four pairs are like this today:
+the guide — and each links to the other. Five pairs are like this today:
 `lambda-gamebase` (the key map) vs `game-actor.md` (the key sequence),
 `gamebase-all-together` (one tick) vs `game-actor.md` (the stage machine),
 `gamebase-client` (the two clients) vs `realtime-client.md` (states and close
-codes), and `lambda-authorizer-jwt` (the verify decision) vs `auth.md` (the
-`$connect` sequence). Do not unify them; the duplicate is what drifts.
+codes), `lambda-authorizer-jwt` (the verify decision) vs `auth.md` (the
+`$connect` sequence), and `kvstore-client` (the namespace map) vs `kvstore.md`
+(the compare-and-set sequence). Do not unify them; the duplicate is what drifts.
 
 ## Examples
 

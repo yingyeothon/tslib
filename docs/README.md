@@ -1,9 +1,9 @@
 # tslib documentation
 
-The twenty packages in this repository are the server half of the yyt platform,
-plus `gamebase-client`, which is its browser half. This folder is the guide; the
-package READMEs are the per-package reference, and the `service` repository owns
-the wire protocol and the channels.
+The twenty-one packages in this repository are the server half of the yyt
+platform, plus `gamebase-client` and `kvstore-client`, which are its browser
+half. This folder is the guide; the package READMEs are the per-package
+reference, and the `service` repository owns the wire protocol and the channels.
 
 ## Start here
 
@@ -22,6 +22,7 @@ the wire protocol and the channels.
 | Serialise work per key, without a game           | [Actor system](actor-system.md)           |
 | Connect a browser to a lobby or a run            | [The realtime client](realtime-client.md) |
 | Keep something after the run ends                | [Storage](storage.md)                     |
+| Show announcements, save a player's record       | [Key-value store](kvstore.md)             |
 | Verify a token on `$connect`                     | [Authentication](auth.md)                 |
 | Deploy it and stay inside the limits             | [Operations](operations.md)               |
 | Log without leaking a token, a payload or a name | [Logging](logging.md)                     |
@@ -40,6 +41,7 @@ flowchart LR
   AS --> actor-system-redis
   AS --> actor-system-lambda
   RC["realtime-client.md"] --> gamebase-client
+  KV["kvstore.md"] --> kvstore-client
   ST["storage.md"] --> repository
   ST --> repository-redis
   ST --> repository-s3
@@ -59,10 +61,10 @@ flowchart LR
 Those are ownership, not dependencies: the [root README](../README.md) has the
 exact edge list, and it is the only place that does.
 
-Only `gamebase-client` names the platform at all; `lambda-gamebase` and
-`gamebase-all-together` are shaped by it without depending on it, and everything
-else is a general library that a game happens to need. Each is usable on its
-own.
+Only `gamebase-client` and `kvstore-client` name the platform at all;
+`lambda-gamebase` and `gamebase-all-together` are shaped by it without depending
+on it, and everything else is a general library that a game happens to need.
+Each is usable on its own.
 
 ## Worked examples
 
@@ -74,6 +76,7 @@ credentials, no Docker and no deployed gateway.**
 | [`actor-game`](../examples/actor-game/README.md)             | A whole game through the real `handleActor`                       |
 | [`gateway-contract`](../examples/gateway-contract/README.md) | The three ways a gateway silently fails to reach an actor         |
 | [`gateway-client`](../examples/gateway-client/README.md)     | Both clients, and a finished run against an aborted one           |
+| [`kvstore-client`](../examples/kvstore-client/README.md)     | Announcements read, a player's record saved, a stale write lost   |
 | [`repository-cas`](../examples/repository-cas/README.md)     | Two writers racing on one document, and the write that keeps both |
 
 The full deployable stacks — a Serverless deployment, an auth service, a real

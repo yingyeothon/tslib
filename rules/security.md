@@ -147,6 +147,22 @@ real defects that shipped in the legacy code.
   a membership failure prints every member's name and email. Log the decision,
   not the object that carried it.
 
+## What the platform itself will quote back at you
+
+- **`fetch` quotes the offending value in its own `TypeError`.** A header
+  value with a stray `\n` or NUL fails `Headers.append` with the whole value
+  in the message — for `Authorization` that is the credential — and a URL with
+  userinfo fails with the whole URL, collection and key included. An HTTP
+  client therefore validates the token (RFC 7235 token68 characters) and the
+  base URL (`new URL`, no userinfo/search/hash) at create time with a
+  `RangeError` that does not echo the value, before `fetch` ever sees them.
+- **`JSON.parse`'s `SyntaxError` quotes the first bytes of the input.** On an
+  entry route that input is a stored value. Do not attach it as `cause`; mint
+  a bare `malformed_response` error instead.
+- A "never logs the secret" test must include `util.inspect(error, { depth })`
+  in its haystack: `stack` does not include `cause`, and that is where both
+  of the above leak.
+
 ## Review habit
 
 - Run a security-focused adversarial review on any change that touches protocol

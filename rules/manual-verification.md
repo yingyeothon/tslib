@@ -28,6 +28,27 @@ tests pass, exercise the change against the real build.
   churn must never land there. Publish only after the linked verification
   passed end to end.
 
+## Verifying a platform client against the dev stage
+
+- The service repo's smoke helpers do the provisioning: import
+  `scripts/smoke/_lib.mjs` (`jsonClient`, `debugLogin`, `asUser`,
+  `createChecker`) and `_team.mjs` (`ensureTeam`, reuse the `smoke-kv` team)
+  from a scratch script, with `local/deploy/debug-key.dev` as the debug key
+  against `console-dev` / `auth-dev` / `doc-dev.yyt.life`.
+- Order: `debugLogin` a synthetic member → `ensureTeam` → `POST
+/projects/{prj}/channels` `{kind:"auth", config:{audience, tokenTtlSec,
+redirectAllowlist:[], providers:{}}}` → `POST /projects/{prj}/kv` per
+  collection → seed with the **console** entry route, whose body is
+  `{ valueText: "<json>" }` (not the raw value the KV API takes) → mint a
+  player JWT with auth's `POST /debug/token` `{channelId, userId}` → run the
+  env-gated integration test with `YYT_KV_*` → exercise the built `dist` by
+  hand → `finally`: delete the collections and the channel, and re-login the
+  member with `role: "pending"`. `kvstore-client` was verified this way on
+  2026-09-06 (round trip, `ifMatch`/`ifNoneMatch` 409s, `wrong_namespace`,
+  another owner's 403, a bad token's 401, listing by name).
+- Console writes take a 550 ms slot per member (`jsonClient({ writeSlotMs })`);
+  the KV API has none, so use a second client for it.
+
 ## Making states reachable without infrastructure
 
 The library equivalents of debug-only state hooks are the injection seams; use
