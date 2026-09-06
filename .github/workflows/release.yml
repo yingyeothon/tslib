@@ -12,6 +12,9 @@ on:
         required: true
         type: string
 
+# The run list shows the version, not a row of identical "Release" entries.
+run-name: Release v${{ inputs.version }}
+
 concurrency:
   group: release
   cancel-in-progress: false
@@ -82,3 +85,8 @@ jobs:
           if ! gh release view "v$VERSION" >/dev/null 2>&1; then
             gh release create "v$VERSION" --title "v$VERSION" --generate-notes
           fi
+      - name: Write the run summary
+        # Runs even when publishing failed part-way, so the summary says which
+        # packages reached npm and which did not; that is what a retry needs.
+        if: always()
+        run: node scripts/release-summary.mjs "$VERSION" "${{ steps.retry.outputs.retry }}" >> "$GITHUB_STEP_SUMMARY"

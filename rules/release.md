@@ -34,7 +34,11 @@ the place to find out.
    commit + annotated tag → `git push --atomic origin main vX.Y.Z` →
    `pnpm -r publish --provenance` → GitHub Release with generated notes.
 3. Version, tag, commit, and npm provenance therefore all point at the same
-   commit. The push is atomic: either the release commit and tag both land or
+   commit. The run is titled `Release vX.Y.Z` (`run-name`), and its summary
+   (`scripts/release-summary.mjs`, written `if: always()`) records the
+   version, tag, commit, whether it was a retry, and per package whether that
+   exact version is on npm — checked against the registry, not inferred from
+   the publish step, so a partial failure lists exactly what is missing. The push is atomic: either the release commit and tag both land or
    neither does, and nothing is published unless the push succeeded.
 4. If publishing fails part-way, re-run the workflow with the same version:
    it detects the existing tag, checks it out, and `pnpm -r publish` skips the
