@@ -25,8 +25,13 @@ tests pass, exercise the change against the real build.
   change touches runtime behaviour (reconnects, TTLs, protocol).
 - Consumers resolve `dist`, so `pnpm build` here after every edit.
 - `unlink` before committing in the consumer; the block and the lockfile
-  churn must never land there. Publish only after the linked verification
-  passed end to end.
+  churn must never land there. `unlink` restores `pnpm-workspace.yaml` but
+  leaves the samples' `pnpm-lock.yaml` rewritten — `git checkout --` those two
+  files afterwards and confirm both consumer trees are clean.
+- Publish only after the linked verification passed end to end. The 2026-09-08
+  run (timeout budget, urgent ordering, post-game cleanup, the `4005`/`aoi`
+  client fields) covered: service `build` + `typecheck` + `test` (1212 tests),
+  and both samples' `typecheck` + `test` (19 and 308).
 
 ## Verifying a platform client against the dev stage
 
