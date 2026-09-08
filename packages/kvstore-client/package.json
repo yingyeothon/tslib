@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/kvstore-client",
-  "version": "2.0.2",
+  "version": "2.1.0",
   "description": "Game client for the yyt key-value store: announcements, per-player records, counters and conditional writes over the channel JWT the game already holds.",
   "keywords": [
     "yyt",
