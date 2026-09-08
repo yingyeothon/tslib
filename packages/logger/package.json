@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/logger",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "Minimal structured logger with severity filtering, composition, and pluggable writers.",
   "keywords": [
     "yyt",
