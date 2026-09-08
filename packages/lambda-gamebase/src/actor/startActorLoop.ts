@@ -85,7 +85,14 @@ export async function startActorLoop<M>({
         logger.error("unexpected error from game", { gameId, error });
       }
       logger.info("end of the game", { gameId, memberCount: members.length });
-      await clearActorStartEvent({ gameId, del, eventKeyPrefix });
+      try {
+        await clearActorStartEvent({ gameId, del, eventKeyPrefix });
+      } catch (error) {
+        // The game is already over and the start event carries its own TTL,
+        // so a store that answered too slowly here is not a reason to report
+        // the whole run as a failed invocation.
+        logger.error("cannot clear the actor start event", { gameId, error });
+      }
     },
   });
 }

@@ -109,7 +109,28 @@ export async function eventLoop<T>(
     // lock, or this actor stays unstartable until the lease expires.
     stopHeartbeat();
     logger.debug("release lock", { actorId: id });
-    await lock.release(id);
+    // Releasing is housekeeping that runs after the work it accompanies, so
+    // it must not be able to fail it: a throw from `finally` would replace a
+    // finished game's result — or the throw that brought us here — with a
+    // store error. But it must be *tried* properly first. A lock configured
+    // without an expiry has nothing to fall back on, so a release that is
+    // simply dropped leaves this actor id unstartable forever; the retry is
+    // safe because release is a compare-and-delete on this holder's own
+    // token, and it is reported at `error` because the outcome is an actor
+    // nobody can start, not a cosmetic failure.
+    try {
+      await lock.release(id);
+    } catch (firstError) {
+      logger.warn("cannot release lock; retrying once", {
+        actorId: id,
+        error: firstError,
+      });
+      try {
+        await lock.release(id);
+      } catch (error) {
+        logger.error("cannot release lock", { actorId: id, error });
+      }
+    }
   }
 
   return true;

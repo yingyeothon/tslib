@@ -152,12 +152,41 @@
 - A regex `fulfill` on `NaiveSocket.send` uses its first capture group; a
   pattern without one never fulfils and the test times out for no visible
   reason.
+- That peer lives in `packages/naive-redis/test/fake-redis.ts` and is shared;
+  its `reply` may return `undefined` and write later through the `client` it is
+  handed, which is how a slow round trip is scripted.
 - For CAS backends, the race test is the same shape everywhere: wrap the
   repository so the first `compareAndSet` awaits the other writer, then
   assert both writers' keys survive and the version advanced twice
   (`packages/repository/test/repository.test.ts` "keeps both writers'
   changes"). Copy that pattern into a new backend rather than inventing a
   weaker one.
+
+## Testing a timeout that is supposed to restart
+
+- The interesting case is a request whose total wall time exceeds its budget
+  while the part the budget describes does not. Build it from two delays: a
+  request written **ahead** of yours (`urgent: true`, the shape `AUTH` takes on
+  every reconnect) answered in 100 ms, and yours answered 100 ms after it
+  reaches the wire, against a 150 ms budget. Under the old rule it rejects;
+  under the new one it resolves, with 50 ms of margin on either side.
+- Pair it with the test for the bound: a peer that swallows the request and
+  drops the connection forever. It must still end in a timeout — that is what
+  rejects "re-arm on every write", which otherwise passes everything else.
+- Also keep a plain "the server never answers" case. A restarted clock that is
+  never armed again looks identical to a correct one until you ask for it.
+- And pin the limit the restart does **not** remove: three pipelined requests
+  with a budget shorter than the head's round trip still leave the third
+  rejected unwritten. Without that test the docs quietly grow a claim the code
+  never made.
+- Order a race by waiting for the state, not by sleeping a guessed interval.
+  A `setTimeout(40)` meant to land while a request is in flight keeps passing
+  once it starts landing after the reply — it just stops testing anything.
+  Poll the recorded server messages instead.
+- Assert against `dist`, not only `src`: a workspace package imports its
+  dependency through the symlink to `dist`, so a fix in `naive-socket/src` is
+  invisible to a `naive-redis` test until `pnpm build` runs. A test that fails
+  for that reason looks exactly like a wrong fix.
 
 ## Assertions
 

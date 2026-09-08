@@ -44,7 +44,7 @@ const connection = createRedisConnection({
   host: "localhost",
   port: 6379,
   password: "optional-password",
-  timeoutMillis: 1000,
+  timeoutMillis: 5000,
 });
 
 await redisSet(connection, "greeting", "hello", { expirationMillis: 60_000 });
@@ -132,7 +132,7 @@ const connection = createRedisConnection({
 
 ## Public API
 
-- `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set (`AUTH <username> <password>` when `username` — a Redis 6 ACL user — is set too). That `AUTH` waits up to `authTimeoutMillis` (default `max(timeoutMillis, 5000)`, since it also pays for the handshake after a reconnect). When it fails or times out, or when any command is answered with `-NOAUTH`/`-WRONGPASS`, the socket is dropped so the next command reconnects and authenticates again — a Redis restart never leaves a warm process stuck on an unauthenticated socket. A command that hit `-NOAUTH`/`-WRONGPASS` is retried once on the new connection. `tls` wraps the connection in TLS; **unset means cleartext**, so `AUTH` and every command are readable on the wire
+- `createRedisConnection(options)` — create a `RedisConnection`; authenticates automatically when `password` is set (`AUTH <username> <password>` when `username` — a Redis 6 ACL user — is set too). `timeoutMillis` (default 5000) is how long one command may take to be answered once it reaches the wire; it is not a budget for the wait behind a reconnect. That `AUTH` waits up to `authTimeoutMillis` (default `max(timeoutMillis, 5000)`, since it also pays for the handshake after a reconnect). When it fails or times out, or when any command is answered with `-NOAUTH`/`-WRONGPASS`, the socket is dropped so the next command reconnects and authenticates again — a Redis restart never leaves a warm process stuck on an unauthenticated socket. A command that hit `-NOAUTH`/`-WRONGPASS` is retried once on the new connection. `tls` wraps the connection in TLS; **unset means cleartext**, so `AUTH` and every command are readable on the wire
 - `redisAuth(connection, password, { username?, timeoutMillis? })` — send `AUTH` explicitly
 - `redisSend({ connection, commands, match, transform, urgent?, timeoutMillis? })` — low-level RESP exchange for commands not covered below
 - `redisGet(connection, key)` — read a string value (`null` when missing)
@@ -143,7 +143,7 @@ const connection = createRedisConnection({
 - `redisExpire(connection, key, seconds)` — set a key's TTL, replacing any existing one; false when the key does not exist
 - `redisEval(connection, script, options?)` — run a Lua script; `RedisEvalOptions`: `keys` (also supplies `NUMKEYS`), `args`. **Integer replies only** — it exists for compare-and-delete style scripts, so a script returning a string or an array is a protocol error here
 - `redisPublish(connection, channel, message)` — publish to a channel; resolves with the number of subscribers that received it
-- `createRedisSubscriber(options)` — a connection dedicated to subscriber mode: `subscribe(channel)`, `unsubscribe(channel)`, `disconnect()`. Both commands resolve only once Redis confirms them, so a message published right after `subscribe` cannot be missed. It re-authenticates and re-subscribes after a reconnect, and reports that gap through `onReconnected({ channels, restored })` — nothing published during it is redelivered, which the next snapshot heals but a one-shot command does not
+- `createRedisSubscriber(options)` — a connection dedicated to subscriber mode: `subscribe(channel)`, `unsubscribe(channel)`, `disconnect()`. Both commands resolve only once Redis confirms them, so a message published right after `subscribe` cannot be missed. Its own `timeoutMillis` (default 5000, the same reasoning as the connection's) budgets that `AUTH` and every subscribe confirmation. It re-authenticates and re-subscribes after a reconnect, and reports that gap through `onReconnected({ channels, restored })` — nothing published during it is redelivered, which the next snapshot heals but a one-shot command does not
 - `parsePushFrame(buffer)` — reads one complete reply from a subscriber stream; `incompletePushFrame` (`-1`) means "wait for more"
 - `redisRpush(connection, key, ...values)` — append to a list
 - `redisLpop(connection, key)` — pop the head of a list
@@ -171,3 +171,8 @@ The legacy package exposed one default export per deep-imported module (for exam
 - `RedisConfig` (type) → `RedisConnectionOptions`
 
 Function parameters, return types, and RESP behavior are otherwise unchanged.
+
+## Behavior changes
+
+- **`timeoutMillis` defaults to 5000, not 1000**, for both `createRedisConnection` and `createRedisSubscriber`. 1000 was not a budget for a round trip that can carry a whole actor queue back on a store one hop away and under load, and a command queued behind a reconnect's `AUTH` — which is budgeted at `max(timeoutMillis, 5000)` — was structurally certain to lose that race. Pass the old value explicitly if you relied on it.
+- Together with `@yingyeothon/naive-socket`, a command's budget now starts when it reaches the wire rather than when it is queued. Its worst case is therefore twice `timeoutMillis`; size a lock lease against that number.

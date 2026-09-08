@@ -161,6 +161,14 @@ and paces itself by `intervalMillis`.
 
 ## Behavior changes
 
+- **Nothing after the game can fail the run.** `onGameEnd`, the end-stage
+  announcement and every disconnect are logged and continued past, so a
+  broadcast to a gone connection no longer turns a finished game into a failed
+  invocation. Look for `"Cannot report the game result"`, `"Cannot announce the
+end stage"` and `"Cannot drop a connection"` (which names the
+  `connectionId`). Each is guarded per attempt and per connection, so a failure
+  no longer cancels the `endRepeatCount` rounds that exist to cover it.
+
 - **Connections are dropped `endDropDelayMillis` (default 1 s) after the
   end stage.** API Gateway can lose a frame posted immediately before
   `DeleteConnection`, so dropping right after the result broadcast sometimes

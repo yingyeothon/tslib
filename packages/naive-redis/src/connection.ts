@@ -12,6 +12,16 @@ export interface RedisConnectionOptions {
   /** ACL user name; sent as `AUTH <username> <password>` when set. */
   username?: string;
   password?: string;
+  /**
+   * How long one command may take to be answered, measured from the moment
+   * it reaches the wire (see `@yingyeothon/naive-socket`). Default 5000.
+   *
+   * It used to be 1000, which is not a budget for a round trip that may
+   * carry a whole queue back (`LRANGE key 0 -1`) on a store one network hop
+   * away and under load. In a game loop a single rejection ends the run, so
+   * the value has to be a "the server is gone" threshold rather than a
+   * "the server is busy" one.
+   */
   timeoutMillis?: number;
   /**
    * Timeout for the automatic `AUTH` sent after each (re)connect. It is the
@@ -42,7 +52,7 @@ export function createRedisConnection({
   port = 6379,
   username,
   password,
-  timeoutMillis = 1000,
+  timeoutMillis = 5000,
   authTimeoutMillis = Math.max(timeoutMillis, 5000),
   tls,
 }: RedisConnectionOptions): RedisConnection {

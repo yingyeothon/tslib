@@ -7,6 +7,33 @@ import {
 } from "../src/index.js";
 import { nullLogger, type Logger } from "@yingyeothon/logger";
 
+/** Separates the two severities the release path deliberately uses. */
+function capturingLogger(): {
+  logger: Logger;
+  warned: string;
+  errored: string;
+} {
+  const warn: string[] = [];
+  const error: string[] = [];
+  const capture =
+    (into: string[]) =>
+    (...args: unknown[]) =>
+      into.push(args.map(String).join(" "));
+  return {
+    logger: {
+      ...nullLogger,
+      warn: capture(warn),
+      error: capture(error),
+    },
+    get warned() {
+      return warn.join("\n");
+    },
+    get errored() {
+      return error.join("\n");
+    },
+  };
+}
+
 interface AdderMessage {
   delta: number;
 }
@@ -369,5 +396,83 @@ describe("eventLoop", () => {
       }),
     ).toBe(true);
     expect(looped).toBe(true);
+  });
+  it("does not let a failed release replace the loop's outcome", async () => {
+    // Releasing is housekeeping that runs after the game: a store that
+    // answered too slowly here used to surface as a failed invocation for a
+    // run that had already finished.
+    const capture = capturingLogger();
+    const inner = createInMemoryLock();
+    let looped = false;
+    let attempts = 0;
+
+    expect(
+      await eventLoop({
+        id: "loop-12",
+        queue: createInMemoryQueue(),
+        lock: {
+          ...inner,
+          release: () => {
+            attempts++;
+            return Promise.reject(new Error("Timeout 5000millis"));
+          },
+        },
+        logger: capture.logger,
+        loop: () => {
+          looped = true;
+          return Promise.resolve();
+        },
+      }),
+    ).toBe(true);
+    expect(looped).toBe(true);
+    // Tried twice, then reported at `error`: a lock configured without an
+    // expiry has nothing to fall back on, so the actor id would be
+    // unstartable and nothing else is watching.
+    expect(attempts).toBe(2);
+    expect(capture.warned).toContain("cannot release lock; retrying once");
+    expect(capture.errored).toContain("cannot release lock");
+  });
+
+  it("keeps the lock released when the retry succeeds", async () => {
+    // The common case is one bad round trip, not a dead store.
+    const capture = capturingLogger();
+    const lock = createInMemoryLock();
+    const inner = lock.release;
+    let attempts = 0;
+
+    await eventLoop({
+      id: "loop-14",
+      queue: createInMemoryQueue(),
+      lock: {
+        ...lock,
+        release: (id: string) =>
+          ++attempts === 1
+            ? Promise.reject(new Error("Timeout 5000millis"))
+            : inner(id),
+      },
+      logger: capture.logger,
+      loop: () => Promise.resolve(),
+    });
+
+    expect(attempts).toBe(2);
+    expect(capture.errored).toBe("");
+    // The lock really is free: a second invocation can take the actor.
+    expect(await lock.tryAcquire("loop-14")).toBe(true);
+  });
+
+  it("keeps the loop's own failure when the release also fails", async () => {
+    // A throw out of `finally` would discard the reason the game ended.
+    const inner = createInMemoryLock();
+    await expect(
+      eventLoop({
+        id: "loop-13",
+        queue: createInMemoryQueue(),
+        lock: {
+          ...inner,
+          release: () => Promise.reject(new Error("release failed")),
+        },
+        loop: () => Promise.reject(new Error("game blew up")),
+      }),
+    ).rejects.toThrow("game blew up");
   });
 });

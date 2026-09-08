@@ -105,6 +105,50 @@ describe("startActorLoop", () => {
     expect(deleteStartEvent).toHaveBeenCalledWith("event:game-1");
   });
 
+  it("finishes the run when the start event cannot be cleared", async () => {
+    // The game is over and the start event carries its own TTL, so a store
+    // that answered too slowly here is not a reason to report the whole
+    // invocation as failed.
+    const capture = capturingLogger();
+    const gameMain = vi.fn().mockResolvedValue(undefined);
+    await startActorLoop({
+      gameId: "game-1",
+      members,
+      eventKeyPrefix: "event:",
+      logger: capture.logger,
+      subsystem: newSubsystem(),
+      redisConnection: fakeConnection,
+      deleteStartEvent: () => Promise.reject(new Error("Timeout 5000millis")),
+      gameMain,
+    });
+
+    expect(gameMain).toHaveBeenCalledTimes(1);
+    expect(capture.text()).toContain("cannot clear the actor start event");
+    // A positive control: the run really did reach its end, and the member
+    // names and e-mail addresses stayed out of the log.
+    expect(capture.text()).toContain("end of the game");
+    expect(capture.text()).not.toContain("one@yyt.life");
+  });
+
+  it("releases the actor lock when the start event cannot be cleared", async () => {
+    // Otherwise the next invocation of the same game finds the actor held.
+    const subsystem = newSubsystem();
+    const gameMain = vi.fn().mockResolvedValue(undefined);
+    const options = {
+      gameId: "game-1",
+      members,
+      eventKeyPrefix: "event:",
+      logger,
+      subsystem,
+      redisConnection: fakeConnection,
+      deleteStartEvent: () => Promise.reject(new Error("Timeout 5000millis")),
+      gameMain,
+    };
+    await startActorLoop(options);
+    await startActorLoop(options);
+    expect(gameMain).toHaveBeenCalledTimes(2);
+  });
+
   it("does not run gameMain when the actor lock is already held", async () => {
     const subsystem = newSubsystem();
     await subsystem.lock.tryAcquire("game-1");

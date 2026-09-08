@@ -110,6 +110,47 @@ of the two stage budgets, or the start event can expire under a game that is
 still being played. Set `maximumRetryAttempts` to
 0 on the actor: a retried invocation would replay the game from the start.
 
+**The lease has to outlive a stalled Redis round trip, several times over.**
+`handleActor` beats the heartbeat every `max(1000, lease / 3)` ms and skips a
+beat while one is still in flight, so a renew that hangs swallows every beat it
+overlaps. A hung command can occupy up to twice the connection's `timeoutMillis`
+([Redis and sockets](redis-and-sockets.md#what-timeoutmillis-measures)), which
+at the 5000 default is 10 s — so `lockTimeoutSeconds` at the default 30 leaves
+three attempts inside the lease, while a lease of 3 s would leave exactly one
+and expire under the first stall. Keep `lockTimeoutSeconds * 1000` at or above
+six times `timeoutMillis`.
+
+## Nothing after the game may fail it
+
+Once the outcome is decided, everything left is delivery: `onGameEnd`, the
+end-stage announcement, the disconnects, the start-event delete, and the actor
+lock release. All of them log and continue instead of throwing, for two reasons.
+
+A failure there is not the game's result. A run that was played to the end and
+then could not delete a key is a successful run, and reporting it as a failed
+invocation hides real failures behind noise — with `maximumRetryAttempts` at 0
+there is nothing to retry either way.
+
+And a step that throws takes the steps after it with it. The repeats exist for a
+delivery that did not land the first time (`endRepeatCount` with a pub/sub
+transport), so an announcement that threw used to cancel exactly the retry meant
+to cover it — and so did a refused disconnect, which took the whole remaining
+schedule with it. Within one round every socket was always attempted, because
+`Promise.all` starts them all before it observes a rejection; guarding per
+connection is what names the one that refused and lets the next round run.
+
+"Log and continue" is not "skip". The lock release is the one step with no
+fallback when the lock was configured without an expiry, so `eventLoop` retries
+it once and reports the second failure at `error`; the rest are logged and
+forgotten because a TTL or the next run cleans up after them.
+
+None of this reaches the invocation, and neither does the game itself: a throw
+out of the game loop becomes `reason: "error"` inside `runGameAllTogether`, and
+`startActorLoop` logs anything `gameMain` throws as `"unexpected error from
+game"` without rethrowing. A failed invocation therefore points at something
+outside the game — loading the start event, taking the lock, the readiness
+handshake — not at a game that went wrong.
+
 ## Never log
 
 The short version, because it is an operational property and not only a coding

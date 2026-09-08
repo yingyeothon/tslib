@@ -134,6 +134,71 @@ consequences of those rules.
   has already opened the next socket; the stale `close` must not trigger a
   reconnect loop against the new one.
 
+## Timeouts, and what they are allowed to measure
+
+- Ask of every timeout: _is a failed attempt an answer?_ A per-request budget
+  answers "how long may the peer take to answer **this**", so it must not be
+  spent on the wait in front of the request. `NaiveSocket` restarts a work's
+  timer when the work is first written; the timer armed at queue time stays as
+  the bound on a socket that never connects. It restarts **once**, or a peer
+  that keeps flapping rewrites the work on every reconnect and it outlives
+  every deadline.
+- That mismatch was a real outage shape: `AUTH` is `urgent`, so on a reconnect
+  it is written in front of the caller's command and is budgeted separately
+  (`authTimeoutMillis` ≥ 5000), while the command's own 1000 ms clock had been
+  running since it was queued. An ordinary cold start therefore rejected a
+  command the server would have answered at once — and inside a game loop one
+  rejection ends the run.
+- Pick a default as a "the server is gone" threshold, not a "the server is
+  busy" one, and size it against the _largest_ round trip the package makes
+  (here `LRANGE key 0 -1` over a whole actor queue). `naive-redis` defaults to
+  5000, and every socket the package owns — the subscriber's included — uses
+  the same number for the same reason.
+- Two limits come with the restart, and both belong in the docs. The ceiling
+  is **2×** the value (queue-time arm plus one restart), so a lease or a retry
+  schedule must be sized against that, not the nominal number. And it only
+  helps when the wait ahead is _shorter_ than the budget: a handshake longer
+  than `timeoutMillis` still rejects the command behind it.
+- A downstream timeout is never independent of an upstream one. Raising the
+  command budget lengthened the window in which a lock heartbeat is
+  in-flight, and `startLockHeartbeat` skips every beat that overlaps one — so
+  the lease has to be at least six times the command budget for a stall to
+  leave any retry inside it. State couplings like that where the number is
+  chosen (`docs/operations.md § Sizing a run`), not only where it is used.
+- A request marked `urgent` goes in front of everything **queued**, never in
+  front of a work already written: `onData` resolves the head, so displacing a
+  written head hands it that head's reply and leaves the head waiting for an
+  answer already consumed. The lock heartbeat's `renew` is `urgent` on the
+  same connection as the game loop, so this was a lease confirmed by an
+  unrelated command's answer.
+
+## Nothing after the work may fail the work
+
+- Once an outcome is decided, everything left is delivery: it logs and
+  continues, never throws. The lock release in `eventLoop`, the start-event
+  delete in `startActorLoop`, and `onGameEnd` / the end announcement / the
+  disconnects in `runGameAllTogether` are all in this class. A run that was
+  played to the end and then could not delete a key is a successful run;
+  reporting it as a failed invocation hides real failures behind noise.
+- A `finally` that awaits is the classic offender: a throw from it replaces the
+  result — including the throw that brought you there — with a housekeeping
+  error.
+- "Must not fail the work" is not "may be skipped". Ask what happens if the
+  step never runs: releasing a lock configured **without** an expiry has no
+  fallback, so `eventLoop` retries the release once and reports the second
+  failure at `error`, while a start-event delete (the key has a TTL) is logged
+  and forgotten. Match the severity to whether anything else will clean up.
+- Guard at the granularity the retry needs. Wrapping a whole repeat loop lets
+  one failed attempt cancel exactly the retry that exists to cover it. Be
+  precise about what the finer guard buys, though: a `Promise.all` over a
+  `.map` has already started every call before it observes a rejection, so per
+  connection is what names the failing connection and preserves the later
+  rounds — not what gets the other sockets attempted at all.
+- Check where propagation actually stops before writing that something "still
+  propagates". Nothing from the game reaches the invocation here:
+  `runGameAllTogether` turns a loop failure into `reason: "error"`, and
+  `startActorLoop` logs whatever `gameMain` threw.
+
 ## Option shapes
 
 - When a seam's whole space is closed and enumerable, make the option **data**,

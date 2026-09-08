@@ -205,6 +205,18 @@ production infrastructure on a machine that happens to have it exported.
   contradict it in package READMEs.
 - Do not create temporary tracking documents in the repo root — they were removed
   once already. Session-scoped notes belong in `.claude/` (git-ignored).
+- **A behavior change owes a `## Behavior changes` bullet in the package
+  README**, not only a paragraph in the guide: that section is where a consumer
+  looks for what a version did to them. And re-read the neighbouring
+  "Migrating" bullets, which tend to end with "…is otherwise unchanged" — a
+  sentence a change quietly falsifies.
+- **Verify a claim about control flow by reading it, not by remembering it.**
+  Two sentences here — "a throw out of the game loop still reaches you" and
+  "one refused disconnect used to leave the rest of the party's sockets open" —
+  were both false: the loop's throw is caught into `reason: "error"`, and
+  `Promise.all` over a `.map` has already started every call before it observes
+  a rejection. Docs written from intent rather than from the code read as
+  authoritative and are worse than none.
 
 ## Writing the gate itself
 

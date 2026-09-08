@@ -359,6 +359,14 @@ player mid-game is the game loop's job, through `Transport.drop`.
 
 ## Behavior changes
 
+- **A start event that cannot be cleared no longer fails the invocation.**
+  `startActorLoop` logs `"cannot clear the actor start event"` and returns: the
+  game is over and the key carries its own TTL, so a slow store at that moment
+  was reporting a successful run as an `Invoke Error`. Nothing from the game
+  reaches the invocation either — `gameMain`'s throw is logged as `"unexpected
+error from game"` — so a failed invocation points at the start event, the
+  lock, or the readiness handshake.
+
 - **A Redis connection is required only when something would use it.**
   `handleActor` used to throw `requires either redisConnection or context`
   before doing anything, even when `subsystem`, `saveStartEvent` and

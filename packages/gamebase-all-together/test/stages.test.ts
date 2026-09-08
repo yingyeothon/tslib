@@ -35,6 +35,8 @@ interface FakeNetwork {
   /** Sends and drops interleaved, so ordering can be asserted. */
   order: string[];
   failFor: (connectionId: string) => void;
+  /** Makes `drop` reject for this connection, as a dead gateway would. */
+  breakDropFor: (connectionId: string) => void;
   ofType: (type: string) => SentMessage[];
   stages: () => Array<{ stage: GameStage; age: number }>;
 }
@@ -48,6 +50,7 @@ function fakeNetwork(): FakeNetwork {
   const dropped: string[] = [];
   const order: string[] = [];
   const failing = new Set<string>();
+  const brokenDrops = new Set<string>();
   const transport: Transport = {
     send: (connectionId, message) => {
       const typed = message as SentMessage["message"];
@@ -60,6 +63,10 @@ function fakeNetwork(): FakeNetwork {
       return Promise.resolve(!failing.has(connectionId));
     },
     drop: (connectionId) => {
+      if (brokenDrops.has(connectionId)) {
+        order.push("drop-failed");
+        return Promise.reject(new Error(`GoneException ${connectionId}`));
+      }
       dropped.push(connectionId);
       order.push("drop");
       return Promise.resolve(true);
@@ -72,6 +79,7 @@ function fakeNetwork(): FakeNetwork {
     dropped,
     order,
     failFor: (connectionId) => failing.add(connectionId),
+    breakDropFor: (connectionId) => brokenDrops.add(connectionId),
     ofType,
     stages: () =>
       ofType("stage").map(
@@ -1074,6 +1082,115 @@ describe("runGameAllTogether", () => {
       expect.objectContaining({ gameId: "game-1" }),
     );
     expect(announced).toContainEqual({ stage: GameStage.End, age: 30 });
+  });
+
+  it("still drops the connections when the end announcement fails", async () => {
+    // Everything after the game speaks is delivery of an outcome already
+    // decided: a failed broadcast must not skip the disconnects and must
+    // not surface as a failed invocation.
+    const errorLog = vi.fn();
+    let gameOver = false;
+    const { net, promise } = fullRun({
+      pollMessages: scriptedPoll<GameMessage>([
+        [{ type: "enter", connectionId: "c1", memberId: "m1" }],
+        [{ type: "enter", connectionId: "c2", memberId: "m2" }],
+        [{ type: "move", connectionId: "c1", x: 1 }],
+      ]),
+      isGameOver: () => gameOver,
+      processMessage: () => {
+        gameOver = true;
+        return Promise.resolve();
+      },
+      logger: { ...logger, error: errorLog },
+      onStageChanged: ({ stage }) =>
+        stage === GameStage.End
+          ? Promise.reject(new Error("broadcast failed"))
+          : Promise.resolve(),
+    });
+
+    await vi.advanceTimersByTimeAsync(2000);
+    await promise;
+
+    expect(errorLog).toHaveBeenCalledWith(
+      "Cannot announce the end stage",
+      expect.objectContaining({ gameId: "game-1" }),
+    );
+    expect([...net.dropped].sort()).toEqual(["c1", "c2"]);
+  });
+
+  it("keeps the drop repeats going when one connection refuses", async () => {
+    const errorLog = vi.fn();
+    let gameOver = false;
+    const { net, promise } = fullRun({
+      pollMessages: scriptedPoll<GameMessage>([
+        [{ type: "enter", connectionId: "c1", memberId: "m1" }],
+        [{ type: "enter", connectionId: "c2", memberId: "m2" }],
+        [{ type: "move", connectionId: "c1", x: 1 }],
+      ]),
+      isGameOver: () => gameOver,
+      processMessage: () => {
+        gameOver = true;
+        return Promise.resolve();
+      },
+      logger: { ...logger, error: errorLog },
+      endRepeatCount: 2,
+      endRepeatIntervalMillis: 200,
+    });
+    net.breakDropFor("c1");
+
+    await vi.advanceTimersByTimeAsync(3000);
+    await promise;
+
+    // Naming the connection that refused is what guarding per connection
+    // buys: `Promise.all` had already started every drop before it saw the
+    // rejection, so the others were attempted either way.
+    expect(errorLog).toHaveBeenCalledWith(
+      "Cannot drop a connection",
+      expect.objectContaining({ gameId: "game-1", connectionId: "c1" }),
+    );
+    // Both rounds ran: the first refusal did not cancel the retry a pub/sub
+    // transport depends on.
+    expect(net.order.filter((entry) => entry === "drop-failed")).toHaveLength(
+      2,
+    );
+    expect(net.dropped).toEqual(["c2", "c2"]);
+  });
+
+  it("retries the end announcement after a failed attempt", async () => {
+    // The repeat exists for a delivery that did not land; a throw out of
+    // the first attempt used to take the second one with it.
+    const endAttempts: GameStage[] = [];
+    let gameOver = false;
+    const { net, promise } = fullRun({
+      pollMessages: scriptedPoll<GameMessage>([
+        [{ type: "enter", connectionId: "c1", memberId: "m1" }],
+        [{ type: "enter", connectionId: "c2", memberId: "m2" }],
+        [{ type: "move", connectionId: "c1", x: 1 }],
+      ]),
+      isGameOver: () => gameOver,
+      processMessage: () => {
+        gameOver = true;
+        return Promise.resolve();
+      },
+      endRepeatCount: 2,
+      endRepeatIntervalMillis: 200,
+      onStageChanged: ({ stage }) => {
+        if (stage !== GameStage.End) {
+          return Promise.resolve();
+        }
+        endAttempts.push(stage);
+        return endAttempts.length === 1
+          ? Promise.reject(new Error("subscriber gap"))
+          : Promise.resolve();
+      },
+    });
+
+    await vi.advanceTimersByTimeAsync(3000);
+    await promise;
+
+    // The first end announcement threw; the second still happened.
+    expect(endAttempts).toHaveLength(2);
+    expect([...net.dropped].sort()).toEqual(["c1", "c1", "c2", "c2"]);
   });
 
   it("routes entrances through a custom hook for resynchronization", async () => {

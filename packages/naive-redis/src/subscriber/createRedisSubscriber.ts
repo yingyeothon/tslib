@@ -17,7 +17,12 @@ export interface RedisSubscriberOptions {
   /** ACL user name; sent as `AUTH <username> <password>` when set. */
   username?: string;
   password?: string;
-  /** Timeout for the `AUTH` exchange. Default: 1000. */
+  /**
+   * Budget for the `AUTH` exchange and for a subscribe/unsubscribe
+   * confirmation. Default 5000, matching `createRedisConnection`: this
+   * `AUTH` is the first command on a fresh socket, so it also pays for the
+   * TCP and TLS handshake, and 1000 could not cover a cold container.
+   */
   timeoutMillis?: number;
   /** Passed through to the underlying socket. */
   connectionRetryInterval?: number;
@@ -65,7 +70,7 @@ export function createRedisSubscriber({
   port = 6379,
   username,
   password,
-  timeoutMillis = 1000,
+  timeoutMillis = 5000,
   connectionRetryInterval,
   tls,
   logger = nullLogger,

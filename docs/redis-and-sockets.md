@@ -17,7 +17,7 @@ const connection = createRedisConnection({
   host: process.env.REDIS_HOST!,
   port: 6379,
   password: process.env.REDIS_PASSWORD,
-  timeoutMillis: 1000,
+  timeoutMillis: 5000,
 });
 
 await redisSet(connection, "greeting", "hello", { expirationMillis: 60_000 });
@@ -61,6 +61,47 @@ restart then failed with `writeAfterFIN` from a start-event save.
 
 `disconnect(reason?)` passes the cause to the pending requests. A bare
 `DeadSocket` hides why the caller's command died.
+
+## What `timeoutMillis` measures
+
+`createRedisConnection`'s and `createRedisSubscriber`'s `timeoutMillis` (default
+5000 — `NaiveSocket.send` itself defaults to `0`, meaning no timeout) is a
+deadline for the **answer**, not for the wait: the clock restarts the moment a
+request is first written, so one queued behind a reconnect, a TLS handshake, or
+the automatic `AUTH` still gets its full budget once it reaches the wire. Until
+then the same value bounds the wait, and it is restarted only once, so a peer
+that keeps flapping still ends in a timeout instead of an open-ended wait.
+
+That distinction is not cosmetic. `AUTH` is `urgent`, so on every reconnect it is
+put **in front** of whatever the caller was already sending, and it is budgeted
+separately (`authTimeoutMillis`, default `max(timeoutMillis, 5000)`) because it
+also pays for the handshake. A command whose own clock ran through that handshake
+was being rejected for someone else's latency — and inside a game loop a single
+rejection ends the run, because `runGameAllTogether` catches it as
+`reason: "error"`. The old 1000 ms default made that the expected outcome of an
+ordinary cold start; a budget that only starts on the wire, and starts at 5000,
+makes a timeout mean what it says.
+
+Two limits are worth stating plainly. The restart happens **once**, so the
+worst case is _twice_ `timeoutMillis` — a request written just before its
+queue-time timer would have fired gets a second full budget. Size a lock lease
+against that number, not against the nominal one. And the restart only helps
+when the wait ahead is _shorter_ than the budget: whatever is queued in front —
+a handshake, or simply a slower command already on the wire — still rejects
+this one **unwritten** if it outlasts `timeoutMillis`, on a perfectly healthy
+socket. Budget for the queue ahead, not only for the round trip. At the
+defaults the handshake and the command are budgeted alike (`authTimeoutMillis`
+is `max(timeoutMillis, 5000)`),
+which is deliberate — a store that needs more than five seconds to accept a
+connection is not one a game loop can run against. Lower `authTimeoutMillis`
+explicitly if you want the command to outlive its own handshake.
+
+Pick the value as a "the server is gone" threshold rather than a "the server is
+busy" one. A round trip here can carry a whole actor queue back (`LRANGE key 0
+-1`), which is not a one-millisecond operation on a store under load.
+
+`createRedisSubscriber` owns a second socket and its own `timeoutMillis`, which
+defaults to 5000 for the same reason.
 
 ## Sending a command
 

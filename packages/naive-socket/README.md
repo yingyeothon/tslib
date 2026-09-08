@@ -129,7 +129,7 @@ set `rejectUnauthorized: false` outside tests: it turns TLS into obfuscation.
 - `createNaiveSocket(options)` — create a `NaiveSocket` client
 - `NaiveSocket` — the client; `send(request)` returns `Promise<string>`, `disconnect(reason?)` rejects all pending requests with `reason` (default `Error("DeadSocket")`); the next `send` reconnects (type)
 - `NaiveSocketOptions` — `{ host, port, connectionRetryInterval?, logger?, onConnectionStateChanged?, onUnsolicitedData?, tls? }`; `logger` is a `Logger` from `@yingyeothon/logger` and defaults to `nullLogger`, and `tls` is unset (cleartext) by default (type)
-- `SendRequest` — `{ message, fulfill?, timeoutMillis?, urgent?, expectResponse? }` (type)
+- `SendRequest` — `{ message, fulfill?, timeoutMillis?, urgent?, expectResponse? }` (type). `timeoutMillis` is a deadline for the **answer**: the clock restarts when the request is first written, so one that waited behind a reconnect, a TLS handshake, or the requests ahead of it gets the full budget on the wire — the worst case is therefore **twice** the value. The same value still bounds the wait before that write, so a request whose turn has not come when its first timer fires is rejected without ever being written, on a healthy socket; budget for the queue ahead, not only for the round trip
 - `Fulfill` — `((buffer: string) => number) | RegExp | number` (type)
 - `UnsolicitedDataConsumer` — `(buffer: string) => number`, the `onUnsolicitedData` callback (type)
 - `TlsOptions` — `tls.connect` options minus `host`/`port`, the object form of `options.tls` (type)
@@ -145,4 +145,9 @@ set `rejectUnauthorized: false` outside tests: it turns TLS into obfuscation.
 - All exports are named now: `import NaiveSocket from "naive-socket"` becomes `import { createNaiveSocket } from "@yingyeothon/naive-socket"`, and `import TextMatch, { withMatch } from "naive-socket/lib/match"` becomes `import { createTextMatch, withMatch } from "@yingyeothon/naive-socket"` — deep imports are no longer supported.
 - The exported classes are gone: `new NaiveSocket(options)` becomes `createNaiveSocket(options)` and `new TextMatch(buffer)` becomes `createTextMatch(buffer)`; `NaiveSocket` and `TextMatch` remain as interface types.
 - The package-local `Logger` interface was removed; pass a `Logger` from `@yingyeothon/logger` as `options.logger`. The default is `nullLogger` (silent) — the old behavior of logging warnings/errors to the console and info logs when the `DEBUG` environment variable was set is gone.
-- The package ships dual ESM/CJS with bundled types; runtime behavior of `send`, `disconnect`, fulfill strategies, timeouts, urgent ordering, and auto-reconnect is unchanged.
+- The package ships dual ESM/CJS with bundled types; runtime behavior of `send`, `disconnect`, fulfill strategies and auto-reconnect is unchanged. Timeouts and urgent ordering are not — see below.
+
+## Behavior changes
+
+- **A request's `timeoutMillis` restarts when the request is first written**, so it measures the answer rather than the wait in front of it. A command queued behind a reconnect and its handshake used to spend its whole budget before a byte of it left the process. The clock is restarted once, so the worst case is twice the value, and the queue-time arm still rejects a request whose turn never comes.
+- **An `urgent` request no longer jumps in front of a request already on the wire.** It goes ahead of everything still queued, as before. `onData` attributes an incoming reply to the head of the queue, so displacing a written head handed it that head's reply and left the head waiting for an answer already consumed — reached in practice by a lock heartbeat firing from a timer while a command was in flight.

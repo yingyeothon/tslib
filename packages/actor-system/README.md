@@ -160,6 +160,13 @@ lock store is neither — the next beat tries again.
   custom `QueueProducer` implementation must be updated.
 - **The lock is held across drain cycles** and `shift` happens after the
   release — see Lock ownership above.
+- **A failed `lock.release` no longer fails `eventLoop`.** It is retried once
+  and then reported at `error` ("cannot release lock"), because a throw from
+  the `finally` replaced a finished run's outcome — or the throw that ended
+  it — with a store error. The retry is there because a lock configured
+  without an expiry has no fallback: a release that is simply dropped leaves
+  the actor id unstartable. `eventLoop` still resolves `true`, which has
+  always meant "this invocation ran the actor".
 
 ## Migrating from the legacy package
 

@@ -78,7 +78,23 @@ export interface SendRequest {
   /** How to detect the end of the response. Default: consume everything received. */
   fulfill?: Fulfill;
 
-  /** Milliseconds until this request is rejected with a timeout error. `0` disables. */
+  /**
+   * Milliseconds until this request is rejected with a timeout error. `0`
+   * disables it.
+   *
+   * It is a deadline for the *answer*: the clock restarts when the request
+   * is first written, so a request that waited behind a reconnect, a TLS
+   * handshake, or the requests queued ahead of it gets the full budget once
+   * it reaches the wire — which makes the worst case **twice** this value.
+   * Size a lease or a retry schedule against that number.
+   *
+   * The same value also bounds the wait *before* the write, so it is not
+   * only a bound on a socket that never connects: a request still queued
+   * when its first timer fires is rejected without ever being written, on a
+   * healthy socket, if the requests ahead of it took longer than the budget.
+   * Give a request that may queue behind a slow handshake or a deep pipeline
+   * a budget covering both.
+   */
   timeoutMillis?: number;
 
   /** Put this request at the front of the queue instead of the back. */
@@ -122,6 +138,11 @@ interface SendWork {
   written: boolean;
   /** Set once a write failed before any byte left and the work was requeued. */
   resent: boolean;
+  /**
+   * Set once the timeout has been restarted at write time, so it happens
+   * exactly once per work — see {@link NaiveSocketImpl.armTimeout}.
+   */
+  deadlineStarted: boolean;
 }
 
 const noListener = (): void => undefined;
@@ -166,7 +187,13 @@ class NaiveSocketImpl implements NaiveSocket {
     this.alive = true;
     const newWork = this.buildSendWork(request);
     if (request.urgent) {
-      this.sendWorks.unshift(newWork);
+      // In front of everything still queued, but never in front of a work
+      // already on the wire: `onData` resolves `sendWorks[0]`, so displacing
+      // a written head hands that head's reply to this request and leaves
+      // the head waiting for an answer that has already been consumed.
+      // (`AUTH` is unshifted from `onConnect`, where nothing is written yet.)
+      const at = this.sendWorks[0]?.written === true ? 1 : 0;
+      this.sendWorks.splice(at, 0, newWork);
     } else {
       this.sendWorks.push(newWork);
     }
@@ -200,13 +227,43 @@ class NaiveSocketImpl implements NaiveSocket {
       timer: null,
       written: false,
       resent: false,
+      deadlineStarted: false,
     };
-    if (timeoutMillis > 0) {
-      newWork.timer = setTimeout(() => {
-        newWork.dPromise.reject(new Error(`Timeout ${timeoutMillis}millis`));
-      }, timeoutMillis);
-    }
+    this.armTimeout(newWork);
     return newWork;
+  };
+
+  /**
+   * (Re)starts a work's timeout.
+   *
+   * It is armed twice: once when the request is queued, and once — and only
+   * once — when the request is first written. `timeoutMillis` is a deadline
+   * for the *answer*, so a request queued behind a reconnect and the `AUTH`
+   * that follows it must not spend that budget before a byte of it has left
+   * the process; that is exactly how one cold round trip used to reject a
+   * command that the server would have answered in a millisecond.
+   *
+   * The queue-time arm is what still bounds the wait before the write — a
+   * socket that never connects, but equally a pipeline whose head is slower
+   * than this request's budget. It is a bound, not a reprieve: a request can
+   * still be rejected unwritten.
+   *
+   * Restarting only on the first write is what keeps the total bounded: a
+   * socket that keeps flapping rewrites the work on every reconnect, and
+   * re-arming each time would let a request outlive any deadline. The
+   * ceiling is therefore **twice** `timeoutMillis` — a request written just
+   * before its queue-time timer would have fired gets a second full budget.
+   */
+  private armTimeout = (work: SendWork) => {
+    if (work.timeoutMillis <= 0) {
+      return;
+    }
+    if (work.timer !== null) {
+      clearTimeout(work.timer);
+    }
+    work.timer = setTimeout(() => {
+      work.dPromise.reject(new Error(`Timeout ${work.timeoutMillis}millis`));
+    }, work.timeoutMillis);
   };
 
   private changeConnectionState = (newConnectionState: ConnectionState) => {
@@ -474,6 +531,10 @@ class NaiveSocketImpl implements NaiveSocket {
       return;
     }
     firstWork.written = true;
+    if (!firstWork.deadlineStarted) {
+      firstWork.deadlineStarted = true;
+      this.armTimeout(firstWork);
+    }
     this.socket.write(firstWork.message, (error?: Error | null) => {
       if (error) {
         if (

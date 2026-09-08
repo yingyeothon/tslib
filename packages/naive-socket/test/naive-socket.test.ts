@@ -231,6 +231,134 @@ describe("NaiveSocket", () => {
     ).rejects.toThrow(/Timeout/);
   });
 
+  it("does not let an urgent send displace a request already on the wire", async () => {
+    // `onData` resolves the head, so an urgent request unshifted in front of
+    // a written one is handed that one's reply — and its own message never
+    // leaves. The lock heartbeat sends `urgent` from a timer, so this is how
+    // a lease gets confirmed by an unrelated command's answer.
+    const server = await startServer((message, client) => {
+      const slow = message.startsWith("slow");
+      setTimeout(
+        () => client.write(slow ? "slow-ok|" : "urgent-ok|"),
+        slow ? 120 : 5,
+      );
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port);
+
+    const slow = ns.send({
+      message: "slow|",
+      fulfill: "slow-ok|".length,
+      timeoutMillis: 2000,
+    });
+    // Wait for the request to actually reach the server rather than sleeping
+    // a guessed interval: a sleep that landed after the reply would make the
+    // test pass while no longer testing the race at all.
+    while (server.messages.length === 0) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    const urgent = ns.send({
+      message: "urgent|",
+      fulfill: "urgent-ok|".length,
+      urgent: true,
+      timeoutMillis: 2000,
+    });
+
+    expect(await slow).toBe("slow-ok|");
+    expect(await urgent).toBe("urgent-ok|");
+    expect(server.messages).toEqual(["slow|", "urgent|"]);
+  });
+
+  it("still puts an urgent send in front of everything unwritten", async () => {
+    // The queue-time case must keep working: that is the edge `AUTH` uses.
+    const server = await echoServer();
+    const ns = newSocket(server.port);
+    const first = ns.send({ message: "first|", fulfill: "first|".length });
+    const urgent = ns.send({
+      message: "urgent|",
+      fulfill: "urgent|".length,
+      urgent: true,
+    });
+    expect(await urgent).toBe("urgent|");
+    expect(await first).toBe("first|");
+    expect(server.messages).toEqual(["urgent|", "first|"]);
+  });
+
+  it("does not spend a request's budget on the handshake ahead of it", async () => {
+    // The shape of a Redis reconnect: a user command is queued first, and
+    // the automatic `AUTH` is put in front of it the moment the socket
+    // connects. Here the handshake takes 100ms and the command itself is
+    // answered 100ms after it reaches the wire — 200ms in total, against a
+    // 150ms budget that only ever meant "how long may the server take to
+    // answer *this* command".
+    const server = await startServer((message, client) => {
+      const reply = message.startsWith("handshake")
+        ? "handshake-ok|"
+        : "command-ok|";
+      setTimeout(() => client.write(reply), 100);
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port);
+
+    const command = ns.send({
+      message: "command|",
+      fulfill: "command-ok|".length,
+      timeoutMillis: 150,
+    });
+    const handshake = ns.send({
+      message: "handshake|",
+      fulfill: "handshake-ok|".length,
+      urgent: true,
+      timeoutMillis: 5000,
+    });
+    expect(await handshake).toBe("handshake-ok|");
+    expect(await command).toBe("command-ok|");
+    // One connection, handshake first: the command really did wait behind it.
+    expect(server.messages).toEqual(["handshake|", "command|"]);
+    expect(server.clients).toHaveLength(1);
+  });
+
+  it("still rejects a request whose turn never comes in time", async () => {
+    // The restart is not a reprieve. The queue-time timer bounds the wait
+    // before the write on a perfectly healthy socket too, so a request
+    // behind a pipeline slower than its own budget is rejected unwritten —
+    // budget for the queue ahead, not only for the round trip.
+    const server = await startServer((_message, client) => {
+      setTimeout(() => client.write("ok|"), 100);
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port);
+
+    const results = await Promise.allSettled(
+      [0, 1, 2].map(() =>
+        ns.send({ message: "q|", fulfill: "ok|".length, timeoutMillis: 150 }),
+      ),
+    );
+    expect(results.map((result) => result.status)).toEqual([
+      "fulfilled",
+      "fulfilled",
+      "rejected",
+    ]);
+    // Two answered, and the third never left the process.
+    expect(server.messages).toEqual(["q|", "q|"]);
+  });
+
+  it("does not restart the budget again on every reconnect", async () => {
+    // A peer that swallows the request and drops the connection, forever.
+    // The work is rewritten on each reconnect; re-arming its timer there
+    // would let it outlive every deadline instead of rejecting.
+    const server = await startServer((_message, client) => {
+      client.destroy();
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, { connectionRetryInterval: 10 });
+
+    await expect(
+      ns.send({ message: "swallowed|", timeoutMillis: 80 }),
+    ).rejects.toThrow(/Timeout 80millis/);
+    expect(server.clients.length).toBeGreaterThan(1);
+  });
+
   it("drops timed-out works and serves the next request", async () => {
     const port = await findFreePort();
     const ns = newSocket(port, { connectionRetryInterval: 20 });

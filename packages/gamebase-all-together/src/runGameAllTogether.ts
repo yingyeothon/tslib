@@ -163,14 +163,29 @@ export async function runGameAllTogether<M extends GameMessageBase>({
     });
   }
 
+  // Everything below this point delivers an outcome that is already
+  // decided, so none of it may throw: a broadcast or a drop that failed
+  // would otherwise turn a finished run into a failed invocation, and would
+  // skip the steps after it — including the repeats that exist precisely to
+  // cover a delivery that did not land the first time.
+  const quietly = async (
+    what: string,
+    work: () => Promise<unknown>,
+    detail: Record<string, unknown> = {},
+  ): Promise<void> => {
+    try {
+      await work();
+    } catch (error) {
+      logger.error(what, { gameId, ...detail, error });
+    }
+  };
+
   // The game speaks first: connections are still open here, so a result
   // payload can still reach the clients.
   if (onGameEnd) {
-    try {
-      await onGameEnd({ context, reason, network });
-    } catch (error) {
-      logger.error("Cannot report the game result", { gameId, error });
-    }
+    await quietly("Cannot report the game result", () =>
+      onGameEnd({ context, reason, network }),
+    );
   }
 
   const announce = createStageAnnouncer({
@@ -185,12 +200,14 @@ export async function runGameAllTogether<M extends GameMessageBase>({
   // repeat exists to cover.
   const repeats = Math.max(1, Math.floor(endRepeatCount));
   await repeatWithInterval(repeats, endRepeatIntervalMillis, () =>
-    announce({
-      context,
-      age: gameRunningSeconds,
-      stage: GameStage.End,
-      network,
-    }),
+    quietly("Cannot announce the end stage", () =>
+      announce({
+        context,
+        age: gameRunningSeconds,
+        stage: GameStage.End,
+        network,
+      }),
+    ),
   );
   if (endDropDelayMillis > 0) {
     await sleep(endDropDelayMillis);
@@ -200,9 +217,17 @@ export async function runGameAllTogether<M extends GameMessageBase>({
   // existed.
   const endingConnections = Object.keys(context.connectedUsers);
   await repeatWithInterval(repeats, endRepeatIntervalMillis, () =>
+    // Per connection: `Promise.all` has already started every drop before it
+    // sees a rejection, so this is not about reaching the other sockets. It
+    // is about naming the one that refused, and about not letting it cancel
+    // the rounds still to come.
     Promise.all(
       endingConnections.map((connectionId) =>
-        dropConnection(connectionId, network),
+        quietly(
+          "Cannot drop a connection",
+          () => dropConnection(connectionId, network),
+          { connectionId },
+        ),
       ),
     ),
   );

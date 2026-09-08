@@ -214,6 +214,36 @@ are on an old version.
 
 [Redis and sockets § When authentication fails](redis-and-sockets.md#when-authentication-fails)
 
+## A run ends with `reason: "error"` right after a cold start
+
+**One Redis round trip was rejected for the handshake in front of it.** On a
+reconnect the automatic `AUTH` is written before the command that triggered it,
+and a command budget that ran through that handshake expired on latency that was
+never its own. `runGameAllTogether` catches anything out of the game loop as
+`reason: "error"`, so one rejection ends the run.
+
+This one is **fixed**: `timeoutMillis` now starts when a request reaches the wire
+and defaults to 5000 rather than 1000. If you still see it, either you are on an
+old version, or the handshake itself is taking longer than `timeoutMillis` — the
+restart cannot help a command whose queue-time budget expires before it is
+written. Lower `authTimeoutMillis` or raise `timeoutMillis`.
+[Redis and sockets § What `timeoutMillis` measures](redis-and-sockets.md#what-timeoutmillis-measures)
+
+## The game finished, and the invocation is reported as failed
+
+**Something after the game threw.** The lock release, the start-event delete, the
+end-stage announcement and the disconnects all run after the outcome is already
+decided, and any of them can fail on a slow store or a gone connection.
+
+This one is **fixed**: every one of those steps logs and continues, so look for
+`"cannot release lock"`, `"cannot clear the actor start event"`,
+`"Cannot announce the end stage"` or `"Cannot drop a connection"` instead of an
+`Invoke Error`. The game itself cannot fail the invocation either: a throw out of
+the loop becomes `reason: "error"`, and `startActorLoop` logs whatever `gameMain`
+threw as `"unexpected error from game"`. A failed invocation points at something
+outside the game — the start event, the lock, the readiness handshake.
+[Operations § Nothing after the game may fail it](operations.md#nothing-after-the-game-may-fail-it)
+
 ## Still stuck
 
 Read the page that owns the area — the guide [index](README.md) routes by task —
