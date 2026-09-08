@@ -13,6 +13,8 @@ describe("classifyClose", () => {
     [4003, "q", "clientBug"],
     [4004, "lobby", "stop"],
     [4004, "q", "stop"],
+    [4005, "lobby", "reconnect"],
+    [4005, "q", "reconnect"],
     [1000, "lobby", "stop"],
     [1000, "q", "finished"],
     [1001, "lobby", "reconnect"],
@@ -40,6 +42,17 @@ describe("classifyClose", () => {
       idle: 4002,
       policy: 4003,
       channelGone: 4004,
+      tooSlow: 4005,
     });
+  });
+
+  it("names why a 4005 reconnects", () => {
+    // The disposition alone would be indistinguishable from a network blip,
+    // and the two need different answers: this one says the client is not
+    // reading fast enough.
+    const disposition = classifyClose(GatewayCloseCode.tooSlow, "lobby");
+    expect(disposition.kind).toBe("reconnect");
+    expect(disposition.reason).toContain("too slow");
+    expect(disposition.reason).not.toContain("connection lost");
   });
 });

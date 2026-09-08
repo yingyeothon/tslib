@@ -75,16 +75,21 @@ const { createGatewayLobbyClient } = require("@yingyeothon/gamebase-client");
 | `4002` idle            | reconnect              | reconnect                       |
 | `4003` policy          | `stopped` (client bug) | `stopped` (client bug)          |
 | `4004` channel gone    | `stopped`              | `stopped`                       |
+| `4005` too slow        | reconnect              | reconnect                       |
 | `1000` normal          | `stopped`              | `finished`                      |
 | `1001` gateway restart | reconnect              | reconnect                       |
 | `1003` / `1009`        | `stopped` (client bug) | `stopped` (client bug)          |
 | `1011` enter failed    | reconnect              | reconnect                       |
 | anything else          | reconnect              | reconnect                       |
 
+`4005` means the gateway's outbound queue filled with frames it may not drop, so it closed the socket rather than lose one silently. The peer map is stale from that point, and reconnecting is the remedy: the fresh `snapshot` replaces it wholesale.
+
 Reconnects use exponential backoff (500 ms, ×2, cap 15 s, ±20 % jitter) until `backoff.maxAttempts` is exhausted, which ends in `stopped`. A browser cannot see why a handshake was refused (401/403/404/410 all surface as a close before open), so `maxHandshakeFailures` consecutive closes-before-open (default 5) also end in `stopped` instead of retrying a dead token forever; the counter resets on every successful open. `disconnected` fires before every reconnect or stop with `willReconnect` set. On the lobby, `connected` fires again with the new `hello` and the peer map is empty until the game re-sends `pos` and the gateway answers with a `snapshot`; a `party` frame that follows `hello` after a gateway restart updates `partyId` and `roster`. On `q`, a reconnect is a fresh `enter` and the game is expected to reply with a snapshot.
 
 ## Wire details worth knowing
 
+- `hello.aoi` is the channel's view rule: `maxPeers` always, `range` (the half-width of the area-of-interest box, in tiles) only when the channel defines one. It is optional on the type because a gateway older than the field omits it, and a game that simply renders the peers it is told about needs nothing from it — the cut is already expressed as `enter`/`leave`.
+- `error` `frame_too_large` says a frame addressed to you exceeded the 32 KB outbound cap and was dropped, so there is a gap in what you received.
 - `dir` is the game's own facing token, an opaque **string** of at most 16 bytes (`"n"`, `"left"`, …). The gateway parses `pos` with a string field, so a numeric `dir` makes the whole frame a `bad_message` and the position is dropped; `pos()` throws locally on a longer one. Omit it if the game has no facing.
 - The `party` roster is marshalled with Go `omitempty`: `leaderId`, `invited`, and `max` are missing on the wire when empty (always after leave/dissolve, `invited` whenever nobody is pending). The lobby client fills them in as `""`, `[]`, and `0` (and a missing `members` as `[]`) before the frame reaches `roster`, a `party` handler, or the `frame` event, so `roster.invited.length` needs no guard.
 
@@ -96,13 +101,20 @@ The SDK uses only the WHATWG `WebSocket` and `fetch` globals through its own str
 
 - `createGatewayLobbyClient(options)` — `GatewayLobbyClient`: `connect()` (resolves with `Hello`), `close()`, `state`, `hello`, `capabilities`, `partyId`, `roster`, `peers` (a `PeerMap`), `map()`, senders `pos`, `say`, `event`, `party.create/invite/accept/decline/leave/list`, `ping`, `send`, and `on(type, handler)` for `connected`, `disconnected`, `reconnecting`, `stopped`, `snapshot`, `peerEnter`, `peerLeave`, `peerMove`, `say`, `event`, `party`, `partyInvite`, `partyDeclined`, `pong`, `error`, `protocolError`, `frame`. Senders throw locally when `hello.capabilities` disables them or before `hello`.
 - `createGatewayGameClient(options)` — `GatewayGameClient`: `connect()`, `close()`, `state`, `send(frame)` (refuses the reserved `enter`/`leave` types), and `on` for `connected`, `frame`, `error`, `disconnected`, `reconnecting`, `aborted`, `finished`, `stopped`, `protocolError`.
-- `createPeerMap({ selfUserId })` — the reducer behind `peers`: `apply(frame)`, `get`, `all`, `zone`, `reset`. `snapshot` replaces everything, `pos` updates known peers only and drops self, frames for another zone are ignored.
+- `createPeerMap({ selfUserId, logger? })` — the reducer behind `peers`: `apply(frame)`, `get`, `all`, `zone`, `reset`. `snapshot` replaces everything, `pos` updates known peers only and drops self, frames for another zone are ignored. A `pos` or `leave` naming a peer it never saw enter breaks the gateway's view invariant, so it is ignored for rendering **and** logged at `warn` with the peer id and the zone; the lobby client passes its own `logger` in.
 - `createMapFetcher({ fetch?, logger? })` / `fetchMap(url, options?)` — credential-free GET of an immutable map asset, cached per URL, JSON-parsed with a text fallback.
 - `createBackoff(options)` — `next()` / `reset()` / `attempts`.
-- `classifyClose(code, kind)` — the table above as a function; `GatewayCloseCode` — the `4000`–`4004` constants.
+- `classifyClose(code, kind)` — the table above as a function; `GatewayCloseCode` — the `4000`–`4005` constants.
 - `buildGatewayUrl(url, channelId, gameId?)` — the `?channel=…&gameId=…` form the gateway expects.
 - `reservedGameFrameTypes` — `["enter", "leave"]`.
-- Types: wire — `Hello`, `Capabilities`, `Peer`, `Direction`, `SayScope`, `ErrorFrame`, `GatewayErrorCode`, `LobbyClientFrame` (`PosFrame`, `SayFrame`, `EventFrame`, `PartyCreateFrame`, `PartyInviteRequestFrame`, `PartyAcceptFrame`, `PartyDeclineFrame`, `PartyLeaveFrame`, `PartyListFrame`, `PingFrame`), `LobbyServerFrame` (`SnapshotFrame`, `EnterFrame`, `LeaveFrame`, `PosBroadcastFrame`, `SayBroadcastFrame`, `EventBroadcastFrame`, `PartyFrame`, `PartyMember`, `PartyInviteFrame`, `PartyDeclinedFrame`, `PongFrame`), `GameClientFrame`, `GameServerFrame`; transport — `WebSocketLike`, `WebSocketConstructor`, `WebSocketMessageEventLike`, `WebSocketCloseEventLike`, `FetchLike`, `FetchResponseLike`; events — `EventHandler`, `Unsubscribe`, `GatewayClientState`, `DisconnectedEvent`, `ReconnectingEvent`, `StoppedEvent`, `ProtocolErrorEvent`, `GameEndedEvent`; close codes — `GatewayChannelKind`, `CloseDisposition`, `CloseDispositionKind`; backoff — `Backoff`, `BackoffOptions`; peers — `PeerMap`, `PeerMapOptions`, `PeerMapFrame`, `PeerChange`; map — `MapFetcher`, `MapFetcherOptions`; clients — `GatewayClientBaseOptions`, `GatewayLobbyClientOptions`, `GatewayLobbyClient`, `GatewayLobbyClientEvents`, `PartyCommands`, `GatewayGameClientOptions`, `GatewayGameClient`, `GatewayGameClientEvents`.
+- Types: wire — `Hello`, `Capabilities`, `AreaOfInterest`, `Peer`, `Direction`, `SayScope`, `ErrorFrame`, `GatewayErrorCode`, `LobbyClientFrame` (`PosFrame`, `SayFrame`, `EventFrame`, `PartyCreateFrame`, `PartyInviteRequestFrame`, `PartyAcceptFrame`, `PartyDeclineFrame`, `PartyLeaveFrame`, `PartyListFrame`, `PingFrame`), `LobbyServerFrame` (`SnapshotFrame`, `EnterFrame`, `LeaveFrame`, `PosBroadcastFrame`, `SayBroadcastFrame`, `EventBroadcastFrame`, `PartyFrame`, `PartyMember`, `PartyInviteFrame`, `PartyDeclinedFrame`, `PongFrame`), `GameClientFrame`, `GameServerFrame`; transport — `WebSocketLike`, `WebSocketConstructor`, `WebSocketMessageEventLike`, `WebSocketCloseEventLike`, `FetchLike`, `FetchResponseLike`; events — `EventHandler`, `Unsubscribe`, `GatewayClientState`, `DisconnectedEvent`, `ReconnectingEvent`, `StoppedEvent`, `ProtocolErrorEvent`, `GameEndedEvent`; close codes — `GatewayChannelKind`, `CloseDisposition`, `CloseDispositionKind`; backoff — `Backoff`, `BackoffOptions`; peers — `PeerMap`, `PeerMapOptions`, `PeerMapFrame`, `PeerChange`; map — `MapFetcher`, `MapFetcherOptions`; clients — `GatewayClientBaseOptions`, `GatewayLobbyClientOptions`, `GatewayLobbyClient`, `GatewayLobbyClientEvents`, `PartyCommands`, `GatewayGameClientOptions`, `GatewayGameClient`, `GatewayGameClientEvents`.
+
+## Behavior changes
+
+- **Close code `4005` (too slow) is classified**, as `reconnect`, with `too slow; the outbound queue filled` rather than the generic `connection lost (4005)`. `GatewayCloseCode.tooSlow` is new.
+- **`hello.aoi`** carries the channel's view rule (`maxPeers`, and `range` when the channel has an area-of-interest box). It is optional, so a gateway that does not send it still typechecks.
+- **`frame_too_large`** joined `GatewayErrorCode`. The union was already open, so this only makes the code discoverable.
+- **`createPeerMap` takes an optional `logger`** and warns on a `pos` or `leave` naming a peer it never saw — a violation of the gateway's view invariant that used to be swallowed. The lobby client passes its own logger in, so a client that already sets one starts seeing these lines; only the peer id and the zone are logged.
 
 ## Migrating from the legacy package
 

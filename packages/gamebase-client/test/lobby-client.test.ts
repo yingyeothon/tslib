@@ -506,6 +506,51 @@ describe("createGatewayLobbyClient: peers and frames", () => {
     const { client } = setup();
     await expect(client.map()).rejects.toThrow("needs hello first");
   });
+
+  it("reports a view-invariant violation through the client's logger", async () => {
+    // The peer map is created inside the client, so this is the only place
+    // that proves the caller's logger actually reaches it.
+    const { factory, lines } = await connected();
+    const socket = factory.latest();
+    socket.serverSend({ type: "snapshot", zone: "town", peers: [] });
+    socket.serverSend({ type: "leave", zone: "town", userId: "ghost" });
+    socket.serverSend({
+      type: "pos",
+      zone: "town",
+      peers: [{ userId: "ghost", x: 1, y: 1 }],
+    });
+
+    const text = lines.join("\n");
+    expect(text).toContain("leave for an unknown peer");
+    expect(text).toContain("pos for an unknown peer");
+    expect(text).toContain("ghost");
+    // A positive control for the "never log the token" rule that applies to
+    // every line this client writes.
+    expect(text).toContain("lobby connected");
+    expect(text).not.toContain("secret-token");
+  });
+
+  it("carries hello.aoi through to the caller", async () => {
+    const { client, factory } = setup();
+    const pending = client.connect();
+    factory.latest().serverOpen();
+    factory.latest().serverSend({
+      ...hello,
+      aoi: { range: 10, maxPeers: 64 },
+    });
+    await pending;
+    expect(client.hello?.aoi).toEqual({ range: 10, maxPeers: 64 });
+  });
+
+  it("accepts a hello whose aoi has no range", async () => {
+    // A channel with no area-of-interest box sends `maxPeers` alone.
+    const { client, factory } = setup();
+    const pending = client.connect();
+    factory.latest().serverOpen();
+    factory.latest().serverSend({ ...hello, aoi: { maxPeers: 64 } });
+    await pending;
+    expect(client.hello?.aoi).toEqual({ maxPeers: 64 });
+  });
 });
 
 describe("createGatewayLobbyClient: reconnect policy", () => {

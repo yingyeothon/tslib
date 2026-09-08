@@ -89,7 +89,7 @@ stateDiagram-v2
   Connecting --> Reconnecting: closed before open, the status is invisible
   Reconnecting --> Connecting: 500 ms, doubling, capped at 15 s, plus or minus 20 percent
   Reconnecting --> Stopped: maxHandshakeFailures, default 5
-  Connected --> Reconnecting: 4002 idle, 1001 restart, 1011 enter failed
+  Connected --> Reconnecting: 4002 idle, 4005 too slow, 1001 restart, 1011 enter failed
   Connected --> Finished: 1000 on a q channel
   Connected --> Aborted: 4001, the actor stopped consuming
   Connected --> Stopped: 4000, 4003, 4004, 1003, 1009
@@ -114,6 +114,7 @@ flowchart TD
   K -->|"1001 gateway restart"| RE["reconnect with backoff"]
   K -->|"1011 enter failed"| RE
   K -->|"4002 idle"| RE
+  K -->|"4005 too slow"| RE
   K -->|"4000 replaced"| ST2["stopped: a newer socket of the same user"]
   K -->|"4001 actor abort"| CH2{"channel kind"}
   CH2 -->|"q"| AB["aborted: allocate a NEW gameId"]
@@ -125,9 +126,16 @@ flowchart TD
 ```
 
 `classifyClose(code, kind)` is that tree as a function, and `GatewayCloseCode`
-holds the `4000`–`4004` constants. It answers five dispositions, not three:
+holds the `4000`–`4005` constants. It answers five dispositions, not three:
 `reconnect`, `stop`, `finished`, `aborted`, and **`clientBug`** — which is
 separate from `stop` because it says the frame you sent was the problem.
+
+**`4005` is a resync, not a failure.** The gateway never drops a control
+frame — a client that missed one would hold a wrong peer set for good — so when
+its outbound queue fills with nothing but control frames it closes the socket
+instead. The disposition stays `reconnect`, and the fresh `snapshot` that
+follows is what repairs the peer map. Seeing it repeatedly means the client is
+not reading fast enough.
 
 **This is the distinction the whole client exists to make.** `1000` means the
 game ended and dropped you — show the result. `4001` means the actor stopped
@@ -152,6 +160,20 @@ Four behaviours are deliberate:
 - **Frames for another zone are ignored**, so a late `pos` from the zone you
   left cannot resurrect a peer that already left.
 
+A `pos` or `leave` for the _current_ zone naming a peer the map never saw is a
+different matter: the gateway's view invariant says it cannot happen, so it is
+ignored for rendering **and logged at `warn`** with the peer id and the zone —
+never a frame body. Silence there is how a gateway bug stays a rendering
+oddity nobody can trace. `createPeerMap` takes its own `logger`; the lobby
+client passes the one you gave it.
+
+`hello.aoi` carries the channel's view rule — `maxPeers` always, `range` (the
+half-width of the AOI box) only when the channel defines one. It is optional
+because a gateway older than the field omits it. A game that renders the peers
+it is told about needs nothing from it: the cut is already expressed as
+`enter`/`leave`, and with AOI the view can be asymmetric, so B may see A while
+A's box is full.
+
 Senders throw locally when `hello.capabilities` disables them, or before `hello`
 has arrived. That is on purpose: a sender that silently did nothing would look
 like a server problem.
@@ -168,6 +190,10 @@ rather than by review.
   locally on one that is too long. Omit it if your game has no facing.
 - **A `pos` frame carries its own `zone`**, not only a zone per peer. Frames for
   another zone are ignored, so one without it never reaches the peer map.
+
+An `error` frame with `code: "frame_too_large"` is the gateway telling you a
+frame addressed to you exceeded the 32 KB outbound cap and was dropped, so
+there is a gap in what you received rather than silence.
 
 The party roster is marshalled with Go's `omitempty`, so `leaderId`, `invited`
 and `max` are simply absent on the wire when empty. The client fills them in as

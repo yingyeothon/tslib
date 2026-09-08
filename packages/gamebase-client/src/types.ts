@@ -15,6 +15,18 @@ export interface Capabilities {
   debug?: boolean;
 }
 
+/**
+ * The channel's view rule, forwarded verbatim in `hello`. `maxPeers` is
+ * always present; `range` only when the channel defines an area-of-interest
+ * box, so a channel without one sends `{ maxPeers }` alone.
+ */
+export interface AreaOfInterest {
+  /** Half-width of the AOI box in tiles. Absent means the whole zone. */
+  range?: number;
+  /** Hard cap on peers in view; beyond it the gateway sends a `leave`. */
+  maxPeers: number;
+}
+
 /** First frame on a lobby channel; nothing is "connected" before it. */
 export interface Hello {
   type: "hello";
@@ -28,6 +40,12 @@ export interface Hello {
   zone: string;
   /** Present when the gateway already knows this player's party. */
   partyId?: string;
+  /**
+   * The view rule this channel applies. Optional because a gateway older
+   * than the field simply does not send it; a client that renders every
+   * peer it is told about needs nothing from it.
+   */
+  aoi?: AreaOfInterest;
   capabilities: Capabilities;
 }
 
@@ -62,6 +80,8 @@ export type GatewayErrorCode =
   | "rate_limited"
   | "reserved_type"
   | "unavailable"
+  /** A frame meant for you exceeded the 32 KB outbound cap and was dropped. */
+  | "frame_too_large"
   | (string & {});
 
 export interface ErrorFrame {

@@ -232,6 +232,14 @@ consequences of those rules.
 - When checking a wire type, open `gateway/internal/lobby/protocol.go` in the
   service repo, not only its README. A smoke that never sends the optional
   field (`dir`) does not catch a type mismatch; the test that sends it does.
+- The gateway's **view invariant** — a zone frame naming a peer arrives after
+  the `snapshot`/`enter` that introduced it and before the `leave` that removed
+  it — makes an unknown peer in a `pos`/`leave` a _gateway_ bug. `createPeerMap`
+  ignores it for rendering and logs it at `warn` with the peer id and the zone.
+  Silence there is how a server bug stays a rendering oddity nobody can trace.
+- A field the gateway added later (`hello.aoi`) is optional on the SDK type,
+  because a client may talk to an older gateway. Optional here means "may be
+  absent from the wire", not "unimportant".
 
 ## An error type without an exported class
 

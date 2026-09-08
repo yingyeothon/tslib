@@ -174,7 +174,7 @@ export function createGatewayLobbyClient(
   let hello: Hello | undefined;
   let partyId: string | undefined;
   let roster: PartyFrame | undefined;
-  let peers: PeerMap = createPeerMap({ selfUserId: "" });
+  let peers: PeerMap = createPeerMap({ selfUserId: "", logger });
 
   function requireCapability(name: "pos" | "party" | "event"): void {
     if (hello?.capabilities[name] === false) {
@@ -220,7 +220,7 @@ export function createGatewayLobbyClient(
     // A roster from before the outage may be stale; the gateway re-sends
     // `party` after `hello` whenever it still knows the party.
     roster = undefined;
-    peers = createPeerMap({ selfUserId: frame.userId });
+    peers = createPeerMap({ selfUserId: frame.userId, logger });
     logger.info("lobby connected", {
       channelId: options.channelId,
       userId: frame.userId,

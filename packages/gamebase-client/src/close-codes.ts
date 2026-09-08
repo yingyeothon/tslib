@@ -1,6 +1,6 @@
 export type GatewayChannelKind = "lobby" | "q";
 
-/** Application close codes the gateway uses (4000-4004). */
+/** Application close codes the gateway uses (4000-4005). */
 export const GatewayCloseCode = {
   /** A newer socket of the same user replaced this one. Do not reconnect. */
   replaced: 4000,
@@ -12,6 +12,12 @@ export const GatewayCloseCode = {
   policy: 4003,
   /** The channel expired or was disabled. */
   channelGone: 4004,
+  /**
+   * Too slow: the outbound queue filled with frames the gateway may not
+   * drop, so it closed the socket instead of silently losing one. The peer
+   * map is stale from here on; reconnecting is what resyncs it.
+   */
+  tooSlow: 4005,
 } as const;
 
 export type CloseDispositionKind =
@@ -44,6 +50,13 @@ export function classifyClose(
       return { kind: "clientBug", reason: "too many refused messages" };
     case GatewayCloseCode.channelGone:
       return { kind: "stop", reason: "channel expired or disabled" };
+    case GatewayCloseCode.tooSlow:
+      // Reconnecting is the whole remedy — the fresh `snapshot` replaces a
+      // peer map that has been missing control frames.
+      return {
+        kind: "reconnect",
+        reason: "too slow; the outbound queue filled",
+      };
     case 1000:
       return kind === "q"
         ? { kind: "finished", reason: "the game dropped the connection" }

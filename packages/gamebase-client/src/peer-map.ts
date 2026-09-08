@@ -1,3 +1,4 @@
+import { nullLogger, type Logger } from "@yingyeothon/logger";
 import type {
   EnterFrame,
   LeaveFrame,
@@ -18,6 +19,12 @@ export type PeerChange =
 export interface PeerMapOptions {
   /** The receiver's own userId; its entry in `pos` broadcasts is dropped. */
   selfUserId: string;
+  /**
+   * Reports view-invariant violations at `warn`. A `pos` or `leave` for a
+   * peer this map never saw enter is a gateway bug, not a client one, and
+   * silence is what let it stay unnoticed. Defaults to `nullLogger`.
+   */
+  logger?: Logger;
 }
 
 export interface PeerMap {
@@ -35,9 +42,13 @@ export interface PeerMap {
  * set of peers visible in the current zone. A `snapshot` replaces everything
  * (that is how a zone change starts); frames for any other zone are ignored so
  * a late `pos` from the old zone cannot resurrect a peer that already left.
+ *
+ * A frame for the current zone naming a peer this map never saw is a
+ * different thing: the gateway's view invariant says it cannot happen, so it
+ * is ignored for rendering **and** logged through `options.logger`.
  */
 export function createPeerMap(options: PeerMapOptions): PeerMap {
-  const { selfUserId } = options;
+  const { selfUserId, logger = nullLogger } = options;
   const peers = new Map<string, Peer>();
   let zone: string | undefined;
 
@@ -79,6 +90,12 @@ export function createPeerMap(options: PeerMapOptions): PeerMap {
         }
         case "leave": {
           if (!peers.delete(frame.userId)) {
+            // Ignore it for rendering, but say so: the gateway promises a
+            // `leave` only for a peer it introduced first.
+            logger.warn("leave for an unknown peer", {
+              userId: frame.userId,
+              zone: frame.zone,
+            });
             return undefined;
           }
           return { kind: "leave", userId: frame.userId };
@@ -91,6 +108,10 @@ export function createPeerMap(options: PeerMapOptions): PeerMap {
             }
             const existing = peers.get(update.userId);
             if (existing === undefined) {
+              logger.warn("pos for an unknown peer", {
+                userId: update.userId,
+                zone: frame.zone,
+              });
               continue;
             }
             existing.x = update.x;
