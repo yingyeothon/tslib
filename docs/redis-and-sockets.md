@@ -160,6 +160,28 @@ Before this, a Redis restart left every warm Lambda container answering
 **`AUTH` itself is excluded from that recovery path.** Including it would make a
 wrong password reconnect recursively.
 
+**A subscriber recovers the same way, but it has to drive the reconnect
+itself.** Its `AUTH` runs from the connect transition rather than from a
+command, so there is no caller waiting to retry: `disconnect` would leave it
+connected to nothing forever, and keeping the poisoned socket would leave it
+answering `-NOAUTH` forever. It calls `NaiveSocket.reset` instead — drop this
+connection, keep reconnecting — and rejects every pending confirmation with the
+real cause, so a `subscribe()` in flight reports the refusal rather than waiting
+out its timeout. That rejection means "not subscribed **yet**": the channel
+stays in the replay set and goes out as soon as a connection authenticates, so
+`onReconnected({ restored })` is where you learn it landed. A credential that
+stays wrong retries on `connectionRetryInterval` indefinitely, logging each
+attempt; `disconnect()` stops it, and a negative interval disables the loop
+along with every other reconnect. Going silent is the worse failure for a
+subscriber, which is the whole reason the loop exists.
+
+An outcome that arrives after its socket is gone is discarded. A pending write
+survives a reconnect and is re-sent on the next connection, so a `restore` can
+finish long after the socket it ran on: acting on it would reject the current
+connection's waiters and reset a healthy socket. The subscriber counts
+connections and drops any restore that is no longer the current one — the same
+guard `createRedisConnection` puts on a late `AUTH`.
+
 ## Pub/sub
 
 Subscribing needs its own connection, because the server pushes messages with no

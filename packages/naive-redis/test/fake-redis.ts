@@ -11,6 +11,8 @@ export interface FakeRedis {
   port: number;
   readonly connections: number;
   received: string[];
+  /** The nth accepted socket (1-based), for pushing a frame at a test. */
+  clientAt: (connection: number) => Socket | undefined;
   /** Destroys every accepted socket, like a server restart would. */
   dropClients: () => Promise<void>;
   close: () => Promise<void>;
@@ -52,6 +54,7 @@ export function startFakeRedis(reply: Reply): Promise<FakeRedis> {
         return clients.length;
       },
       received,
+      clientAt: (connection) => clients[connection - 1],
       dropClients: () =>
         new Promise((done) => {
           for (const client of clients) {

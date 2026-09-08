@@ -90,6 +90,7 @@ function fakeRedis(): FakeRedis {
       }
     },
     disconnect: (): void => undefined,
+    reset: (): void => undefined,
   };
   fake.connection = {
     socket: socket,

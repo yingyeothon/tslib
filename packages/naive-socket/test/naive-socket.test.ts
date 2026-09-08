@@ -444,6 +444,118 @@ describe("NaiveSocket", () => {
     expect(server.clients).toHaveLength(2);
   });
 
+  it("reset reconnects on its own for a push consumer", async () => {
+    // A subscriber has no pending request to drive the next connect, so a
+    // socket it resets has to come back by itself — that is the whole
+    // difference from `disconnect`.
+    const server = await startServer((message, client) =>
+      client.write(message),
+    );
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, {
+      connectionRetryInterval: 20,
+      onUnsolicitedData: (buffer) => buffer.length,
+    });
+    expect(await ns.send({ message: "first|", fulfill: "first|".length })).toBe(
+      "first|",
+    );
+
+    ns.reset(new Error("Invalid password"));
+    await vi.waitFor(() => expect(server.clients).toHaveLength(2), {
+      timeout: 2000,
+      interval: 10,
+    });
+    // The fresh connection works, and it really is a different socket.
+    expect(await ns.send({ message: "again|", fulfill: "again|".length })).toBe(
+      "again|",
+    );
+  });
+
+  it("reset rejects the pending works with its reason", async () => {
+    // They belonged to the connection being thrown away; carrying them onto
+    // the next one would replay writes the caller is about to reconstruct.
+    const server = await startServer(() => undefined);
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, { connectionRetryInterval: 20 });
+    const pending = ns.send({
+      message: "never-answered|",
+      timeoutMillis: 5000,
+    });
+
+    await vi.waitFor(() => expect(server.messages).toHaveLength(1), {
+      timeout: 2000,
+      interval: 10,
+    });
+    ns.reset(new Error("Invalid password"));
+    await expect(pending).rejects.toThrow("Invalid password");
+  });
+
+  it("reset keeps the socket usable for the next send", async () => {
+    // With no push consumer and an empty queue there is nothing to reconnect
+    // for, so the next `send` is what opens the connection — unlike
+    // `disconnect`, which is a shutdown.
+    const server = await echoServer();
+    const ns = newSocket(server.port, { connectionRetryInterval: 20 });
+    expect(await ns.send({ message: "first|", fulfill: "first|".length })).toBe(
+      "first|",
+    );
+    ns.reset();
+    expect(await ns.send({ message: "again|", fulfill: "again|".length })).toBe(
+      "again|",
+    );
+    expect(server.clients).toHaveLength(2);
+  });
+
+  it("does not let a retry scheduled by a peer close survive disconnect", async () => {
+    // `retryToConnect` decides whether to schedule from the queue length at
+    // *schedule* time, so an ordinary request/response socket with work in
+    // flight when the peer closed had a retry pending too. It only checked
+    // the connection state when it fired, so `disconnect()` left a live
+    // socket and a live handle behind.
+    const server = await startServer((message, client) => {
+      // Take the request, answer nothing, and drop the connection.
+      setTimeout(() => client.destroy(), 10);
+    });
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, { connectionRetryInterval: 60 });
+    const pending = ns.send({ message: "in-flight|", timeoutMillis: 5000 });
+    pending.catch(() => undefined);
+
+    await vi.waitFor(() => expect(server.clients).toHaveLength(1), {
+      timeout: 2000,
+      interval: 10,
+    });
+    // The peer's close schedules the retry; the shutdown lands before it.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    ns.disconnect();
+    await expect(pending).rejects.toThrow(/DeadSocket/);
+
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(server.clients).toHaveLength(1);
+  });
+
+  it("does not let a pending retry revive a disconnected push consumer", async () => {
+    // The same guard, on the socket that cannot get away with lacking it: a
+    // push consumer reconnects on an empty queue by design, so a retry that
+    // outlived `disconnect()` reopens a connection nothing can close.
+    const server = await startServer(() => undefined);
+    cleanups.push(server.close);
+    const ns = newSocket(server.port, {
+      connectionRetryInterval: 60,
+      onUnsolicitedData: (buffer) => buffer.length,
+    });
+    await ns.send({ message: "hello|", expectResponse: false });
+    await vi.waitFor(() => expect(server.clients).toHaveLength(1), {
+      timeout: 2000,
+      interval: 10,
+    });
+
+    ns.reset();
+    ns.disconnect();
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(server.clients).toHaveLength(1);
+  });
+
   it("rejects pending works with DeadSocket on disconnect", async () => {
     const port = await findFreePort();
     const ns = newSocket(port, { connectionRetryInterval: -1 });

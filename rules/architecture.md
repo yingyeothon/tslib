@@ -129,6 +129,34 @@ consequences of those rules.
   the store and re-running the smokes on warm containers.
 - `NaiveSocket.disconnect(reason?)` passes the cause to the pending requests;
   a bare `DeadSocket` hides why the caller's command died.
+- **Recovery needs someone to drive it, and a push consumer has nobody.** The
+  request/response client resets by dropping the socket and letting the _next
+  command_ reconnect. A subscriber authenticates from the connect transition,
+  so there is no next command: `disconnect` leaves it silent for the life of
+  the process, and keeping the poisoned socket leaves it answering `-NOAUTH`
+  for the life of the process. `NaiveSocket.reset` is the third option — drop
+  this connection, keep reconnecting — and it exists because those were the
+  only two on offer. When a recovery path has no caller, name what will retry
+  it before deciding the socket's fate.
+- **Every asynchronous recovery needs a generation guard.** `createRedisConnection`
+  compares `connection.authenticated !== authenticated` before tearing a socket
+  down, and `createRedisSubscriber` counts connections for the same reason: a
+  pending write survives a reconnect and is re-sent on the next socket, so a
+  `restore` can reject long after the connection it belonged to is gone. Acting
+  on that outcome rejects the _current_ connection's waiters and destroys a
+  healthy socket. Adding recovery to a path without the guard is how a fix
+  becomes a regression — this one was caught in review, not by the tests that
+  covered the fix itself.
+- Settle the callers with the _cause_, not with what the failure decays into.
+  A subscriber whose `AUTH` was refused used to surface as the confirmation
+  timeout that followed; rejecting the pending confirmations with the refusal
+  itself is what turns a five-second silence into `-ERR invalid password`.
+- A retry scheduled before a shutdown must re-check the shutdown, not only the
+  state it was watching. `retryToConnect`'s timer tested `connectionState`
+  alone, so a socket the caller had already disconnected reopened itself. The
+  precondition it was scheduled under (a non-empty queue) is not a substitute:
+  it was read at schedule time, and `disconnect` empties the queue without
+  cancelling anything. Re-check the thing that changed.
 - Socket event handlers are bound to the socket that raised them. `destroy()`
   emits `close` on a later tick, so a `send` issued right after `disconnect()`
   has already opened the next socket; the stale `close` must not trigger a

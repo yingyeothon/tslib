@@ -244,6 +244,18 @@ threw as `"unexpected error from game"`. A failed invocation points at something
 outside the game — the start event, the lock, the readiness handshake.
 [Operations § Nothing after the game may fail it](operations.md#nothing-after-the-game-may-fail-it)
 
+## A subscriber stops receiving after a password change, and never recovers
+
+**Its `AUTH` failed on a reconnect and it stayed on that socket.** Redis then
+answers `-NOAUTH` to everything on it, and a subscriber has no caller to retry
+for it.
+
+This one is **fixed**: a failed restore drops the socket and reconnects on
+`connectionRetryInterval`, logging `"Redis subscriber cannot restore its
+subscriptions"` each time and rejecting any pending `subscribe()` with the real
+cause. If you see it repeating, the credential is genuinely wrong.
+[Redis and sockets § When authentication fails](redis-and-sockets.md#when-authentication-fails)
+
 ## Still stuck
 
 Read the page that owns the area — the guide [index](README.md) routes by task —

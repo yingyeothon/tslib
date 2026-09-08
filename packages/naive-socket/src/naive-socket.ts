@@ -125,6 +125,19 @@ export interface NaiveSocket {
    * fresh connection.
    */
   disconnect: (reason?: Error) => void;
+
+  /**
+   * Drop the current connection and reject its pending requests, then
+   * reconnect on the usual schedule — exactly as if the peer had closed it.
+   *
+   * This is for a socket that is *connected* but unusable: authentication
+   * failed on it, or the protocol desynchronised, so every later reply on it
+   * would be wrong. `disconnect` is the wrong tool there, because it stops
+   * the auto-reconnect and waits for a `send` that a push consumer will
+   * never make. Reconnecting is what the caller wants; the current socket is
+   * only what has to go.
+   */
+  reset: (reason?: Error) => void;
 }
 
 interface SendWork {
@@ -210,6 +223,16 @@ class NaiveSocketImpl implements NaiveSocket {
 
     // Reject all pending send works.
     this.failAllPendingWork(reason ?? new Error(`DeadSocket`));
+  };
+
+  public reset = (reason?: Error): void => {
+    this.logger.info(`[NaiveSocket]`, `Reset the connection`);
+    // Before `retryToConnect`, which would otherwise carry this connection's
+    // queue onto the next one: whatever was written on a socket being reset
+    // for being unusable cannot be trusted to be replayed as it stands. The
+    // caller reconstructs what the fresh connection needs.
+    this.failAllPendingWork(reason ?? new Error(`ResetSocket`));
+    this.retryToConnect();
   };
 
   private buildSendWork = ({
@@ -385,7 +408,13 @@ class NaiveSocketImpl implements NaiveSocket {
       return;
     }
     setTimeout(() => {
-      if (this.connectionState === ConnectionState.Disconnected) {
+      // `disconnect()` may have landed while this was pending, and it means
+      // stop. The queue length above was read when this was *scheduled*, so
+      // failing the pending work is not what stops it: without this check a
+      // shut-down socket reopens itself, leaving a live socket and a live
+      // handle behind — permanently for a push consumer, which reconnects on
+      // an empty queue by design.
+      if (this.alive && this.connectionState === ConnectionState.Disconnected) {
         this.connect();
       }
     }, this.connectionRetryInterval);

@@ -154,7 +154,23 @@
   reason.
 - That peer lives in `packages/naive-redis/test/fake-redis.ts` and is shared;
   its `reply` may return `undefined` and write later through the `client` it is
-  handed, which is how a slow round trip is scripted.
+  handed, which is how a slow round trip is scripted. `clientAt(n)` reaches the
+  nth accepted socket, which is how a push frame is delivered to a subscriber
+  on the connection a test cares about.
+- Answer per connection number to make a recovery loop observable: refuse the
+  `AUTH` on connection 1 and accept it on connection 2, then assert
+  `connections`, the tail of `received` (`AUTH` before `SUBSCRIBE`), and a
+  message arriving on the new socket. "It reconnected" and "the new connection
+  is usable" are different claims and both are the point.
+- A recovery loop needs a _stale outcome_ test as well as a happy one: let the
+  first connection take the command and die without answering, so the write is
+  replayed on the second connection and its rejection arrives while a healthy
+  socket is in hand. Assert the connection count did not grow again and that
+  the live subscription still delivers.
+- Pair every automatic-retry test with one that shuts the thing down and
+  asserts the count stops moving. That is the test that caught a scheduled
+  retry outliving `disconnect()`, which no amount of testing the happy loop
+  would have surfaced.
 - For CAS backends, the race test is the same shape everywhere: wrap the
   repository so the first `compareAndSet` awaits the other writer, then
   assert both writers' keys survive and the version advanced twice

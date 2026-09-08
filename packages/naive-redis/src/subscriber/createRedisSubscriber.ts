@@ -82,6 +82,13 @@ export function createRedisSubscriber({
   // keyed by "<event>:<channel>".
   const waiters = new Map<string, Array<(error?: Error) => void>>();
   let everConnected = false;
+  /**
+   * Counts connections, so a `restore` can tell whether it still owns the
+   * socket when it finishes. A stale one is not merely redundant: acting on
+   * its outcome would settle the current connection's waiters and reset a
+   * healthy socket — the hazard `createRedisConnection` guards the same way.
+   */
+  let generation = 0;
 
   const socket = createNaiveSocket({
     host,
@@ -100,14 +107,46 @@ export function createRedisSubscriber({
       // reconnect has to replay the subscription set.
       const reconnected = everConnected;
       everConnected = true;
-      restore(reconnected)
+      const mine = ++generation;
+      restore(reconnected, mine)
         .then(() => {
+          if (mine !== generation) {
+            return;
+          }
           notifyReconnected(reconnected, true);
         })
-        .catch((error: unknown) => {
+        .catch((cause: unknown) => {
+          const error =
+            cause instanceof Error ? cause : new Error(String(cause));
+          if (mine !== generation) {
+            // A `restore` that outlived its socket. Its `AUTH` was requeued
+            // onto the next connection, so this rejection says nothing about
+            // the socket in hand — and acting on it would reject the waiters
+            // of a subscription that is live and destroy a healthy
+            // connection.
+            logger.warn("Redis subscriber discarded a stale restore", {
+              error,
+            });
+            return;
+          }
           logger.error("Redis subscriber cannot restore its subscriptions", {
             error,
           });
+          // A socket whose `AUTH` failed answers `-NOAUTH` to everything for
+          // the rest of its life, and one whose replay broke off has a
+          // subscription set the server does not agree with; either way its
+          // receive buffer may still hold a reply nothing is waiting for.
+          // Drop it and let the socket reconnect on its own schedule — a
+          // subscriber has no caller-driven retry to fall back on, so
+          // `disconnect` here would leave it silent forever.
+          //
+          // The waiters are settled with the real cause first, so an
+          // in-flight `subscribe` reports "Invalid password" rather than the
+          // confirmation timeout it used to wait out. The same cause is
+          // handed to `reset`, so a caller still awaiting the write sees it
+          // too.
+          settleAll(error);
+          socket.reset(error);
           notifyReconnected(reconnected, false);
         });
     },
@@ -142,6 +181,13 @@ export function createRedisSubscriber({
       onReconnected({ channels: [...channels], restored });
     } catch (error) {
       logger.error("Redis subscriber reconnect handler failed", { error });
+    }
+  }
+
+  /** Settles every pending confirmation, for a connection that is going. */
+  function settleAll(error: Error): void {
+    for (const key of [...waiters.keys()]) {
+      settle(key, error);
     }
   }
 
@@ -184,7 +230,7 @@ export function createRedisSubscriber({
     return confirmed;
   }
 
-  async function restore(reconnected: boolean): Promise<void> {
+  async function restore(reconnected: boolean, mine: number): Promise<void> {
     if (password !== undefined) {
       // `redisAuth` sends urgently, so it precedes any queued subscribe.
       const authenticated = await redisAuth(connection, password, { username });
@@ -192,7 +238,11 @@ export function createRedisSubscriber({
         throw new Error("Invalid password");
       }
     }
-    if (!reconnected) {
+    // The `AUTH` above may have been answered by a socket this restore no
+    // longer owns — a pending write survives a reconnect and is re-sent on
+    // the next connection — and that connection's own restore is already
+    // replaying the set.
+    if (!reconnected || mine !== generation) {
       return;
     }
     for (const channel of channels) {
@@ -230,9 +280,7 @@ export function createRedisSubscriber({
     },
     disconnect: () => {
       channels.clear();
-      for (const key of [...waiters.keys()]) {
-        settle(key, new Error("DeadSocket"));
-      }
+      settleAll(new Error("DeadSocket"));
       socket.disconnect();
     },
   };
