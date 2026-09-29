@@ -53,6 +53,24 @@ redirectAllowlist:[], providers:{}}}` → `POST /projects/{prj}/kv` per
   another owner's 403, a bad token's 401, listing by name).
 - Console writes take a 550 ms slot per member (`jsonClient({ writeSlotMs })`);
   the KV API has none, so use a second client for it.
+- `asset-client` needs no smoke helper: the `yyt` CLI (`--profile dev`, an
+  explicit `--team`/`--project`) does it. `asset create <name> --mode live
+--encrypted` → `asset key show` → `asset sync <bundle> <dir> --mutable
+manifest.json` → exercise the built `dist` from a scratch script against
+  `https://dev-d.yyt.life/assets/{bundleId}/` → compare with `asset download`
+  (whole and `--range`) → `asset delete`. Keep the key and bundle id in the
+  scratchpad only. The console refuses a non-ASCII upload path (`relative
+path`), so a non-ASCII path cannot be tried there.
+- For `corsSafe`, serve a page from `http://localhost` (a secure context)
+  that loads `dist/index.js` with an import map for `@yingyeothon/logger`,
+  and drive it with Playwright; count a `Range` preflight by the client's
+  `asset ranged request refused` warn line. Verified 2026-09-30: Node ESM
+  and CJS (both `corsSafe` values: whole, 65,400–65,600, 140,000–280,000,
+  download, resume, stale-ETag reset, 403 → `not_found`, wrong key →
+  `asset_corrupt`, a replaced manifest read at once), and Chromium 153 and
+  Firefox 155, which send `Range` without a preflight. WebKit did not start
+  inside the agent's command sandbox (missing host packages, then a hang);
+  run that one from a normal shell.
 
 ## Making states reachable without infrastructure
 
