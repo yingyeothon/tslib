@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/asset-client",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Reader for yyt asset bundles on the CDN: whole files, byte ranges and resumable downloads, decrypting and verifying yyt-enc v1 ciphertext with WebCrypto.",
   "keywords": [
     "yyt",

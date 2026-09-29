@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/repository-redis",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Redis-backed implementation of the @yingyeothon/repository abstractions.",
   "keywords": [
     "yyt",

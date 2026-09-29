@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/naive-socket",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Minimal TCP/TLS socket client with request queueing, auto-reconnect, and pluggable response matching.",
   "keywords": [
     "yyt",

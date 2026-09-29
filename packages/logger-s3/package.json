@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/logger-s3",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Buffered log writer that flushes structured log records into S3 via s3-cache-bridge.",
   "keywords": [
     "yyt",
