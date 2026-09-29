@@ -65,10 +65,16 @@ the place to find out.
   `bootstrap` dist-tag, and restores the manifests; it is not a release, so
   nothing is committed or tagged. Register the Trusted Publisher, then run the
   real Release workflow — npm has no cooldown between successive versions.
-  `asset-client` (added 2026-09-29) is pending that bootstrap; the other
-  21 packages were on npm at 2.2.0 by 2026-09-08, `repository-dynamodb` and
-  `kvstore-client` included. Check with `npm view <name> version` rather than
-  trusting this line.
+- **Bootstrap with a prerelease below the coming release**
+  (`scripts/bootstrap-publish.sh 2.4.0-bootstrap.0 <dir>` before releasing
+  2.4.0), never with the release version itself: npm cannot republish a
+  version, so the Release workflow skips that package and its release
+  version ships without provenance. `asset-client@2.3.0` is that
+  bootstrap build (byte-identical to the release commit's, but no
+  provenance); its next release carries it.
+- All 22 packages were on npm at 2.3.0 by 2026-09-30, `asset-client`
+  included. Check with `npm view <name> version` rather than trusting this
+  line.
 - After a brand-new name is published, `npm access get status` answers at
   once but `npm view` can return 404 for ~5 minutes while the read replicas
   catch up. Wait; do not republish. The first version of a package always
