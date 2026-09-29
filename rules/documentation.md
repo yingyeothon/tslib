@@ -35,6 +35,8 @@ asserts this list covers `packages/` exactly once each:
   (`gamebase-client`)
 - `kvstore.md` — the platform key-value store from a game: principals and
   scopes, the two cases, versions, TTL, errors (`kvstore-client`)
+- `assets.md` — asset bundles from a game: bundle shapes, the manifest
+  pattern, the ranged-read sequence, browsers, errors (`asset-client`)
 - `storage.md` — repositories, revisions, CAS, documents, choosing a backend
   (`repository`, `repository-redis`, `repository-s3`, `repository-dynamodb`)
 - `auth.md` — the channel JWT and the two authorizer shapes
@@ -154,13 +156,15 @@ Rules:
 
 When a package README and a guide page cover the same subject, they get
 _different_ diagrams — static structure in the README, order or disposition in
-the guide — and each links to the other. Five pairs are like this today:
+the guide — and each links to the other. Six pairs are like this today:
 `lambda-gamebase` (the key map) vs `game-actor.md` (the key sequence),
 `gamebase-all-together` (one tick) vs `game-actor.md` (the stage machine),
 `gamebase-client` (the two clients) vs `realtime-client.md` (states and close
 codes), `lambda-authorizer-jwt` (the verify decision) vs `auth.md` (the
-`$connect` sequence), and `kvstore-client` (the namespace map) vs `kvstore.md`
-(the compare-and-set sequence). Do not unify them; the duplicate is what drifts.
+`$connect` sequence), `kvstore-client` (the namespace map) vs `kvstore.md`
+(the compare-and-set sequence), and `asset-client` (what one read does) vs
+`assets.md` (the ranged-read sequence). Do not unify them; the duplicate is
+what drifts.
 
 ## Examples
 

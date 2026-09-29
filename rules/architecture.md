@@ -286,6 +286,39 @@ consequences of those rules.
   `compareAndSet(key, token, value)`: the two positionals are the operation's
   subject and object, and folding `value` into options would read worse.
 
+## Reading authenticated data over an unauthenticated transport
+
+`asset-client` decrypts `yyt-enc v1` from a public CDN. Three of its review
+findings generalise to any reader of segmented, authenticated content:
+
+- **A length the host states is a claim until a tag proves it.** A window that
+  was empty after clamping to `Content-Length` used to return success without
+  verifying anything, so a truncated file, a wrong key or garbage starting with
+  `0x28` all "read" as empty and a truncated download reported itself complete.
+  Always fetch and verify the last segment when nothing else is read: its
+  `last` flag and exact extent pin the length, the key and the path.
+- **Identity across requests needs a witness on every answer.** `If-Range`
+  makes the server the witness; without it (a weak `ETag`, a browser) the
+  answer's own `ETag` is, and an answer that names none must count as a
+  change. Otherwise a resume splices version A's prefix onto version B's
+  suffix, each segment authentic and the file not.
+- **Whoever opens a body owns cancelling it, on every path.** Refusing an
+  answer (`http`, `asset_corrupt`) after `fetch` resolved left undici's socket
+  open until the whole body arrived — twenty megabytes for a host that ignored
+  `Range`. `openEncrypted` records every body it opened and cancels, in a
+  `finally`, all but the one it hands back; `emitSegments` and the plain paths
+  cancel in their own `finally`. A fake whose streams count themselves
+  (`fake-cdn.ts` `openBodies()`) is what makes this testable.
+- A browser client must say so in its options: `corsSafe` sends only `Range`
+  and reads only exposed headers, because the CDN refuses the preflight any
+  other header costs. A ranged `fetch` that _rejects_ right after an identical
+  `HEAD` succeeded is a refused preflight, and the fallback is a whole-file
+  `GET` verified the same way — never a silent switch to trusting fewer checks.
+- Key material: import it non-extractable, zero the private copy
+  once the import settles, wrap WebCrypto's own rejection into the client's
+  vocabulary, and make `close()` stop a read already in flight at its next
+  segment rather than letting the derived keys finish it.
+
 ## Naming a factory that returns a handler
 
 `CONVENTIONS.md` reserves `create*Handler` for factories whose product is

@@ -6,7 +6,7 @@ the place to find out.
 
 ## Versioning
 
-- All 21 packages share one version, and the version **is committed**: the
+- All 22 packages share one version, and the version **is committed**: the
   Release workflow writes it into every `packages/*/package.json`, commits
   `Release vX.Y.Z`, and tags that commit. Between releases the manifests carry
   the last released version. Never edit `version` by hand — only the workflow
@@ -65,9 +65,10 @@ the place to find out.
   `bootstrap` dist-tag, and restores the manifests; it is not a release, so
   nothing is committed or tagged. Register the Trusted Publisher, then run the
   real Release workflow — npm has no cooldown between successive versions.
-  Nothing is pending: all 21 packages are on npm at 2.0.2, including
-  `repository-dynamodb` and `kvstore-client` (verified 2026-09-08). Check
-  with `npm view <name> version` rather than trusting this line.
+  `asset-client` (added 2026-09-29) is pending that bootstrap; the other
+  21 packages were on npm at 2.2.0 by 2026-09-08, `repository-dynamodb` and
+  `kvstore-client` included. Check with `npm view <name> version` rather than
+  trusting this line.
 - After a brand-new name is published, `npm access get status` answers at
   once but `npm view` can return 404 for ~5 minutes while the read replicas
   catch up. Wait; do not republish. The first version of a package always

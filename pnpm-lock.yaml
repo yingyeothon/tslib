@@ -182,6 +182,12 @@ importers:
         specifier: workspace:^
         version: link:../naive-redis
 
+  packages/asset-client:
+    dependencies:
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
+
   packages/codec: {}
 
   packages/event-broker: {}

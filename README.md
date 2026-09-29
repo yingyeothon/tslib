@@ -1,6 +1,6 @@
 # tslib
 
-TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) (잉여톤) hackathons, consolidated into a single monorepo. They are the **server half of the yyt platform** — a game runs as an actor in your own AWS account, talking to a realtime gateway you did not have to build — plus `gamebase-client` and `kvstore-client`, its browser half. The platform itself is specified in [`yingyeothon/service`](https://github.com/yingyeothon/service); the Unity client half is [`yingyeothon/csharplib`](https://github.com/yingyeothon/csharplib). These packages started life as scattered standalone repositories built between hackathons; this repository modernizes them (TypeScript 5.9, ESM+CJS dual output, Node >= 20) and publishes them all under the `@yingyeothon` npm scope with a single shared version.
+TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) (잉여톤) hackathons, consolidated into a single monorepo. They are the **server half of the yyt platform** — a game runs as an actor in your own AWS account, talking to a realtime gateway you did not have to build — plus `gamebase-client`, `kvstore-client` and `asset-client`, its browser half. The platform itself is specified in [`yingyeothon/service`](https://github.com/yingyeothon/service); the Unity client half is [`yingyeothon/csharplib`](https://github.com/yingyeothon/csharplib). These packages started life as scattered standalone repositories built between hackathons; this repository modernizes them (TypeScript 5.9, ESM+CJS dual output, Node >= 20) and publishes them all under the `@yingyeothon` npm scope with a single shared version.
 
 ## Documentation
 
@@ -13,6 +13,7 @@ TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) 
 | [The game actor](docs/game-actor.md) / [Actor system](docs/actor-system.md)                 | the game loop on Lambda, and the substrate under it             |
 | [The realtime client](docs/realtime-client.md)                                              | the browser client: states, close codes, backoff                |
 | [Key-value store](docs/kvstore.md)                                                          | announcements and per-player records over the channel JWT       |
+| [Asset bundles](docs/assets.md)                                                             | shipped files from the CDN, decrypted and verified per segment  |
 | [Storage](docs/storage.md) / [Authentication](docs/auth.md) / [Logging](docs/logging.md)    | repositories and CAS, `$connect` authorizers, what never to log |
 | [Redis and sockets](docs/redis-and-sockets.md) / [Building blocks](docs/building-blocks.md) | the transport floor, and the three small leaves                 |
 | [Operations](docs/operations.md) / [Troubleshooting](docs/troubleshooting.md)               | limits, TTLs, concurrency, and symptom to cause                 |
@@ -45,6 +46,7 @@ one of them runs with no AWS credentials, no Docker and no deployed gateway.
 | [@yingyeothon/gamebase-all-together](packages/gamebase-all-together)   | Wait/running stage game loop plugin for lambda-gamebase    |
 | [@yingyeothon/gamebase-client](packages/gamebase-client)               | Browser-capable client SDK for the yyt WebSocket gateway   |
 | [@yingyeothon/kvstore-client](packages/kvstore-client)                 | Game client for the yyt key-value store (`/kv/*`)          |
+| [@yingyeothon/asset-client](packages/asset-client)                     | Reader for yyt asset bundles, encrypted ones included      |
 
 ## Dependency graph
 
@@ -83,6 +85,7 @@ graph LR
   gamebase-client --> codec
   gamebase-client --> logger
   kvstore-client --> logger
+  asset-client --> logger
 ```
 
 That graph is the only exact edge list; [The platform](docs/platform.md) shows

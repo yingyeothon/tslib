@@ -120,15 +120,15 @@ prevent. [Storage](storage.md) is how tslib does it.
 
 ## Where tslib fits
 
-Only `gamebase-client` and `kvstore-client` name the platform in their source;
-`lambda-gamebase` and `gamebase-all-together` are shaped by it without depending
-on it. Everything else is a general library that a game happens to need.
+Only `gamebase-client`, `kvstore-client` and `asset-client` name the platform in
+their source; `lambda-gamebase` and `gamebase-all-together` are shaped by it
+without depending on it. Everything else is a general library that a game happens to need.
 
 ```mermaid
 flowchart BT
   found["foundation<br/>codec · logger · event-broker<br/>repository · actor-system · naive-socket"]
   back["backends and transport<br/>naive-redis · repository-* · actor-system-*<br/>logger-* · s3-cache-bridge-client · lambda-authorizer"]
-  edge["platform edges<br/>lambda-gamebase · lambda-authorizer-jwt<br/>gamebase-client · kvstore-client"]
+  edge["platform edges<br/>lambda-gamebase · lambda-authorizer-jwt<br/>gamebase-client · kvstore-client · asset-client"]
   loop["game loop<br/>gamebase-all-together"]
   found --> back
   back --> edge

@@ -204,6 +204,23 @@
   invisible to a `naive-redis` test until `pnpm build` runs. A test that fails
   for that reason looks exactly like a wrong fix.
 
+## Binary payloads and conformance vectors
+
+- vitest's generic `toEqual` walks a typed array element by element: about
+  170 ms per 130 KB. `asset-client`'s tests register
+  `expect.addEqualityTesters` with a `Buffer.equals` tester, which took the
+  suite from 15 s to under one; do the same before comparing many buffers.
+- A decryptor is tested against ciphertexts it did not make. The tests carry an
+  independent node:crypto encryptor written from the spec (`test/encrypt.ts`)
+  for arbitrary sizes and paths, and the service repository's conformance
+  vectors, copied verbatim with the source commit noted, `-diff` in
+  `.gitattributes` and excluded in `.prettierignore` (Prettier would rewrap
+  1.2 MB of hex). The encryptor reproducing every vector byte for byte is what
+  proves it agrees with the Go one.
+- Test every tampering through every read shape, not only the whole-file one:
+  the empty-window bug above passed a tamper matrix that only ever called
+  `read()`.
+
 ## Assertions
 
 - Assert observable behavior of the public API, not internal call counts.

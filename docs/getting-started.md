@@ -274,4 +274,6 @@ first frame.
 - [Storage](storage.md) — anything that must outlive the run, on your side.
 - [Key-value store](kvstore.md) — announcements and each player's own record,
   read and written by the client with the same channel JWT it connected with.
+- [Asset bundles](assets.md) — files the game loads from the CDN, encrypted
+  with a key the app carries when they must not be public.
 - [Troubleshooting](troubleshooting.md) — when a frame does not arrive.

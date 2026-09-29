@@ -1,8 +1,8 @@
 # tslib documentation
 
-The twenty-one packages in this repository are the server half of the yyt
-platform, plus `gamebase-client` and `kvstore-client`, which are its browser
-half. This folder is the guide; the package READMEs are the per-package
+The twenty-two packages in this repository are the server half of the yyt
+platform, plus `gamebase-client`, `kvstore-client` and `asset-client`, which are
+its browser half. This folder is the guide; the package READMEs are the per-package
 reference, and the `service` repository owns the wire protocol and the channels.
 
 ## Start here
@@ -23,6 +23,7 @@ reference, and the `service` repository owns the wire protocol and the channels.
 | Connect a browser to a lobby or a run            | [The realtime client](realtime-client.md) |
 | Keep something after the run ends                | [Storage](storage.md)                     |
 | Show announcements, save a player's record       | [Key-value store](kvstore.md)             |
+| Load shipped files, encrypted or not             | [Asset bundles](assets.md)                |
 | Verify a token on `$connect`                     | [Authentication](auth.md)                 |
 | Deploy it and stay inside the limits             | [Operations](operations.md)               |
 | Log without leaking a token, a payload or a name | [Logging](logging.md)                     |
@@ -42,6 +43,7 @@ flowchart LR
   AS --> actor-system-lambda
   RC["realtime-client.md"] --> gamebase-client
   KV["kvstore.md"] --> kvstore-client
+  AB["assets.md"] --> asset-client
   ST["storage.md"] --> repository
   ST --> repository-redis
   ST --> repository-s3
@@ -61,7 +63,7 @@ flowchart LR
 Those are ownership, not dependencies: the [root README](../README.md) has the
 exact edge list, and it is the only place that does.
 
-Only `gamebase-client` and `kvstore-client` name the platform at all;
+Only `gamebase-client`, `kvstore-client` and `asset-client` name the platform at all;
 `lambda-gamebase` and `gamebase-all-together` are shaped by it without depending
 on it, and everything else is a general library that a game happens to need.
 Each is usable on its own.
