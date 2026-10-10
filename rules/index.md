@@ -7,7 +7,7 @@ files relevant to the task at hand. `CLAUDE.md` (with `AGENTS.md` as its symlink
 | File                                             | Open it when                                                                 |
 | ------------------------------------------------ | ---------------------------------------------------------------------------- |
 | [architecture.md](architecture.md)               | Adding/changing any exported symbol, package layout, or dependency edge      |
-| [workflow.md](workflow.md)                       | Starting or finishing any task (includes the per-task completion ritual)     |
+| [workflow.md](workflow.md)                       | Starting or finishing any task (completion ritual, `todo/` tracker)          |
 | [testing.md](testing.md)                         | Writing tests, touching mocks/testcontainers, or hitting coverage thresholds |
 | [manual-verification.md](manual-verification.md) | Confirming a change actually works in a consumer, after tests pass           |
 | [security.md](security.md)                       | Touching wire protocols, auth, or logging of request data                    |

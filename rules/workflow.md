@@ -26,6 +26,26 @@
    changed.
 6. Run the full green gate below, then commit and push to `main`.
 
+## Task tracker — `todo/`
+
+- Remaining work lives in the git-ignored, machine-local `todo/`.
+  `todo/index.md` is the single entry point: an ordered "Next up" list (one
+  line per file with its first concrete step), the session-start procedure,
+  the base commit, and a "Waiting on user" list.
+- One file per topic, `todo/<kebab-topic>.md`: why the work exists, which
+  `rules/`/docs to read first (service contract docs by relative path
+  `../service/...`), the change classification that selects the completion
+  procedure, ordered checkboxes with key paths, and done-criteria. State and
+  pointers only — facts and lessons go to `docs/` or `rules/`.
+- When told to continue the remaining work, start from `todo/index.md`:
+  confirm the base commit, reconcile commits that landed since, then apply the
+  per-task completion ritual above.
+- Tick items when done. Delete a file when it is fully done and drop its index
+  line. Add a new file for newly discovered work.
+- Never leave root-level todo files or scattered TODO comments.
+- `todo/` is never committed, but this repo is public: keep it free of
+  secrets and private infrastructure identifiers anyway.
+
 ## Green gate (must stay green)
 
 ```bash

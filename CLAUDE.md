@@ -24,6 +24,8 @@
   (`AGENTS.md` is a symlink to this file — edit `CLAUDE.md` only.)
 - After each completed task, update the relevant `rules/*.md` (and
   `rules/index.md` if files were added or removed).
+- Remaining work lives in the git-ignored `todo/`; when told to continue the
+  remaining work, start from `todo/index.md` — see `rules/workflow.md`.
 
 ## Essential Commands
 

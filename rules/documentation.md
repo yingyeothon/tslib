@@ -208,7 +208,8 @@ production infrastructure on a machine that happens to have it exported.
 - `CONVENTIONS.md` is canonical for API design. Point at it; do not duplicate or
   contradict it in package READMEs.
 - Do not create temporary tracking documents in the repo root — they were removed
-  once already. Session-scoped notes belong in `.claude/` (git-ignored).
+  once already. Remaining work belongs in the git-ignored `todo/`
+  (`workflow.md` → "Task tracker — `todo/`").
 - **A behavior change owes a `## Behavior changes` bullet in the package
   README**, not only a paragraph in the guide: that section is where a consumer
   looks for what a version did to them. And re-read the neighbouring
