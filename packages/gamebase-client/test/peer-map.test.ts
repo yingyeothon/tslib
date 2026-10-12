@@ -1,6 +1,6 @@
 import type { Logger } from "@yingyeothon/logger";
 import { describe, expect, it } from "vitest";
-import { createPeerMap } from "../src/index.js";
+import { createPeerMap, type ViewViolation } from "../src/index.js";
 
 function capturingWarnLogger(): { logger: Logger; warnings: string[] } {
   const warnings: string[] = [];
@@ -236,5 +236,84 @@ describe("createPeerMap", () => {
     expect(
       peers.apply({ type: "leave", zone: "town", userId: "ghost" }),
     ).toBeUndefined();
+  });
+});
+
+describe("view violation callback", () => {
+  it("reports each unknown peer while continuing valid moves", () => {
+    const violations: ViewViolation[] = [];
+    const map = createPeerMap({
+      selfUserId: "me",
+      onViewViolation: (v) => {
+        violations.push(v);
+      },
+    });
+    map.apply({
+      type: "snapshot",
+      zone: "town",
+      peers: [{ userId: "bob", x: 1, y: 1 }],
+    });
+    map.apply({ type: "leave", zone: "town", userId: "missing" });
+    expect(
+      map.apply({
+        type: "pos",
+        zone: "town",
+        peers: [
+          { userId: "ghost", x: 1, y: 2 },
+          { userId: "bob", x: 4, y: 5 },
+          { userId: "ghost2", x: 1, y: 2 },
+          { userId: "me", x: 0, y: 0 },
+        ],
+      }),
+    ).toEqual({ kind: "move", peers: [{ userId: "bob", x: 4, y: 5 }] });
+    expect(violations).toEqual([
+      { kind: "leave", userId: "missing", zone: "town" },
+      { kind: "pos", userId: "ghost", zone: "town" },
+      { kind: "pos", userId: "ghost2", zone: "town" },
+    ]);
+    map.apply({ type: "leave", zone: "town", userId: "bob" });
+    map.apply({ type: "enter", zone: "town", userId: "carol", x: 0, y: 0 });
+    map.apply({
+      type: "pos",
+      zone: "field",
+      peers: [{ userId: "ghost", x: 0, y: 0 }],
+    });
+    map.apply({ type: "leave", zone: "field", userId: "ghost" });
+    map.reset();
+    map.apply({ type: "leave", zone: "town", userId: "ghost" });
+    expect(violations).toHaveLength(3);
+  });
+
+  it("isolates callback failures without logging their contents", () => {
+    const capture = capturingWarnLogger();
+    const map = createPeerMap({
+      selfUserId: "me",
+      logger: capture.logger,
+      onViewViolation: (v) => {
+        v.kind = "leave";
+        throw new Error("SECRET-CALLBACK-9f2");
+      },
+    });
+    map.apply({
+      type: "snapshot",
+      zone: "town",
+      peers: [{ userId: "bob", x: 1, y: 1 }],
+    });
+    expect(
+      map.apply({
+        type: "pos",
+        zone: "town",
+        peers: [
+          { userId: "ghost", x: 0, y: 0 },
+          { userId: "bob", x: 2, y: 3 },
+        ],
+      }),
+    ).toEqual({ kind: "move", peers: [{ userId: "bob", x: 2, y: 3 }] });
+    expect(() =>
+      map.apply({ type: "leave", zone: "town", userId: "ghost" }),
+    ).not.toThrow();
+    const logged = capture.warnings.join(" ");
+    expect(logged).toContain('"view violation callback failed" {"kind":"pos"}');
+    expect(logged).not.toContain("SECRET-CALLBACK-9f2");
   });
 });

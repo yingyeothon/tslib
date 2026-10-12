@@ -165,7 +165,10 @@ different matter: the gateway's view invariant says it cannot happen, so it is
 ignored for rendering **and logged at `warn`** with the peer id and the zone —
 never a frame body. Silence there is how a gateway bug stays a rendering
 oddity nobody can trace. `createPeerMap` takes its own `logger`; the lobby
-client passes the one you gave it.
+client passes the one you gave it. An independently created map also accepts
+`onViewViolation({ kind, userId, zone })` for unknown `pos`/`leave` peers in
+the current view. A thrown callback is isolated so normal peers still update;
+only its kind is logged, never the exception contents.
 
 `hello.aoi` carries the channel's view rule — `maxPeers` always, `range` (the
 half-width of the AOI box) only when the channel defines one. It is optional

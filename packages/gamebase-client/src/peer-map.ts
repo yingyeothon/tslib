@@ -16,9 +16,17 @@ export type PeerChange =
   | { kind: "leave"; userId: string }
   | { kind: "move"; peers: Peer[] };
 
+export interface ViewViolation {
+  kind: "leave" | "pos";
+  userId: string;
+  zone: string;
+}
+
 export interface PeerMapOptions {
   /** The receiver's own userId; its entry in `pos` broadcasts is dropped. */
   selfUserId: string;
+  /** Called for each unknown peer in the current view; thrown exceptions are isolated. */
+  onViewViolation?: (violation: ViewViolation) => void;
   /**
    * Reports view-invariant violations at `warn`. A `pos` or `leave` for a
    * peer this map never saw enter is a gateway bug, not a client one, and
@@ -48,12 +56,25 @@ export interface PeerMap {
  * is ignored for rendering **and** logged through `options.logger`.
  */
 export function createPeerMap(options: PeerMapOptions): PeerMap {
-  const { selfUserId, logger = nullLogger } = options;
+  const { selfUserId, logger = nullLogger, onViewViolation } = options;
   const peers = new Map<string, Peer>();
   let zone: string | undefined;
 
   function copy(peer: Peer): Peer {
     return { ...peer };
+  }
+
+  function reportViolation(violation: ViewViolation): void {
+    logger.warn(`${violation.kind} for an unknown peer`, {
+      userId: violation.userId,
+      zone: violation.zone,
+    });
+    try {
+      onViewViolation?.({ ...violation });
+    } catch {
+      // Callback exceptions can contain credentials or arbitrary game data.
+      logger.warn("view violation callback failed", { kind: violation.kind });
+    }
   }
 
   return {
@@ -92,7 +113,8 @@ export function createPeerMap(options: PeerMapOptions): PeerMap {
           if (!peers.delete(frame.userId)) {
             // Ignore it for rendering, but say so: the gateway promises a
             // `leave` only for a peer it introduced first.
-            logger.warn("leave for an unknown peer", {
+            reportViolation({
+              kind: "leave",
               userId: frame.userId,
               zone: frame.zone,
             });
@@ -108,7 +130,8 @@ export function createPeerMap(options: PeerMapOptions): PeerMap {
             }
             const existing = peers.get(update.userId);
             if (existing === undefined) {
-              logger.warn("pos for an unknown peer", {
+              reportViolation({
+                kind: "pos",
                 userId: update.userId,
                 zone: frame.zone,
               });

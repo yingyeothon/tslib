@@ -370,3 +370,9 @@ interfaces (`ActorSystemLogger`), and ad-hoc `*Env` objects that read
 - Copy only encoding fields from a Redis transport encoder result; never spread
   it over gateway routing fields. TypeScript excess-property checks do not
   constrain runtime callback return values.
+
+## View diagnostics callbacks
+
+- Keep view diagnostics observational: isolate synchronous callback exceptions
+  and continue applying valid peers in the same frame. Pass a fresh descriptor
+  so callback mutation cannot change the failure metadata.

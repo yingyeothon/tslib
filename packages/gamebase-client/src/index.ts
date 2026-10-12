@@ -64,6 +64,7 @@ export type {
   PeerMap,
   PeerMapFrame,
   PeerMapOptions,
+  ViewViolation,
 } from "./peer-map.js";
 export { createPeerMap } from "./peer-map.js";
 export type { MapFetcher, MapFetcherOptions } from "./map-fetch.js";
