@@ -33,8 +33,10 @@ the place to find out.
    verify version → stamp → build/lint/format/typecheck/test →
    commit + annotated tag → `git push --atomic origin main vX.Y.Z` →
    `pnpm -r publish --provenance` → GitHub Release with generated notes.
-3. Version, tag, commit, and npm provenance therefore all point at the same
-   commit. The run is titled `Release vX.Y.Z` (`run-name`), and its summary
+3. Package versions and the release tag point at the stamped release commit.
+   npm provenance records the workflow run's source SHA, which can be the
+   implementation commit before the version-only stamp. Verify the attested
+   source against that implementation; do not assume it equals the tag SHA. The run is titled `Release vX.Y.Z` (`run-name`), and its summary
    (`scripts/release-summary.mjs`, written `if: always()`) records the
    version, tag, commit, whether it was a retry, and per package whether that
    exact version is on npm — checked against the registry, not inferred from
@@ -58,6 +60,10 @@ the place to find out.
 - Every package must have `yingyeothon` / `tslib` / `release.yml` registered
   as a Trusted Publisher on npmjs.com (package → Settings → Trusted Publisher
   → GitHub Actions; the environment name `npm-release` may be set there too).
+- Run bootstrap in an interactive terminal when npm requires MFA. A chat-shell
+  command without a TTY cannot satisfy pnpm's authentication prompt
+  (`ERR_PNPM_OTP_NON_INTERACTIVE`); do not repeat the build expecting a prompt
+  to become available. The script restores manifest versions on failure.
 - Registration is only possible for packages that already exist, so a
   brand-new name needs one manual publish first:
   `scripts/bootstrap-publish.sh <version> <dir>...` (after `npm login`). It
@@ -75,9 +81,9 @@ the place to find out.
 - Compare a stable release above its same-core bootstrap prerelease. Keep the
   offline CLI regressions in `scripts/test/` in both test and coverage commands
   so the release-version gate cannot reject the documented bootstrap flow.
-- All 22 packages were on npm at 2.3.0 by 2026-09-30, `asset-client`
-  included. Check with `npm view <name> version` rather than trusting this
-  line.
+- All 27 packages were confirmed on npm at 2.5.0 on 2026-10-12, including
+  latest tags and publish/provenance attestations. Verify the registry for each
+  release rather than relying on this historical checkpoint.
 - After a brand-new name is published, `npm access get status` answers at
   once but `npm view` can return 404 for ~5 minutes while the read replicas
   catch up. Wait; do not republish. The first version of a package always
