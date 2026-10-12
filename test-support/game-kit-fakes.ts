@@ -59,7 +59,7 @@ export function createFakeScheduler() {
 }
 export interface FakeCollection {
   readScope: "project" | "user";
-  writeScope: "user" | "server" | "team";
+  writeScope: "user" | "server" | "team" | "project";
   versions: Map<string, number>;
   rows: Map<
     string,
@@ -112,7 +112,9 @@ export function createFakeState(options: { now?: () => number } = {}) {
         redirectAllowlist: ["https://game.invalid/callback"],
         tokenTtlSec: 86400,
       });
-    const token = request.headers.authorization?.slice(7);
+    const token = (
+      request.headers.authorization ?? request.headers.Authorization
+    )?.slice(7);
     const userId = token ? tokens.get(token) : undefined;
     if (u.pathname.endsWith("/verify"))
       return userId
@@ -148,7 +150,16 @@ export function createFakeState(options: { now?: () => number } = {}) {
     const owner = rawOwner === "me" ? userId : rawOwner;
     if (perOwner !== (owner !== undefined))
       return fail(400, "bad_request", { reason: "wrong_namespace" });
-    if (perOwner && owner !== userId) return fail(403, "forbidden");
+    const crossOwner = perOwner && owner !== userId;
+    if (
+      crossOwner &&
+      !(
+        col.writeScope === "project" &&
+        request.method === "PUT" &&
+        key?.startsWith(`${userId}:`)
+      )
+    )
+      return fail(403, "forbidden");
     const prefix = `${owner ?? ""}:`;
     const id = prefix + (key ?? "");
     const time = Math.floor(now() / 1000);
@@ -191,7 +202,19 @@ export function createFakeState(options: { now?: () => number } = {}) {
               : { "x-kv-expires-at": String(row.expiresAt) }),
           })
         : fail(404, "not_found");
-    if (col.writeScope !== "user") return fail(403, "forbidden");
+    if (crossOwner && row) return fail(409, "conflict", { reason: "exists" });
+    if (
+      crossOwner &&
+      (request.headers["if-match"] || request.headers["if-none-match"])
+    )
+      return fail(400, "bad_request");
+    if (col.writeScope !== "user" && !perOwner) return fail(403, "forbidden");
+    if (
+      crossOwner &&
+      [...col.rows.keys()].filter((k) => k.startsWith(prefix)).length >= 1000
+    )
+      return fail(409, "conflict", { reason: "owner_full" });
+    if (request.method === "DELETE" && !row) return fail(404, "not_found");
     const ifMatch = request.headers["if-match"];
     if (
       (ifMatch && ifMatch !== `"${row?.version}"`) ||
@@ -245,7 +268,7 @@ export function createFakeState(options: { now?: () => number } = {}) {
       ...(ttl && expiresAt ? { "x-kv-expires-at": String(expiresAt) } : {}),
     };
     return fakeResponse(
-      request.method === "PATCH" ? 200 : row ? 204 : 201,
+      crossOwner ? 204 : request.method === "PATCH" ? 200 : row ? 204 : 201,
       request.method === "PATCH"
         ? { value: JSON.parse(value) as unknown, version }
         : "",
@@ -305,7 +328,7 @@ export function createFakeState(options: { now?: () => number } = {}) {
     },
   };
 }
-interface SocketEvent {
+export interface SocketEvent {
   data?: unknown;
   code?: number;
   reason?: string;

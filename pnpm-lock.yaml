@@ -238,6 +238,9 @@ importers:
       "@yingyeothon/platform-client":
         specifier: workspace:^
         version: link:../platform-client
+      "@yingyeothon/push-client":
+        specifier: workspace:^
+        version: link:../push-client
 
   packages/gamebase-all-together:
     dependencies:
@@ -358,6 +361,9 @@ importers:
 
   packages/platform-client:
     dependencies:
+      "@yingyeothon/gamebase-client":
+        specifier: workspace:^
+        version: link:../gamebase-client
       "@yingyeothon/logger":
         specifier: workspace:^
         version: link:../logger

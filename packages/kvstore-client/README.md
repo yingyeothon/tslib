@@ -132,6 +132,13 @@ The token is copied into a closure at create time and travels only as `Authoriza
 
 No collection administration (create, rename, caps: the console and `yyt kv` own those), no cache, no retry, no token refresh. A `409` is returned to the caller, who knows what to reread; a `401` means the sign-in flow must run again.
 
+## Conditional inbox deletion
+
+`delete(key, {ifMatch, missing: "error"})` preserves a missing-entry 404. Use
+this when a successful conditional deletion grants a reward: a concurrent winner
+may have already removed the row. The default `missing: "ignore"` retains
+idempotent deletion for existing consumers.
+
 ## Public API
 
 - `createKvStoreClient(options)` — `KvStoreClient`: `collection(nameOrId)`; `KvStoreClientOptions` (`baseUrl`, `token`, `fetch?` defaulting to the global, `logger?` defaulting to `nullLogger`).

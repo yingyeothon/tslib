@@ -254,14 +254,21 @@ function createNamespace(
       };
     },
     async delete(key, options = {}): Promise<void> {
+      if (
+        options.missing !== undefined &&
+        options.missing !== "ignore" &&
+        options.missing !== "error"
+      )
+        throw new RangeError("Invalid missing-entry policy");
       const path = entryPath(ref, owner, key);
       const headers = conditionHeaders({ ifMatch: options.ifMatch });
       try {
         await request({ method: "DELETE", path, route: "entry", headers });
       } catch (error) {
         // A reader deleting an absent key gets 404 from the server; a
-        // write-only caller gets 204. Deleting is idempotent to both.
-        if (!isMissing(error)) throw error;
+        // write-only caller gets 204. The default keeps deletion idempotent;
+        // claims opt into preserving a missing reader-visible row.
+        if (!isMissing(error) || options.missing === "error") throw error;
       }
     },
     async list<T>(options: KvListOptions = {}): Promise<KvPage<T>> {

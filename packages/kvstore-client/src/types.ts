@@ -79,6 +79,8 @@ export interface KvPutOptions {
 
 export interface KvDeleteOptions {
   ifMatch?: number;
+  /** Default ignore. Use error when a missing row loses a conditional claim. */
+  missing?: "ignore" | "error";
 }
 
 /**
@@ -152,7 +154,7 @@ export interface KvNamespace {
    * Resolves whether or not the key existed: the server answers a reader's
    * delete of a missing key with `404` and a write-only caller's with `204`,
    * and this method folds the first into the second. A lost `ifMatch` is
-   * still a `409`.
+   * still a `409`. `missing: "error"` preserves a missing-row `404`.
    */
   delete(key: string, options?: KvDeleteOptions): Promise<void>;
   list<T = unknown>(options?: KvListOptions): Promise<KvPage<T>>;

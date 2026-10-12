@@ -49,6 +49,7 @@
     "@yingyeothon/platform-client": "workspace:^",
     "@yingyeothon/kvstore-client": "workspace:^",
     "@yingyeothon/gamebase-client": "workspace:^",
-    "@yingyeothon/logger": "workspace:^"
+    "@yingyeothon/logger": "workspace:^",
+    "@yingyeothon/push-client": "workspace:^"
   }
 }

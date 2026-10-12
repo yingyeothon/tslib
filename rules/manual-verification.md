@@ -104,3 +104,13 @@ them instead of standing up cloud infrastructure to observe a code path:
 - The built ESM and CJS push wrappers passed this dev sequence on 2026-10-12;
   temporary channels were deleted and the synthetic member demoted. Real
   Android receipt remains an owner check.
+
+## Game kit groups B/C
+
+- The built ESM/CJS kit and platform wrappers passed dev verification on
+  2026-10-12: all leaderboard periods and server ranks, mailbox sender stamps
+  and claim contention, profiles/friends/presence, four-player callback-less
+  live room formation, deferred proposal/confirmation, and token/topic cleanup.
+  Scratch auth/lobby/match/push channels, boards and inboxes were removed, and
+  the synthetic member demoted. Topic adapters were supplied by the probe;
+  this does not establish real device receipt or provider OAuth consent.

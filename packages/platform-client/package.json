@@ -45,6 +45,7 @@
   },
   "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/platform-client#readme",
   "dependencies": {
-    "@yingyeothon/logger": "workspace:^"
+    "@yingyeothon/logger": "workspace:^",
+    "@yingyeothon/gamebase-client": "workspace:^"
   }
 }

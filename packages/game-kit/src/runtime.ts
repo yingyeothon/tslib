@@ -20,9 +20,14 @@ export function kitError(
     name: "KitError" as const,
     module,
     code,
-    retryable: ["offline", "conflict", "unavailable", "rate_limited"].includes(
-      code,
-    ),
+    retryable: [
+      "offline",
+      "conflict",
+      "unavailable",
+      "rate_limited",
+      "inbox_full",
+      "cooldown",
+    ].includes(code),
     ...(cause === undefined ? {} : { cause }),
   });
 }
@@ -48,22 +53,53 @@ export function mapError(module: string, error: unknown): KitError {
     reason?: string;
   };
   const code: KitErrorCode =
-    e.status === 401
-      ? "signed_out"
-      : e.status === 403
-        ? "forbidden"
-        : e.status === 410
-          ? "channel_inactive"
-          : e.status === 429
-            ? "rate_limited"
-            : e.reason === "out_of_range"
-              ? "out_of_range"
-              : e.status === 409
-                ? "conflict"
-                : "unavailable";
+    e.reason === "cooldown"
+      ? "cooldown"
+      : ["proposal_closed", "not_proposed"].includes(e.reason ?? "")
+        ? "proposal_closed"
+        : ["proposed", "confirmed"].includes(e.reason ?? "")
+          ? "proposed"
+          : module === "mail" &&
+              ["owner_full", "sender_full", "collection_full"].includes(
+                e.reason ?? "",
+              )
+            ? "inbox_full"
+            : module === "push" && (e.status === 400 || e.status === 409)
+              ? "push_refused"
+              : e.code === "cancelled"
+                ? "cancelled"
+                : e.status === 401
+                  ? "signed_out"
+                  : e.status === 403
+                    ? "forbidden"
+                    : e.status === 410
+                      ? "channel_inactive"
+                      : e.status === 429
+                        ? "rate_limited"
+                        : e.reason === "out_of_range"
+                          ? "out_of_range"
+                          : e.status === 409
+                            ? "conflict"
+                            : "unavailable";
   return kitError(module, code, {
     ...(typeof e.status === "number" ? { status: e.status } : {}),
-    ...(typeof e.code === "string" ? { code: e.code } : {}),
+    ...([
+      "network",
+      "malformed_response",
+      "invalid_request",
+      "bad_request",
+      "unauthorized",
+      "forbidden",
+      "not_found",
+      "conflict",
+      "gone",
+      "rate_limited",
+      "unavailable",
+      "internal_error",
+      "cancelled",
+    ].includes(e.code ?? "")
+      ? { code: e.code }
+      : {}),
   });
 }
 export function emitter() {
@@ -77,8 +113,9 @@ export function emitter() {
         set.delete(handler);
       };
     },
-    emit(name: string, value?: unknown) {
+    emit(name: string, value?: unknown, guard?: () => boolean) {
       for (const handler of [...(handlers.get(name) ?? [])]) {
+        if (guard && !guard()) break;
         try {
           handler(value);
         } catch {

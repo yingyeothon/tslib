@@ -486,6 +486,23 @@ describe("put", () => {
 });
 
 describe("delete", () => {
+  it("can surface a missing conditional delete for an exactly-once claim", async () => {
+    const fake = createFakeFetch([error(404, "not_found")]);
+    await expect(
+      client(fake.fetch)
+        .collection("c")
+        .mine.delete("gone", { ifMatch: 2, missing: "error" }),
+    ).rejects.toMatchObject({ status: 404, code: "not_found" });
+    expect(fake.requests[0]).toMatchObject({
+      method: "DELETE",
+      headers: { "if-match": '"2"' },
+    });
+    await expect(
+      client(fake.fetch)
+        .collection("c")
+        .delete("gone", { missing: "bad" as "error" }),
+    ).rejects.toThrow(RangeError);
+  });
   it("resolves on 404 too (a reader deleting an absent key), and surfaces a 409", async () => {
     const fake = createFakeFetch([
       error(404, "not_found"),

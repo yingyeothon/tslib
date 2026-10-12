@@ -12,3 +12,16 @@ it("runs the Wave A zero-infrastructure walkthrough", async () => {
     inherited: { hp: 10 },
   });
 });
+
+import { runExtendedGameKitDemo } from "../src/extended.js";
+it("runs scenarios 5–10 through the built kit", async () => {
+  expect(await runExtendedGameKitDemo()).toEqual({
+    periods: 3,
+    mailClaims: 1,
+    friendOnline: true,
+    matchedMembers: 4,
+    deferredState: "confirmed",
+    subscribed: "configured.topic",
+    tokensAfterSignOut: 0,
+  });
+});

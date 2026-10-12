@@ -193,3 +193,7 @@ real defects that shipped in the legacy code.
 - Allowlist public error descriptors; never expose a raw service message,
   arbitrary reason or an exception cause. Keep the actual HTTP status on
   malformed successful responses, including 201 and 202.
+
+- Canonical JSON validation can itself throw through Proxy reflection traps.
+  Protect the copying boundary and mint a safe error instead of forwarding a
+  caller's TypeError/RangeError merely because it resembles a validation error.

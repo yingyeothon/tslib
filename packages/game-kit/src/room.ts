@@ -24,6 +24,7 @@ export interface RoomControl {
     callback: (event: { from: string; payload: unknown }) => void,
   ): () => void;
   connect(): Promise<void>;
+  readonly connected: boolean;
 }
 export function createRoom(runtime: Runtime): RoomControl {
   const events = emitter();
@@ -398,6 +399,9 @@ export function createRoom(runtime: Runtime): RoomControl {
     },
   };
   return {
+    get connected() {
+      return lobby?.state === "connected";
+    },
     room,
     send: sendControl,
     on: (name, callback) =>

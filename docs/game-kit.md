@@ -91,13 +91,60 @@ immutable chunks before their manifest, so incomplete revisions cannot appear
 as a complete game. Only the host finishes; every player's result is its own
 save copy. Clocks are informational and do not enforce time controls.
 
+## Leaderboards and mail
+
+Board aliases resolve through config's boards mapping. Submit a score to every
+server-configured period and display the returned server rank and endsAt; use
+session.now for countdowns. A server-only board returns server_only. Around clamps
+at the first rank and returns an empty page for an unranked player.
+
+Mail reads the signed-in inbox and its platform writer stamps. Claim uses a
+conditional delete that also refuses a missing row, so exactly one concurrent caller gets the letter; that caller
+applies its reward. Missing or concurrently claimed mail returns already_claimed.
+Player send requires a project-writable inbox; caps map to inbox_full. Arrivals
+are emitted only after complete pagination. Mail and friend-request polling use
+30-second defaults and pause in background.
+
+## Friends and matchmaking
+
+Friends combines state relations with gateway presence. Profile and presence
+batches contain at most 50 players, and profile cache lasts 30 seconds per session.
+Blocking retains the service's visibility rules; invite reports offline before
+trying the room invitation.
+
+Live matching requires a connected lobby. Callback-less matching forms one room:
+the lowest matched user creates it, matched members accept only each other's
+invites for 30 seconds, and an incomplete room yields partial with the joined
+roster. Set matchmaking.callback explicitly for a callback channel; a null result
+alone cannot distinguish one. Missing match mode means live.
+
+Deferred matching needs no lobby. Submit, status, accept, decline and cancel use
+HTTP tickets; stateChanged carries waiting/proposed/confirmed/expired/declined/failed.
+Foreground polling defaults to four seconds. Push and resume discover tickets,
+with reads coalesced at a one-second minimum gap. Cooldown uses server retryAfter,
+confirming waits 1.5 seconds, and throttles back off to 30 seconds. State conflicts
+cause a status read rather than another submission.
+
+## Android push lifecycle
+
+The app owns the FCM SDK and supplies the token and topic adapter. Registration
+subscribes to the configured topic. Sign-out cleans up using the old JWT and token,
+and failures cannot prevent local sign-out. Classification verifies the match
+channel; even an expired hint with an empty matchId only requests a status read.
+A topic message grants nothing. The [push guide](push.md) owns standalone client
+registration and server sending.
+
+All new asynchronous modules isolate session generations and cancel observers,
+polls or retries on sign-out/dispose. Missing optional config fails on module use.
+
 ## Run the scenarios locally
 
 [The game-kit example](../examples/game-kit/README.md) demonstrates time, merge,
 claims, bounds, invitations, shared state, host succession and a two-player
 turn log against in-memory auth/state/gateway fakes. It needs no AWS credentials,
 Docker, deployed gateway or real tokens. Its smoke test imports built workspace
-packages. The package tests also cover reconnect, tampered turns, durable queue
+packages and covers scenarios 5–10: board submission, exactly-once mail claim,
+friendship/presence, live room formation, deferred confirmation and push cleanup. The package tests also cover reconnect, tampered turns, durable queue
 restoration, user-switch races and partial log revisions.
 
 For every option and limit, read [game-kit](../packages/game-kit/README.md) and

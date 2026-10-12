@@ -1,3 +1,4 @@
+import { runExtendedGameKitDemo } from "./extended.js";
 import { pathToFileURL } from "node:url";
 import { createGameKit, type RoomInvitation } from "@yingyeothon/game-kit";
 import {
@@ -118,5 +119,14 @@ if (
   process.argv[1] &&
   import.meta.url === pathToFileURL(process.argv[1]).href
 ) {
-  console.log(JSON.stringify(await runGameKitDemo(), null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        waveA: await runGameKitDemo(),
+        additional: await runExtendedGameKitDemo(),
+      },
+      null,
+      2,
+    ),
+  );
 }

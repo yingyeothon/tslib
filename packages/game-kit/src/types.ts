@@ -1,3 +1,11 @@
+import type {
+  Board,
+  Friends,
+  KitPush,
+  Mail,
+  Matchmaking,
+  PushTopicAdapter,
+} from "./extended-types.js";
 import type { Logger } from "@yingyeothon/logger";
 import type { PlatformFetchLike } from "@yingyeothon/platform-client";
 import type { WebSocketConstructor } from "@yingyeothon/gamebase-client";
@@ -9,6 +17,16 @@ export interface GameKitConfig {
   state?: { url: string };
   gateway?: { url: string; lobbyChannelId: string };
   collections?: Record<string, string>;
+  boards?: Record<string, string>;
+  match?:
+    | { mode?: "live"; url: string; channelId: string }
+    | {
+        mode: "deferred";
+        apiBase: string;
+        ticketUrl: string;
+        channelId: string;
+      };
+  push?: { channelId: string; apiBase: string; topic: string };
 }
 export type KitErrorCode =
   | "not_configured"
@@ -24,7 +42,15 @@ export type KitErrorCode =
   | "channel_inactive"
   | "forbidden"
   | "invalid_state"
-  | "cancelled";
+  | "cancelled"
+  | "server_only"
+  | "already_claimed"
+  | "inbox_full"
+  | "lobby_required"
+  | "cooldown"
+  | "proposal_closed"
+  | "push_refused"
+  | "proposed";
 export interface KitError extends Error {
   readonly name: "KitError";
   readonly module: string;
@@ -212,12 +238,21 @@ export interface GameKitOptions {
     maxMergeRetries?: number;
   };
   room?: { timeoutMs?: number };
+  mail?: { pollIntervalMs?: number };
+  friends?: { pollIntervalMs?: number };
+  matchmaking?: { callback?: boolean; pollIntervalMs?: number };
+  push?: { topics: PushTopicAdapter };
 }
 export interface GameKit {
   readonly session: Session;
   readonly content: Content;
   readonly save: Save;
   readonly room: Room;
+  board(alias: string): Promise<Board>;
+  readonly mail: Mail;
+  readonly friends: Friends;
+  readonly matchmaking: Matchmaking;
+  readonly push: KitPush;
   readonly turns: {
     start<Move, State>(
       options: TurnsStartOptions<Move, State>,

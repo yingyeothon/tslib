@@ -23,35 +23,35 @@ one of them runs with no AWS credentials, no Docker and no deployed gateway.
 
 ## Packages
 
-| Package                                                                | Description                                                |
-| ---------------------------------------------------------------------- | ---------------------------------------------------------- |
-| [@yingyeothon/codec](packages/codec)                                   | Tiny codec abstraction (`Codec` + `jsonCodec`)             |
-| [@yingyeothon/logger](packages/logger)                                 | Minimal structured logger with severity filtering          |
-| [@yingyeothon/event-broker](packages/event-broker)                     | Type-safe async event broker                               |
-| [@yingyeothon/logger-slack](packages/logger-slack)                     | Slack-webhook log writer for @yingyeothon/logger           |
-| [@yingyeothon/logger-s3](packages/logger-s3)                           | Buffered log writer flushing into S3 via s3-cache-bridge   |
-| [@yingyeothon/naive-socket](packages/naive-socket)                     | Minimal TCP/TLS client with queueing and reconnect         |
-| [@yingyeothon/naive-redis](packages/naive-redis)                       | Minimal Redis client built on naive-socket (incl. pub/sub) |
-| [@yingyeothon/s3-cache-bridge-client](packages/s3-cache-bridge-client) | HTTP client for the s3-cache-bridge server                 |
-| [@yingyeothon/repository](packages/repository)                         | Key-value repository abstractions + in-memory impl         |
-| [@yingyeothon/repository-redis](packages/repository-redis)             | Redis-backed repository                                    |
-| [@yingyeothon/repository-s3](packages/repository-s3)                   | S3-backed repository                                       |
-| [@yingyeothon/repository-dynamodb](packages/repository-dynamodb)       | DynamoDB-backed repository (TTL + conditional writes)      |
-| [@yingyeothon/actor-system](packages/actor-system)                     | Lightweight actor system (queue/lock/awaiter)              |
-| [@yingyeothon/actor-system-redis](packages/actor-system-redis)         | Redis-backed actor system support                          |
-| [@yingyeothon/actor-system-lambda](packages/actor-system-lambda)       | AWS Lambda glue for the actor system                       |
-| [@yingyeothon/lambda-authorizer](packages/lambda-authorizer)           | API Gateway TOKEN and REQUEST authorizer helpers           |
-| [@yingyeothon/lambda-authorizer-jwt](packages/lambda-authorizer-jwt)   | JWT-issuing and JWT-verifying API Gateway authorizers      |
-| [@yingyeothon/lambda-gamebase](packages/lambda-gamebase)               | Serverless WebSocket game framework on AWS Lambda          |
-| [@yingyeothon/gamebase-all-together](packages/gamebase-all-together)   | Wait/running stage game loop plugin for lambda-gamebase    |
-| [@yingyeothon/gamebase-client](packages/gamebase-client)               | Browser-capable client SDK for the yyt WebSocket gateway   |
-| [@yingyeothon/kvstore-client](packages/kvstore-client)                 | Game client for the yyt key-value store (`/kv/*`)          |
-| [@yingyeothon/asset-client](packages/asset-client)                     | Reader for yyt asset bundles, encrypted ones included      |
-| [@yingyeothon/auth-client](packages/auth-client)                       | Channel authentication wire client                         |
-| [@yingyeothon/platform-client](packages/platform-client)               | Platform HTTP clock client                                 |
-| [@yingyeothon/push-client](packages/push-client)                       | Android FCM token registration                             |
-| [@yingyeothon/push-server](packages/push-server)                       | Server push sends, campaigns and broadcast                 |
-| [@yingyeothon/game-kit](packages/game-kit)                             | Session, content, save, room and turns modules             |
+| Package                                                                | Description                                                     |
+| ---------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [@yingyeothon/codec](packages/codec)                                   | Tiny codec abstraction (`Codec` + `jsonCodec`)                  |
+| [@yingyeothon/logger](packages/logger)                                 | Minimal structured logger with severity filtering               |
+| [@yingyeothon/event-broker](packages/event-broker)                     | Type-safe async event broker                                    |
+| [@yingyeothon/logger-slack](packages/logger-slack)                     | Slack-webhook log writer for @yingyeothon/logger                |
+| [@yingyeothon/logger-s3](packages/logger-s3)                           | Buffered log writer flushing into S3 via s3-cache-bridge        |
+| [@yingyeothon/naive-socket](packages/naive-socket)                     | Minimal TCP/TLS client with queueing and reconnect              |
+| [@yingyeothon/naive-redis](packages/naive-redis)                       | Minimal Redis client built on naive-socket (incl. pub/sub)      |
+| [@yingyeothon/s3-cache-bridge-client](packages/s3-cache-bridge-client) | HTTP client for the s3-cache-bridge server                      |
+| [@yingyeothon/repository](packages/repository)                         | Key-value repository abstractions + in-memory impl              |
+| [@yingyeothon/repository-redis](packages/repository-redis)             | Redis-backed repository                                         |
+| [@yingyeothon/repository-s3](packages/repository-s3)                   | S3-backed repository                                            |
+| [@yingyeothon/repository-dynamodb](packages/repository-dynamodb)       | DynamoDB-backed repository (TTL + conditional writes)           |
+| [@yingyeothon/actor-system](packages/actor-system)                     | Lightweight actor system (queue/lock/awaiter)                   |
+| [@yingyeothon/actor-system-redis](packages/actor-system-redis)         | Redis-backed actor system support                               |
+| [@yingyeothon/actor-system-lambda](packages/actor-system-lambda)       | AWS Lambda glue for the actor system                            |
+| [@yingyeothon/lambda-authorizer](packages/lambda-authorizer)           | API Gateway TOKEN and REQUEST authorizer helpers                |
+| [@yingyeothon/lambda-authorizer-jwt](packages/lambda-authorizer-jwt)   | JWT-issuing and JWT-verifying API Gateway authorizers           |
+| [@yingyeothon/lambda-gamebase](packages/lambda-gamebase)               | Serverless WebSocket game framework on AWS Lambda               |
+| [@yingyeothon/gamebase-all-together](packages/gamebase-all-together)   | Wait/running stage game loop plugin for lambda-gamebase         |
+| [@yingyeothon/gamebase-client](packages/gamebase-client)               | Browser-capable client SDK for the yyt WebSocket gateway        |
+| [@yingyeothon/kvstore-client](packages/kvstore-client)                 | Game client for the yyt key-value store (`/kv/*`)               |
+| [@yingyeothon/asset-client](packages/asset-client)                     | Reader for yyt asset bundles, encrypted ones included           |
+| [@yingyeothon/auth-client](packages/auth-client)                       | Channel authentication wire client                              |
+| [@yingyeothon/platform-client](packages/platform-client)               | Platform state, presence and matchmaking wire clients           |
+| [@yingyeothon/push-client](packages/push-client)                       | Android FCM token registration                                  |
+| [@yingyeothon/push-server](packages/push-server)                       | Server push sends, campaigns and broadcast                      |
+| [@yingyeothon/game-kit](packages/game-kit)                             | Session, storage, rooms, leaderboards, social and match modules |
 
 ## Dependency graph
 
@@ -94,7 +94,9 @@ graph LR
   auth-client --> logger
   push-client --> logger
   push-server --> logger
+  platform-client --> gamebase-client
   platform-client --> logger
+  game-kit --> push-client
   game-kit --> auth-client
   game-kit --> platform-client
   game-kit --> kvstore-client

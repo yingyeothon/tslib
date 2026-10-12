@@ -24,3 +24,21 @@
 - Resolve save-name merge policies from own properties only. Valid names such as
   `constructor` must not accidentally select an inherited Object method as a
   registered conflict policy.
+
+- Treat the kit's full delivery as one release unit. Implementation milestones
+  may use focused tests and local commits; publish once after the complete
+  requested scope passes final review and consumer verification.
+- Read actual route responses before writing doubles. LB submit returns stored
+  periods without ranks; query own scores to supply kit ranks and never silently
+  resubmit a successful sum write when the follow-up reads fail.
+- Use `missing: "error"` for conditional mail claims. The service may answer
+  404 after another claimant deleted the row; the KV default folds that away.
+- Guard event emission per item and per observer. A listener can synchronously
+  switch session; a guard before the batch does not protect later private data.
+- Discover deferred tickets on push/resume without requiring a local submission.
+  Accept empty matchId expiry hints, arm polling after status/conflict recovery,
+  and return only joined members for partial callback-less room formation.
+
+- Live match delivery and lobby invitations are separate streams. Buffer recent
+  invites while waiting for matched, then validate sender membership before any
+  acceptance. Bound the buffer and clear its observer on every outcome.

@@ -1,3 +1,8 @@
+import { createBoard } from "./board.js";
+import { createMail } from "./mail.js";
+import { createFriends } from "./friends.js";
+import { createMatchmaking } from "./matchmaking.js";
+import { createPush } from "./push.js";
 import type { GameKit, GameKitOptions } from "./types.js";
 import { createRuntime } from "./runtime.js";
 import { createSession } from "./session.js";
@@ -39,7 +44,21 @@ export function createGameKit(options: GameKitOptions): GameKit {
   const content = createContent(runtime);
   const save = createSave(runtime);
   const room = createRoom(runtime);
+  const mail = createMail(runtime);
+  const friends = createFriends(runtime, room.room);
+  const match = createMatchmaking(runtime, room);
+  const push = createPush(runtime, match.wake);
+  const signOut = session.signOut.bind(session);
+  session.signOut = async () => {
+    await signOut();
+    await push.flush();
+  };
   return {
+    board: (alias) => createBoard(runtime, alias),
+    mail,
+    friends,
+    matchmaking: match.matchmaking,
+    push: push.push,
     session,
     content,
     save,
@@ -60,3 +79,26 @@ export function createGameKit(options: GameKitOptions): GameKit {
     },
   };
 }
+
+export type {
+  BoardPeriodInfo,
+  BoardSubmission,
+  BoardPage,
+  BoardSubmitOptions,
+  BoardTopOptions,
+  BoardAroundOptions,
+  Board,
+  MailLetter,
+  MailSendOptions,
+  Mail,
+  Friend,
+  FriendRequests,
+  Friends,
+  MatchFindOptions,
+  Matchmaking,
+  PushTopicAdapter,
+  KitPushMessage,
+  PushClassification,
+  KitPushRegisterOptions,
+  KitPush,
+} from "./extended-types.js";

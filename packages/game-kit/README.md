@@ -1,8 +1,8 @@
 # @yingyeothon/game-kit
 
-Purpose-shaped game modules for the yyt platform. Wave A provides a shared
-session and clock, content, conditional saves, host rooms and deterministic
-turn logs. The service's `docs/game-kit-design.md` owns the cross-language
+Purpose-shaped game modules for the yyt platform: session and clock, content,
+conditional saves, host rooms, turns, leaderboards, mail, friends, matchmaking
+and Android push registration. The service's `docs/game-kit-design.md` owns the cross-language
 contract. This package uses wire packages' public APIs and exposes game nouns.
 
 ```mermaid
@@ -10,6 +10,13 @@ flowchart LR
   K[createGameKit] --> S[session and clock]
   K --> D[content and save]
   K --> R[room and turns]
+  K --> B[board and friends]
+  K --> M[mail]
+  K --> P[matchmaking and push]
+  B --> W
+  M --> KV
+  P --> W
+  P --> PC[push-client]
   S --> W[auth-client and platform-client]
   D --> KV[kvstore-client]
   R --> GW[gamebase-client]
@@ -129,7 +136,54 @@ reported separately from mismatch; they do not freeze a valid game.
 
 Only the host calls `finish`. Every player records its own copy in
 `saveResultAs`, when configured. A failed sink can be retried with the same
-`finish` result or on foreground resume. Wave A has no board sink.
+`finish` result or on foreground resume. Leaderboard submission is explicit.
+
+## Boards and inboxes
+
+`await kit.board(alias)` reads server metadata. `submit({score, meta?})` returns
+one `{period, rank, score, endsAt}` per period. The wire submit has no rank, so the
+kit reads `me` for each period afterwards; failure of these reads does not undo
+or retry the submitted score. In particular, never blindly resubmit a sum score.
+`top({period, limit?, offset?})`, `me(period)` and `around({period, span})` use
+server ranks. `span` is 0–49, `offset` is 0–1000; a missing own score returns an
+empty around page. Server-only boards reject player submissions.
+
+`mail.list/read/claim/remove` address the signed-in inbox. `claim` conditionally
+deletes the read version; only the winning caller applies its returned reward.
+`send({to, value, ttl?})` requires a project-writable inbox and creates a
+sender-prefixed key with platform writer stamps. `on("arrived", handler)` polls
+all pages before publishing a complete snapshot, emitting each letter once.
+`mail.pollIntervalMs` defaults to 30000, with a minimum of 1000.
+
+## Friends, match and push
+
+`friends` exposes list/requests/request/accept/decline/remove/block/unblock,
+profile.me/set, profiles, invite and the requested event. Presence and profile
+requests batch at 50; profile cache lasts 30000 ms per session. Request polling
+uses `friends.pollIntervalMs`, default 30000, minimum 1000.
+
+Live `matchmaking.find({timeoutMs?})` needs a connected lobby; a room observer
+connects it. Missing match mode means live. `matchmaking.callback` defaults
+false: the lowest matched user forms a room, and only matched members' invites
+are auto-accepted for 30000 ms. Recent invitations received before the matched frame
+are bounded and checked against that frame before acceptance. A timed-out roster returns only joined members
+with `partial: true`. With callback true the result is returned verbatim,
+including null; no room is made.
+
+Deferred submit/status/cancel/accept/decline require no lobby. The stateChanged
+event reports validated tickets. `matchmaking.pollIntervalMs` defaults to 4000,
+minimum 1000; foreground reads coalesce at a minimum gap of 1000 ms. Push and
+resume can discover an existing ticket. Cooldown respects the server's seconds;
+confirming retries after 1500 ms, while throttles/busy back off to 30000 ms.
+Polling pauses in background; cancel/sign-out/dispose invalidate queued retries.
+
+`push.register({token, project?})` uses an app-provided FCM token and
+`push.topics` subscribe/unsubscribe adapter. SDK setup belongs to the app.
+Successful registration subscribes to config's public topic. `unregister()` and
+sign-out remove the token and topic using the original credential; cleanup
+failure cannot prevent local sign-out. `classify(message)` returns a match hint
+only for the configured match channel, including an empty matchId expiry hint.
+Hints request status; they never establish confirmation or grant rewards.
 
 ## Public API
 
@@ -154,7 +208,32 @@ Only the host calls `finish`. Every player records its own copy in
   code, retryable and a sanitized diagnostic cause. Local invalid arguments
   throw TypeError or RangeError.
 
+### Additional named exports
+
+- `BoardPeriodInfo`
+- `BoardSubmission`
+- `BoardPage`
+- `BoardSubmitOptions`
+- `BoardTopOptions`
+- `BoardAroundOptions`
+- `Board`
+- `MailLetter`
+- `MailSendOptions`
+- `Mail`
+- `Friend`
+- `FriendRequests`
+- `Friends`
+- `MatchFindOptions`
+- `Matchmaking`
+- `PushTopicAdapter`
+- `KitPushMessage`
+- `PushClassification`
+- `KitPushRegisterOptions`
+- `KitPush`
+- `createGameKit`
+
 ## Behavior changes
 
-New package. Board, mail, friends, matchmaking and push are subsequent waves.
+Board, mail, friends, live/deferred matchmaking and kit push are now available.
+Missing optional config fails when its module is used, not during construction.
 Fake scenarios prove library behavior, not deployed gateway or device delivery.
