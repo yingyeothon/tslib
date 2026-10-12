@@ -64,7 +64,7 @@ const { createKvStoreClient } = require("@yingyeothon/kvstore-client");
 
 ## Collections, namespaces and scopes
 
-`collection(nameOrId)` takes the `kv_` id or the **name** the console shows; the server resolves a name within the project the token belongs to, and `info()` returns both (`id`, `name`) with `readScope`, `writeScope`, `encrypted`, `maxEntries` and `maxEntriesPerOwner`. Every entry lives in a namespace, and the collection's `writeScope` decides which: `project` means one shared namespace (`/kv/{col}/entries`, the collection itself), `user` means one namespace per owner (`/kv/{col}/u/{ownerId}/entries`, `mine` for the caller's own, `owner(id)` for another's). A collection whose two scopes are both `team` refuses the API outright (`403`), because nothing a game holds may touch it.
+`collection(nameOrId)` takes the `kv_` id or the **name** the console shows; the server resolves a name within the project the token belongs to, and `info()` returns both (`id`, `name`) with `readScope`, `writeScope`, `encrypted`, `maxEntries` and `maxEntriesPerOwner`. A collection is per-owner when either scope is `user`: use `/kv/{col}/u/{ownerId}/entries`, `mine` for the caller's own entries or `owner(id)` for another's. Otherwise use the shared `/kv/{col}/entries` namespace (the collection itself). `server` grants the doc apiKey access and refuses player credentials; the team still administers entries through the console. A collection whose two scopes are both `team` refuses the API outright (`403`), because nothing a game holds may touch it.
 
 What each credential reaches, on a `writeScope: user` collection:
 
@@ -73,7 +73,7 @@ What each credential reaches, on a `writeScope: user` collection:
 | channel JWT (a player)       | own entries                 | `readScope: project` yes, `user` is `403` | `403`             |
 | doc apiKey (the game server) | `400` (`me` names a player) | every owner                               | every owner       |
 
-The shared namespace of a `writeScope: project` collection follows `readScope`/`writeScope` for both credentials.
+A shared collection follows both scopes for each credential. A `readScope: user`, `writeScope: project` inbox instead uses per-owner namespaces: cross-owner player writes are create-only and the key must start with the sender id plus `:`; conditional headers are refused. A `writeScope: server` inbox accepts writes only from the server key or the console.
 
 ## Versions, conditions and TTL
 
@@ -81,7 +81,11 @@ Every entry has a `version` that starts at 1 and climbs on every write, expired 
 
 `ttl` on `put` and `incr` is in seconds, `1` … `31_622_400` (366 days, `kvTtlMaxSeconds`); omitted keeps the row's expiry, `0` clears it. `getEntry` reports `expiresAt` (an absolute epoch second) whenever the row has one; `put` and `incr` report it **only when that call passed a non-zero `ttl`**, so a `put` that kept an existing expiry says nothing about it.
 
-`incr(key, delta)` is the one operation performed on a value: an atomic add of a safe integer to a stored integer, `{ value, version }` back. It needs the read right and takes no condition; a non-numeric value or an overflow is a `409` with `reason` `not_a_number` or `overflow`.
+`incr(key, delta, { min?, max?, ttl? })` is the one operation performed on a value: an atomic add of a safe integer to a stored integer, `{ value, version }` back. It needs the read right and takes no condition; a non-numeric value or an overflow is a `409` with `reason` `not_a_number` or `overflow`.
+
+Bounds are inclusive safe integers with `min <= max`. They guard the calculated result of one request, are not stored, and a missing counter starts at zero. A range refusal is `409 conflict` with `reason: "out_of_range"` and `currentValue`, the stored number; it is not `currentVersion`.
+
+`getEntry` exposes `from` and `at` (epoch seconds) from `X-KV-From` and `X-KV-At`; list rows expose `from` beside `updatedAt`. These stamps exist only for per-owner collections, are absent when the server omits them, and are replaced by every accepted write.
 
 `delete` resolves whether or not the key existed: the server answers a reader's delete of an absent key with `404` and a write-only caller's with `204`, and the client folds the first into the second. A lost `ifMatch` on a delete is still a `409`.
 
@@ -98,7 +102,7 @@ The client refuses locally, before any request, what the server would refuse, so
 | `ttl`                   | `0` or an integer `1` … `kvTtlMaxSeconds`                                                                                               |
 | `limit`                 | an integer `1` … `kvListLimitMax` (100) — the server would clamp, the client refuses                                                    |
 | `ifMatch`               | an integer `>= 1`; create with `ifNoneMatch: true`, never both                                                                          |
-| `incr` delta            | a safe integer                                                                                                                          |
+| `incr` delta and bounds | safe integers; `min <= max`                                                                                                             |
 | `token`                 | printable ASCII, no whitespace or control characters                                                                                    |
 | `baseUrl`               | `http(s)://host[/prefix]`, no userinfo, query or fragment                                                                               |
 
@@ -106,17 +110,19 @@ These throw `RangeError` or `TypeError`. The last two exist because `fetch` itse
 
 ## Errors
 
-Every refusal by the server or the network is a `KvStoreError`: `status` (HTTP, `0` when the request never got an answer), `code` (the server's `error.code`; `http_<status>` when the body was not the server's JSON shape, as from a gateway 502; `network` or `malformed_response` when minted here), `reason` (`error.details.reason` when present) and `currentVersion` (on a lost compare-and-set). Its `message` is `kv <code> (<status>)` and nothing else — no key, no value, no URL, no token — so it can be logged as is; a `network` error carries the `fetch` rejection as `cause`, a `malformed_response` deliberately carries nothing (a `SyntaxError` quotes the body, which may be a stored value).
+Every refusal by the server or the network is a `KvStoreError`: `status` (HTTP, `0` when the request never got an answer), `code` (the server's `error.code`; `http_<status>` when the body was not the server's JSON shape, as from a gateway 502; `network` or `malformed_response` when minted here), `reason` (`error.details.reason` when present), `currentVersion` (on a lost compare-and-set) and `currentValue` (on an out-of-range increment). Its `message` is `kv <code> (<status>)` and nothing else — no key, no value, no URL, no token — so it can be logged as is; a `network` error carries the `fetch` rejection as `cause`, a `malformed_response` deliberately carries nothing (a `SyntaxError` quotes the body, which may be a stored value).
 
 `get`/`getEntry` turn a `404` into `undefined` and `delete` resolves on it; every other method surfaces it. **An unknown collection is the same `404`** (a name of another project, a typo, a deleted collection — the server keeps them indistinguishable on purpose), so `undefined` from a fresh install can also mean the collection name is wrong: call `info()` once at startup if that matters.
 
-| Predicate          | True when                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------ |
-| `isKvStoreError`   | any of the below; duck-typed on `name`, `status`, `code`, so it holds across realms  |
-| `isKvUnauthorized` | `401`: the token is missing, expired, or minted for another stage                    |
-| `isKvForbidden`    | `403`: a scope refuses this principal, or a conditional write without the read right |
-| `isKvConflict`     | `409`: a lost condition, a full collection or owner, `not_a_number`, `overflow`      |
-| `isKvFull`         | `409` with `reason` `collection_full` or `owner_full`                                |
+| Predicate          | True when                                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------- |
+| `isKvStoreError`   | any of the below; duck-typed on `name`, `status`, `code`, so it holds across realms             |
+| `isKvUnauthorized` | `401`: the token is missing, expired, or minted for another stage                               |
+| `isKvForbidden`    | `403`: a scope refuses this principal, or a conditional write without the read right            |
+| `isKvConflict`     | `409`: a lost condition, a full collection or owner, `not_a_number`, `overflow`, `out_of_range` |
+| `isKvFull`         | `409` with `reason` `collection_full` or `owner_full`                                           |
+
+`isKvOutOfRange` identifies `409 conflict` with `reason: "out_of_range"`; a server that omits `details.value` still produces that error, without `currentValue`.
 
 ## Security
 
@@ -129,11 +135,16 @@ No collection administration (create, rename, caps: the console and `yyt kv` own
 ## Public API
 
 - `createKvStoreClient(options)` — `KvStoreClient`: `collection(nameOrId)`; `KvStoreClientOptions` (`baseUrl`, `token`, `fetch?` defaulting to the global, `logger?` defaulting to `nullLogger`).
-- `KvCollection` — `ref`, `info()` (`KvCollectionInfo`: `id`, `name`, `readScope`, `writeScope` as `KvScope`, `encrypted`, `maxEntries`, `maxEntriesPerOwner`), `mine`, `owner(ownerId)`, and the whole `KvNamespace` for the shared namespace.
-- `KvNamespace` — `get`, `getEntry` (`KvEntry`: `value`, `version`, `expiresAt?`), `put` (`KvPutOptions`: `ttl?`, `ifMatch?`, `ifNoneMatch?` → `KvWriteResult`: `created?`, `version?`, absent for a write-only caller; `expiresAt?`, only when this call set a `ttl`), `delete` (`KvDeleteOptions`: `ifMatch?`), `list` (`KvListOptions`: `prefix?`, `cursor?`, `limit?` 1 … 100 with server default 50, `order?` `asc` (default) or `desc`, `values?` → `KvPage`: `entries` of `KvListEntry`, `nextCursor?`), `incr` (`KvIncrOptions`: `ttl?` → `KvIncrResult`: `value`, `version`, `expiresAt?`).
-- `KvStoreError` and the predicates `isKvStoreError`, `isKvUnauthorized`, `isKvForbidden`, `isKvConflict`, `isKvFull`.
+- `KvCollection` — `ref`, `info()` (`KvCollectionInfo`: `id`, `name`, `readScope`, `writeScope` as `KvScope` (`team`, `project`, `user`, `server`), `encrypted`, `maxEntries`, `maxEntriesPerOwner`), `mine`, `owner(ownerId)`, and the whole `KvNamespace` for the shared namespace.
+- `KvNamespace` — `get`, `getEntry` (`KvEntry`: `value`, `version`, `expiresAt?`, `from?`, `at?`), `put` (`KvPutOptions`: `ttl?`, `ifMatch?`, `ifNoneMatch?` → `KvWriteResult`: `created?`, `version?`, absent for a write-only caller; `expiresAt?`, only when this call set a `ttl`), `delete` (`KvDeleteOptions`: `ifMatch?`), `list` (`KvListOptions`: `prefix?`, `cursor?`, `limit?` 1 … 100 with server default 50, `order?` `asc` (default) or `desc`, `values?` → `KvPage`: `entries` of `KvListEntry` (`from?`, `updatedAt`), `nextCursor?`), `incr` (`KvIncrOptions`: `ttl?`, `min?`, `max?` → `KvIncrResult`: `value`, `version`, `expiresAt?`).
+- `KvStoreError` and the predicates `isKvStoreError`, `isKvUnauthorized`, `isKvForbidden`, `isKvConflict`, `isKvFull`, `isKvOutOfRange`; errors carry `currentVersion?` and `currentValue?`.
 - The server's limits, for callers who validate first: `kvKeyPattern`, `kvCollectionNamePattern`, `kvOwnerIdPattern`, `kvMaxValueBytes` (16384), `kvTtlMaxSeconds` (31622400), `kvListLimitMax` (100).
 - Transport types for an injected `fetch`: `KvFetchLike`, `KvFetchRequest`, `KvFetchResponse`.
+
+## Behavior changes
+
+- `KvScope` includes `server`. Entry reads preserve writer stamps (`from`, `at`); list rows preserve `from`.
+- `incr` sends optional inclusive `min`/`max` bounds and refuses invalid bounds locally. `isKvOutOfRange` identifies range conflicts; `currentValue` holds the stored number separately from `currentVersion`.
 
 ## Migrating from the legacy package
 

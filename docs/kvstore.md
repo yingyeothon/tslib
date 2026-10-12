@@ -16,16 +16,16 @@ name, a `readScope`, a `writeScope`, optional encryption and two caps. A game
 never creates one. It reaches the collection with a credential it already holds,
 and that credential is the principal the server judges every request by.
 
-| Principal | Credential                                              | Reaches                                                                                                    |
-| --------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `owner`   | the channel JWT from the sign-in flow (a player)        | the shared namespace per scope; `/u/me`; other owners only to read, and only when `readScope` is `project` |
-| `server`  | the auth channel's doc apiKey (`yds.…`), on your server | the shared namespace per scope; every owner's `/u/{ownerId}` namespace                                     |
-| `team`    | a console session or `yyt_` token                       | the console and CLI only; the API refuses                                                                  |
+| Principal | Credential                                              | Reaches                                                                                                                                                             |
+| --------- | ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `owner`   | the channel JWT from the sign-in flow (a player)        | the shared namespace per scope; `/u/me`; other owners to read under `readScope: project`, or create-only mail writes under `readScope: user`, `writeScope: project` |
+| `server`  | the auth channel's doc apiKey (`yds.…`), on your server | the shared namespace per scope; every owner's `/u/{ownerId}` namespace                                                                                              |
+| `team`    | a console session or `yyt_` token                       | the console and CLI only; the API refuses                                                                                                                           |
 
-The two scopes decide the rest. `team` on a scope means the API cannot do that
+The scopes decide the rest. `team` on a scope means the API cannot do that
 side at all; `project` means any principal of the project may; `user` means the
-entry's owner may, and the server key may on anyone's behalf. `writeScope: user`
-is what puts entries in an owner namespace, which is why the same client offers
+entry's owner may, and the server key may on anyone's behalf. `server` allows the doc apiKey and refuses players; the team administers entries through the console. Either scope being `user`
+puts entries in an owner namespace, which is why the same client offers
 both `collection.put(...)` and `collection.mine.put(...)` — **using the wrong one
 is a `400` whose `reason` is `wrong_namespace`**, not a write to the wrong place.
 The server key gets the same `400` from `mine`, because `me` names the owner of
@@ -99,7 +99,14 @@ sequenceDiagram
 `ifNoneMatch: true` creates only, and `delete` takes `ifMatch` too. The client
 does not retry for you: a `409` is handed back, and what to merge is the game's
 decision. For a plain counter use `incr(key, delta)` instead, which adds
-atomically on the server and returns `{ value, version }`.
+atomically on the server and returns `{ value, version }`. Optional `min`/`max`
+bounds guard that request's result; a missing counter starts at zero. A refusal
+leaves it unchanged and carries `reason: "out_of_range"` and `currentValue`,
+the stored number. Use `isKvOutOfRange` to distinguish it from a version conflict.
+
+Per-owner `getEntry` results also expose `from` and `at` (epoch seconds);
+list rows expose `from` beside `updatedAt`. The platform stamps the writer
+on each accepted write, so this is the latest writer, not permanent provenance.
 
 **A caller without the read right cannot use any of this.** A write-only inbox
 (`readScope: team`, `writeScope: project`, say) gets a `403` on a conditional
@@ -136,6 +143,7 @@ over 16 KiB, a `ttl` or `limit` out of range — throw a `RangeError` or a
 | `409`  | `conflict`, `currentVersion`                   | a lost `ifMatch` or `ifNoneMatch`; reread and retry                                                                                                     |
 | `409`  | `conflict` / `collection_full`, `owner_full`   | a cap was reached; `isKvFull` names both                                                                                                                |
 | `409`  | `conflict` / `not_a_number`, `overflow`        | `incr` on something that is not an integer                                                                                                              |
+| `409`  | `conflict` / `out_of_range`                    | the increment would exceed its bounds; `currentValue` is the stored number                                                                              |
 | `413`  | `payload_too_large`                            | unreachable through this client, which refuses a body over `kvMaxValueBytes` (16384) locally; seen only with an injected `fetch` that rewrites the body |
 | `503`  | `unavailable` / `kv_encryption_not_configured` | the stage's kv encryption key is missing; nothing a game can fix                                                                                        |
 | `5xx`  | `http_<status>`                                | a gateway answer that is not the server's JSON shape                                                                                                    |
@@ -145,7 +153,7 @@ over 16 KiB, a `ttl` or `limit` out of range — throw a `RangeError` or a
 ## In a browser
 
 The state stack already answers CORS preflights for any origin with the headers
-this client sends and exposes `ETag` and `X-KV-Expires-At`, so a browser build
+this client sends and exposes `ETag`, `X-KV-Expires-At`, `X-KV-From` and `X-KV-At`, so a browser build
 needs nothing more. The token comes from the sign-in flow
 ([Authentication](auth.md)); **this package never persists it** — where a game
 keeps a token between page loads is the game's decision, and a new token is a

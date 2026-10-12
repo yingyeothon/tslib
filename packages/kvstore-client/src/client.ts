@@ -167,6 +167,7 @@ function conditionHeaders(options: {
 /** The wire shape of one list row; `valueText` is the stored JSON verbatim. */
 interface WireListEntry {
   owner?: string;
+  from?: string;
   key: string;
   version: number;
   bytes: number;
@@ -213,9 +214,13 @@ function createNamespace(
       });
     }
     const expiresAt = parseExpiresAt(answer.headers.get("x-kv-expires-at"));
+    const from = answer.headers.get("x-kv-from");
+    const at = parseExpiresAt(answer.headers.get("x-kv-at"));
     return {
       value,
       version,
+      ...(from === null ? {} : { from }),
+      ...(at === undefined ? {} : { at }),
       ...(expiresAt === undefined ? {} : { expiresAt }),
     };
   }
@@ -271,6 +276,7 @@ function createNamespace(
       }
       const rows: KvListEntry<T>[] = page.entries.map((row) => ({
         ...(row.owner === undefined ? {} : { owner: row.owner }),
+        ...(row.from === undefined ? {} : { from: row.from }),
         key: row.key,
         version: row.version,
         bytes: row.bytes,
@@ -291,7 +297,18 @@ function createNamespace(
     },
     async incr(key, delta, options = {}): Promise<KvIncrResult> {
       const path = entryPath(ref, owner, key) + ttlQuery(options.ttl);
-      const body = JSON.stringify({ incr: checkDelta(delta) });
+      const min =
+        options.min === undefined ? undefined : checkDelta(options.min);
+      const max =
+        options.max === undefined ? undefined : checkDelta(options.max);
+      if (min !== undefined && max !== undefined && min > max) {
+        throw new RangeError("kv min must not be greater than max");
+      }
+      const body = JSON.stringify({
+        incr: checkDelta(delta),
+        ...(min === undefined ? {} : { min }),
+        ...(max === undefined ? {} : { max }),
+      });
       const answer = await request({
         method: "PATCH",
         path,

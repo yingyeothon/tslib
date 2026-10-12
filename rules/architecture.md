@@ -358,3 +358,9 @@ The same pass removed the pre-v2 API dialects: `new RedisQueue()`/`new
 S3Repository()` classes, `build*`/`new*`/`get*` factories, per-package logger
 interfaces (`ActorSystemLogger`), and ad-hoc `*Env` objects that read
 `process.env`. If a review turns one of these up, it is a regression.
+
+## KV range conflict metadata
+
+- Preserve KV range conflicts as `code: conflict`, `reason: out_of_range`.
+  `details.value` is a stored number (`currentValue`), while `details.current`
+  is a version (`currentVersion`); never merge those meanings.

@@ -24,6 +24,7 @@ export {
   isKvConflict,
   isKvForbidden,
   isKvFull,
+  isKvOutOfRange,
   isKvStoreError,
   isKvUnauthorized,
 } from "./errors.js";

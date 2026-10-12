@@ -6,6 +6,7 @@ import {
   isKvConflict,
   isKvForbidden,
   isKvFull,
+  isKvOutOfRange,
   isKvStoreError,
   isKvUnauthorized,
   kvMaxValueBytes,
@@ -755,5 +756,128 @@ describe("failures and logging", () => {
     expect(
       isKvStoreError({ name: "KvStoreError", status: 409, code: "conflict" }),
     ).toBe(true);
+  });
+});
+
+describe("server scope, writer stamps and bounded counters", () => {
+  it("exposes server scopes and the writer stamp without changing get values", async () => {
+    const fake = createFakeFetch([
+      json(200, { id, name: "mail", readScope: "user", writeScope: "server" }),
+      json(
+        200,
+        { reward: 1 },
+        { etag: '"4"', "X-KV-From": "server", "X-KV-At": "1700000000" },
+      ),
+      json(200, {
+        entries: [
+          {
+            key: "letter",
+            version: 4,
+            bytes: 12,
+            updatedAt: 1700000000,
+            from: "team",
+            valueText: '{"reward":1}',
+          },
+        ],
+      }),
+      json(200, { reward: 1 }, { etag: '"4"' }),
+    ]);
+    const mail = client(fake.fetch).collection("mail");
+    expect(await mail.info()).toMatchObject({
+      readScope: "user",
+      writeScope: "server",
+    });
+    expect(await mail.mine.getEntry("letter")).toEqual({
+      value: { reward: 1 },
+      version: 4,
+      from: "server",
+      at: 1700000000,
+    });
+    expect((await mail.mine.list({ values: true })).entries[0]).toMatchObject({
+      from: "team",
+      updatedAt: 1700000000,
+      value: { reward: 1 },
+    });
+    expect(await mail.mine.getEntry("letter")).toEqual({
+      value: { reward: 1 },
+      version: 4,
+    });
+  });
+
+  it.each(["", "bad", "-1", "1.5", "9007199254740992"])(
+    "ignores an invalid stamp time %s",
+    async (at) => {
+      const fake = createFakeFetch([
+        json(200, 1, { etag: '"1"', "x-kv-at": at }),
+      ]);
+      expect(await client(fake.fetch).collection("save").getEntry("k")).toEqual(
+        { value: 1, version: 1 },
+      );
+    },
+  );
+
+  it.each([
+    [{}, '{"incr":1}'],
+    [{ min: 0 }, '{"incr":1,"min":0}'],
+    [{ max: 0 }, '{"incr":1,"max":0}'],
+    [{ min: -2, max: 2, ttl: 10 }, '{"incr":1,"min":-2,"max":2}'],
+    [
+      { min: Number.MIN_SAFE_INTEGER, max: Number.MAX_SAFE_INTEGER },
+      '{"incr":1,"min":-9007199254740991,"max":9007199254740991}',
+    ],
+  ] as const)("sends bounds and preserves ttl: %j", async (options, body) => {
+    const fake = createFakeFetch([json(200, { value: 1, version: 2 })]);
+    await client(fake.fetch).collection("save").mine.incr("wallet", 1, options);
+    expect(fake.only().body).toBe(body);
+    expect(fake.only().url).toContain("/u/me/entries/wallet");
+    if ("ttl" in options) expect(fake.only().url).toContain("?ttl=10");
+  });
+
+  it.each([
+    { min: NaN },
+    { max: Infinity },
+    { min: 0.1 },
+    { max: Number.MAX_SAFE_INTEGER + 1 },
+    { min: 2, max: 1 },
+  ])("refuses bad bounds before fetch: %j", async (options) => {
+    const fake = createFakeFetch([]);
+    await expect(
+      client(fake.fetch).collection("save").incr("wallet", 1, options),
+    ).rejects.toThrow(RangeError);
+    expect(fake.requests).toHaveLength(0);
+  });
+
+  it("distinguishes stored numbers from versions and keeps them out of messages and logs", async () => {
+    const capture = capturingLogger();
+    const fake = createFakeFetch([
+      error(409, "conflict", { reason: "out_of_range", value: 873641 }),
+      error(409, "conflict", { current: 7 }),
+      error(409, "conflict", { reason: "out_of_range" }),
+      error(409, "conflict", { reason: "out_of_range", value: "secret" }),
+      error(400, "bad_request", { reason: "out_of_range", value: 2 }),
+    ]);
+    const counter = client(fake.fetch, capture.logger).collection("save");
+    const first = await failureOf(counter.incr("wallet", -1, { min: 0 }));
+    expect(isKvOutOfRange(first)).toBe(true);
+    expect(first).toMatchObject({
+      status: 409,
+      code: "conflict",
+      reason: "out_of_range",
+      currentValue: 873641,
+    });
+    expect(first).not.toHaveProperty("currentVersion");
+    expect(first.message).not.toContain("873641");
+    expect(capture.lines.join(" ")).toContain("kv request");
+    expect(capture.lines.join(" ")).not.toContain("873641");
+    const cas = await failureOf(counter.incr("wallet", 1));
+    expect(cas).toMatchObject({ currentVersion: 7 });
+    expect(cas).not.toHaveProperty("currentValue");
+    expect(isKvOutOfRange(cas)).toBe(false);
+    for (let n = 0; n < 3; n++) {
+      const absent = await failureOf(counter.incr("wallet", 1));
+      expect(absent).not.toHaveProperty("currentValue");
+      if (n === 2) expect(isKvOutOfRange(absent)).toBe(false);
+    }
+    expect(isKvOutOfRange(null)).toBe(false);
   });
 });

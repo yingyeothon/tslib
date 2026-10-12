@@ -44,7 +44,7 @@ export interface KvStoreClient {
   collection(nameOrId: string): KvCollection;
 }
 
-export type KvScope = "team" | "project" | "user";
+export type KvScope = "team" | "project" | "user" | "server";
 
 export interface KvCollectionInfo {
   /** The `kv_…` id, whichever of id or name `collection()` was given. */
@@ -60,6 +60,10 @@ export interface KvCollectionInfo {
 export interface KvEntry<T> {
   value: T;
   version: number;
+  /** Writer stamp on per-owner collections; replaced by every accepted write. */
+  from?: string;
+  /** Writer stamp time, in epoch seconds (`X-KV-At`). */
+  at?: number;
   /** Absolute epoch second, absent when the entry never expires. */
   expiresAt?: number;
 }
@@ -98,6 +102,8 @@ export interface KvListOptions {
 }
 
 export interface KvListEntry<T> {
+  /** Writer stamp on per-owner collections only. */
+  from?: string;
   /** Present only when listing every owner of a user namespace. */
   owner?: string;
   key: string;
@@ -116,6 +122,9 @@ export interface KvPage<T> {
 
 export interface KvIncrOptions {
   ttl?: number;
+  /** Inclusive, per-request safe integer bounds; not stored on the counter. */
+  min?: number;
+  max?: number;
 }
 
 export interface KvIncrResult {

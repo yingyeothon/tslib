@@ -16,13 +16,15 @@ export interface KvStoreError extends Error {
    * only when the caller may read the collection.
    */
   readonly currentVersion?: number | null;
+  /** The stored number on an out-of-range increment, not its version. */
+  readonly currentValue?: number;
 }
 
 interface ErrorBody {
   error?: {
     code?: unknown;
     message?: unknown;
-    details?: { reason?: unknown; current?: unknown };
+    details?: { reason?: unknown; current?: unknown; value?: unknown };
   };
 }
 
@@ -48,7 +50,22 @@ export function kvStoreErrorFromResponse(
   const current = details?.current;
   const currentVersion =
     current === null || typeof current === "number" ? current : undefined;
-  return createKvStoreError({ status, code, reason, currentVersion });
+  const value = details?.value;
+  const currentValue =
+    status === 409 &&
+    code === "conflict" &&
+    reason === "out_of_range" &&
+    typeof value === "number" &&
+    Number.isSafeInteger(value)
+      ? value
+      : undefined;
+  return createKvStoreError({
+    status,
+    code,
+    reason,
+    currentVersion,
+    currentValue,
+  });
 }
 
 export function createKvStoreError(fields: {
@@ -56,6 +73,7 @@ export function createKvStoreError(fields: {
   code: string;
   reason?: string;
   currentVersion?: number | null;
+  currentValue?: number;
   cause?: unknown;
 }): KvStoreError {
   const error = new Error(
@@ -67,10 +85,13 @@ export function createKvStoreError(fields: {
     code: string;
     reason?: string;
     currentVersion?: number | null;
+    currentValue?: number;
   };
   error.name = "KvStoreError";
   error.status = fields.status;
   error.code = fields.code;
+  if (fields.currentValue !== undefined)
+    error.currentValue = fields.currentValue;
   if (fields.reason !== undefined) error.reason = fields.reason;
   if (fields.currentVersion !== undefined) {
     error.currentVersion = fields.currentVersion;
@@ -97,7 +118,7 @@ export function isKvStoreError(error: unknown): error is KvStoreError {
   );
 }
 
-/** `409`: a lost compare-and-set, a full collection or owner, `not_a_number`, `overflow`. */
+/** `409`: a lost compare-and-set, a full collection or owner, `not_a_number`, `overflow`, `out_of_range`. */
 export function isKvConflict(error: unknown): error is KvStoreError {
   return isKvStoreError(error) && error.status === 409;
 }
@@ -117,6 +138,15 @@ export function isKvFull(error: unknown): error is KvStoreError {
   return (
     isKvConflict(error) &&
     (error.reason === "collection_full" || error.reason === "owner_full")
+  );
+}
+
+/** `409 conflict` with `details.reason` `out_of_range`. */
+export function isKvOutOfRange(error: unknown): error is KvStoreError {
+  return (
+    isKvConflict(error) &&
+    error.code === "conflict" &&
+    error.reason === "out_of_range"
   );
 }
 
