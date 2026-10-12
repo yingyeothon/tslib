@@ -15,8 +15,8 @@
     "format:check": "prettier --check .",
     "check:docs": "node scripts/check-docs.mjs",
     "typecheck": "pnpm -r typecheck",
-    "test": "vitest run",
-    "coverage": "vitest run --coverage"
+    "test": "node --test scripts/test/*.test.mjs && vitest run",
+    "coverage": "node --test scripts/test/*.test.mjs && vitest run --coverage"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.2",

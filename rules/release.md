@@ -6,7 +6,7 @@ the place to find out.
 
 ## Versioning
 
-- All 22 packages share one version, and the version **is committed**: the
+- All public packages share one version, and the version **is committed**: the
   Release workflow writes it into every `packages/*/package.json`, commits
   `Release vX.Y.Z`, and tags that commit. Between releases the manifests carry
   the last released version. Never edit `version` by hand — only the workflow
@@ -72,6 +72,9 @@ the place to find out.
   version ships without provenance. `asset-client@2.3.0` is that
   bootstrap build (byte-identical to the release commit's, but no
   provenance); its next release carries it.
+- Compare a stable release above its same-core bootstrap prerelease. Keep the
+  offline CLI regressions in `scripts/test/` in both test and coverage commands
+  so the release-version gate cannot reject the documented bootstrap flow.
 - All 22 packages were on npm at 2.3.0 by 2026-09-30, `asset-client`
   included. Check with `npm view <name> version` rather than trusting this
   line.

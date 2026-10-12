@@ -18,7 +18,11 @@ if (!version || !/^\d+\.\d+\.\d+$/.test(version)) {
 const compare = (a, b) => {
   const [pa, pb] = [a, b].map((v) => v.split(/[-+]/)[0].split(".").map(Number));
   for (let i = 0; i < 3; i += 1) if (pa[i] !== pb[i]) return pa[i] - pb[i];
-  return 0;
+  // Only stable versions can be requested. Among equal numeric versions, a
+  // stable publication must outrank every bootstrap prerelease; ordering two
+  // prereleases is immaterial to whether the requested stable version wins.
+  const stable = (v) => !v.split("+")[0].includes("-");
+  return Number(stable(a)) - Number(stable(b));
 };
 
 const run = (cmd, args) =>
