@@ -47,6 +47,9 @@ one of them runs with no AWS credentials, no Docker and no deployed gateway.
 | [@yingyeothon/gamebase-client](packages/gamebase-client)               | Browser-capable client SDK for the yyt WebSocket gateway   |
 | [@yingyeothon/kvstore-client](packages/kvstore-client)                 | Game client for the yyt key-value store (`/kv/*`)          |
 | [@yingyeothon/asset-client](packages/asset-client)                     | Reader for yyt asset bundles, encrypted ones included      |
+| [@yingyeothon/auth-client](packages/auth-client)                       | Channel authentication wire client                         |
+| [@yingyeothon/platform-client](packages/platform-client)               | Platform HTTP clock client                                 |
+| [@yingyeothon/game-kit](packages/game-kit)                             | Session, content, save, room and turns modules             |
 
 ## Dependency graph
 
@@ -86,6 +89,13 @@ graph LR
   gamebase-client --> logger
   kvstore-client --> logger
   asset-client --> logger
+  auth-client --> logger
+  platform-client --> logger
+  game-kit --> auth-client
+  game-kit --> platform-client
+  game-kit --> kvstore-client
+  game-kit --> gamebase-client
+  game-kit --> logger
 ```
 
 That graph is the only exact edge list; [The platform](docs/platform.md) shows

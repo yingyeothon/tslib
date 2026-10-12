@@ -81,6 +81,16 @@ importers:
         specifier: ^4.19.2
         version: 4.23.13
 
+  examples/game-kit:
+    dependencies:
+      "@yingyeothon/game-kit":
+        specifier: workspace:^
+        version: link:../../packages/game-kit
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.13
+
   examples/gateway-client:
     dependencies:
       "@yingyeothon/gamebase-client":
@@ -188,9 +198,33 @@ importers:
         specifier: workspace:^
         version: link:../logger
 
+  packages/auth-client:
+    dependencies:
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
+
   packages/codec: {}
 
   packages/event-broker: {}
+
+  packages/game-kit:
+    dependencies:
+      "@yingyeothon/auth-client":
+        specifier: workspace:^
+        version: link:../auth-client
+      "@yingyeothon/gamebase-client":
+        specifier: workspace:^
+        version: link:../gamebase-client
+      "@yingyeothon/kvstore-client":
+        specifier: workspace:^
+        version: link:../kvstore-client
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
+      "@yingyeothon/platform-client":
+        specifier: workspace:^
+        version: link:../platform-client
 
   packages/gamebase-all-together:
     dependencies:
@@ -305,6 +339,12 @@ importers:
       "@types/node":
         specifier: ^24.3.0
         version: 24.13.3
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
+
+  packages/platform-client:
+    dependencies:
       "@yingyeothon/logger":
         specifier: workspace:^
         version: link:../logger

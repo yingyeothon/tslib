@@ -40,7 +40,8 @@ asserts this list covers `packages/` exactly once each:
 - `storage.md` — repositories, revisions, CAS, documents, choosing a backend
   (`repository`, `repository-redis`, `repository-s3`, `repository-dynamodb`)
 - `auth.md` — the channel JWT and the two authorizer shapes
-  (`lambda-authorizer`, `lambda-authorizer-jwt`)
+  (`lambda-authorizer`, `lambda-authorizer-jwt`, `auth-client`)
+- `game-kit.md` — purpose modules and platform time (`game-kit`, `platform-client`)
 - `operations.md` — env injection, key prefixes and the ACL, every TTL,
   concurrency, sizing a run
 - `logging.md` — composition, call style, and what must never be logged

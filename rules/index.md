@@ -15,6 +15,8 @@ files relevant to the task at hand. `CLAUDE.md` (with `AGENTS.md` as its symlink
 | [documentation.md](documentation.md)             | Editing `docs/`, any README, a diagram, an example, or a public API listing  |
 | [release.md](release.md)                         | Versioning, publishing, or npm-facing changes                                |
 
+| [game-kit.md](game-kit.md) | Changing kit session, queue, room, turns, or cross-language contracts |
+
 ## Maintenance
 
 - After each completed task, fold new durable lessons into the matching file.

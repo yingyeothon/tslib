@@ -32,3 +32,5 @@ here.
 Links run one way: the guide points into these, and these point at the package
 READMEs. An example never links forward into `docs/`, so neither half can be
 written into a broken state while the other is still being drafted.
+
+- [Game kit](game-kit/README.md) — Wave A purpose modules against in-memory protocol fakes.

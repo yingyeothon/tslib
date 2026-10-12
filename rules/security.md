@@ -176,3 +176,9 @@ real defects that shipped in the legacy code.
   the later `JSON.stringify`. Log only operation and target counts on that path.
 - Cover both a throwing `toJSON` and a circular message, with a positive-control
   log assertion and explicit checks that payload and exception text are absent.
+
+## Client callback URLs
+
+- Compare callback protocol and host as well as origin and path. Custom mobile
+  schemes have the same opaque `null` origin, so origin comparison alone admits
+  a different app scheme carrying a copied nonce and credential fragment.

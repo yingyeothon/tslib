@@ -1,0 +1,20 @@
+{
+  "name": "yyt-example-game-kit",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Zero-infrastructure Game kit Wave A walkthrough.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@yingyeothon/game-kit": "workspace:^"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}

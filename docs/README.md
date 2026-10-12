@@ -1,6 +1,6 @@
 # tslib documentation
 
-The twenty-two packages in this repository are the server half of the yyt
+The twenty-five packages in this repository are the server half of the yyt
 platform, plus `gamebase-client`, `kvstore-client` and `asset-client`, which are
 its browser half. This folder is the guide; the package READMEs are the per-package
 reference, and the `service` repository owns the wire protocol and the channels.
@@ -18,6 +18,7 @@ reference, and the `service` repository owns the wire protocol and the channels.
 
 | You want to                                      | Read                                      |
 | ------------------------------------------------ | ----------------------------------------- |
+| Build a game with saves, rooms and turns         | [Game kit](game-kit.md)                   |
 | Run a game loop on Lambda                        | [The game actor](game-actor.md)           |
 | Serialise work per key, without a game           | [Actor system](actor-system.md)           |
 | Connect a browser to a lobby or a run            | [The realtime client](realtime-client.md) |
@@ -50,6 +51,9 @@ flowchart LR
   ST --> repository-dynamodb
   AU["auth.md"] --> lambda-authorizer
   AU --> lambda-authorizer-jwt
+  AU --> auth-client
+  GK["game-kit.md"] --> game-kit
+  GK --> platform-client
   LG["logging.md"] --> logger
   LG --> logger-slack
   LG --> logger-s3
@@ -63,7 +67,7 @@ flowchart LR
 Those are ownership, not dependencies: the [root README](../README.md) has the
 exact edge list, and it is the only place that does.
 
-Only `gamebase-client`, `kvstore-client` and `asset-client` name the platform at all;
+The client packages and game-kit name the platform;
 `lambda-gamebase` and `gamebase-all-together` are shaped by it without depending
 on it, and everything else is a general library that a game happens to need.
 Each is usable on its own.

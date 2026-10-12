@@ -14,6 +14,15 @@ import { createJwtRequestAuthorizer } from "@yingyeothon/lambda-authorizer-jwt";
 **Reference:** [`lambda-authorizer`](../packages/lambda-authorizer/README.md), [`lambda-authorizer-jwt`](../packages/lambda-authorizer-jwt/README.md) — each carries its own `## Public API`, its
 options and defaults, and its migration notes.
 
+## Sign in from a game
+
+`auth-client` implements config, login URL and nonce-checked redirect parsing,
+provider credential exchange and token verification. It is the client half;
+these authorizer packages remain the server half. `game-kit` adds the popup
+login and optional host storage policy. See [auth-client](../packages/auth-client/README.md)
+and [Game kit](game-kit.md). Remove callback fragments after reading them and
+never treat local token decoding as signature verification.
+
 ## TOKEN or REQUEST is decided by the API, not by preference
 
 ```mermaid
