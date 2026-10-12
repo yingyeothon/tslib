@@ -17,6 +17,13 @@ tests pass, exercise the change against the real build.
 
 ## Verify in the real consumer before publishing
 
+- A linked consumer gate only exercises packages that consumer imports. For a
+  new client package, also drive its built ESM and CJS exports against the dev
+  service; do not count an unrelated sample's passing tests as client coverage.
+- Use 32-hex player ids when a dev smoke combines auth, KV and gateway. The
+  debug-token route accepts identifiers that the KV owner grammar refuses.
+- Record provider OAuth consent separately from debug-token verification and
+  local redirect parsing; those checks do not exercise the provider round trip.
 - A release is not the test bed. Point the service repo at this checkout
   with `node scripts/link-service.mjs link` (writes a marked `overrides:`
   block into each target's `pnpm-workspace.yaml` — pnpm 11 ignores
