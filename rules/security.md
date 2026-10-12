@@ -182,3 +182,14 @@ real defects that shipped in the legacy code.
 - Compare callback protocol and host as well as origin and path. Custom mobile
   schemes have the same opaque `null` origin, so origin comparison alone admits
   a different app scheme carrying a copied nonce and credential fragment.
+
+## Push wrappers
+
+- Sanitize caller-controlled getter and destructuring failures as well as JSON
+  serialization failures. Track internally minted errors instead of trusting an
+  arbitrary thrown `RangeError` or an error name that a caller can imitate.
+- Refuse authenticated HTTP redirects. Keep presigned object URLs caller-owned:
+  upload with their signed headers and download reports without the API key.
+- Allowlist public error descriptors; never expose a raw service message,
+  arbitrary reason or an exception cause. Keep the actual HTTP status on
+  malformed successful responses, including 201 and 202.

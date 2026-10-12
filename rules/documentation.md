@@ -35,6 +35,7 @@ asserts this list covers `packages/` exactly once each:
   (`gamebase-client`)
 - `kvstore.md` — the platform key-value store from a game: principals and
   scopes, the two cases, versions, TTL, errors (`kvstore-client`)
+- `push.md` — Android registration and server sends (`push-client`, `push-server`)
 - `assets.md` — asset bundles from a game: bundle shapes, the manifest
   pattern, the ranged-read sequence, browsers, errors (`asset-client`)
 - `storage.md` — repositories, revisions, CAS, documents, choosing a backend

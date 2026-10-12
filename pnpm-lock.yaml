@@ -139,6 +139,19 @@ importers:
         specifier: ^4.19.2
         version: 4.23.13
 
+  examples/push:
+    dependencies:
+      "@yingyeothon/push-client":
+        specifier: workspace:^
+        version: link:../../packages/push-client
+      "@yingyeothon/push-server":
+        specifier: workspace:^
+        version: link:../../packages/push-server
+    devDependencies:
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.13
+
   examples/repository-cas:
     dependencies:
       "@yingyeothon/naive-redis":
@@ -344,6 +357,18 @@ importers:
         version: link:../logger
 
   packages/platform-client:
+    dependencies:
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
+
+  packages/push-client:
+    dependencies:
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
+
+  packages/push-server:
     dependencies:
       "@yingyeothon/logger":
         specifier: workspace:^

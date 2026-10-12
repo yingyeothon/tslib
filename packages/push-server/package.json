@@ -1,0 +1,50 @@
+{
+  "name": "@yingyeothon/push-server",
+  "version": "2.4.0",
+  "description": "Server-side targeted push, campaigns and broadcast.",
+  "keywords": [
+    "yyt",
+    "yingyeothon"
+  ],
+  "license": "MIT",
+  "author": "yingyeothon",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup --config ../../tsup.config.base.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yingyeothon/tslib.git",
+    "directory": "packages/push-server"
+  },
+  "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/push-server#readme",
+  "dependencies": {
+    "@yingyeothon/logger": "workspace:^"
+  }
+}

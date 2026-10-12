@@ -234,3 +234,11 @@
 - Type-level guards are not runtime guards. `Omit<T, "k">` only rejects an
   object _literal_; a variable or a spread carries the key straight through.
   Test the runtime override, not the type.
+
+## Push client ownership
+
+- Observe token ownership through send results: another player's DELETE must
+  leave the original recipient reachable; the owner's DELETE must remove it.
+  Counting DELETE calls alone proves neither behavior.
+- Verify cancel's route and method even when the fake completes jobs immediately.
+  An already-finished job correctly makes cancellation a no-op.

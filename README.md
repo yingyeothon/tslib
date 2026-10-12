@@ -49,6 +49,8 @@ one of them runs with no AWS credentials, no Docker and no deployed gateway.
 | [@yingyeothon/asset-client](packages/asset-client)                     | Reader for yyt asset bundles, encrypted ones included      |
 | [@yingyeothon/auth-client](packages/auth-client)                       | Channel authentication wire client                         |
 | [@yingyeothon/platform-client](packages/platform-client)               | Platform HTTP clock client                                 |
+| [@yingyeothon/push-client](packages/push-client)                       | Android FCM token registration                             |
+| [@yingyeothon/push-server](packages/push-server)                       | Server push sends, campaigns and broadcast                 |
 | [@yingyeothon/game-kit](packages/game-kit)                             | Session, content, save, room and turns modules             |
 
 ## Dependency graph
@@ -90,6 +92,8 @@ graph LR
   kvstore-client --> logger
   asset-client --> logger
   auth-client --> logger
+  push-client --> logger
+  push-server --> logger
   platform-client --> logger
   game-kit --> auth-client
   game-kit --> platform-client

@@ -1,8 +1,7 @@
 # tslib documentation
 
-The twenty-five packages in this repository are the server half of the yyt
-platform, plus `gamebase-client`, `kvstore-client` and `asset-client`, which are
-its browser half. This folder is the guide; the package READMEs are the per-package
+The twenty-seven packages in this repository provide yyt platform clients and
+server building blocks. This folder is the guide; the package READMEs are the per-package
 reference, and the `service` repository owns the wire protocol and the channels.
 
 ## Start here
@@ -18,6 +17,7 @@ reference, and the `service` repository owns the wire protocol and the channels.
 
 | You want to                                      | Read                                      |
 | ------------------------------------------------ | ----------------------------------------- |
+| Register Android tokens, send messages           | [Android push](push.md)                   |
 | Build a game with saves, rooms and turns         | [Game kit](game-kit.md)                   |
 | Run a game loop on Lambda                        | [The game actor](game-actor.md)           |
 | Serialise work per key, without a game           | [Actor system](actor-system.md)           |
@@ -52,6 +52,8 @@ flowchart LR
   AU["auth.md"] --> lambda-authorizer
   AU --> lambda-authorizer-jwt
   AU --> auth-client
+  PU["push.md"] --> push-client
+  PU --> push-server
   GK["game-kit.md"] --> game-kit
   GK --> platform-client
   LG["logging.md"] --> logger
@@ -83,6 +85,7 @@ credentials, no Docker and no deployed gateway.**
 | [`gateway-contract`](../examples/gateway-contract/README.md) | The three ways a gateway silently fails to reach an actor         |
 | [`gateway-client`](../examples/gateway-client/README.md)     | Both clients, and a finished run against an aborted one           |
 | [`kvstore-client`](../examples/kvstore-client/README.md)     | Announcements read, a player's record saved, a stale write lost   |
+| [`push`](../examples/push/README.md)                         | Android registration, sending and campaign replay                 |
 | [`repository-cas`](../examples/repository-cas/README.md)     | Two writers racing on one document, and the write that keeps both |
 
 The full deployable stacks — a Serverless deployment, an auth service, a real

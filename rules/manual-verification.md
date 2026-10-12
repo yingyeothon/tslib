@@ -92,3 +92,15 @@ them instead of standing up cloud infrastructure to observe a code path:
 - Pass options directly rather than exporting extra env knobs. Never add a
   verification-only export to the public API — if a state is unreachable through
   the public surface, that is a design finding, not a reason for a back door.
+
+## Push package verification
+
+- Provision a scratch auth/push channel and template for SDK checks. Register
+  made-up device tokens; FCM acceptance and a structural fake do not establish
+  receipt on a phone. Clean up the push channel before its auth channel.
+- Exercise both built entry points against token PUT/DELETE, targeted send,
+  signed CSV upload, dry-run job replay/list/get/cancel, signed report download
+  and broadcast. Pace push-api writes past its 500 ms per-channel write slot.
+- The built ESM and CJS push wrappers passed this dev sequence on 2026-10-12;
+  temporary channels were deleted and the synthetic member demoted. Real
+  Android receipt remains an owner check.

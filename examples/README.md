@@ -13,6 +13,7 @@ them can be pointed at a Redis you started yourself, with
 | [gateway-client](gateway-client/README.md)     | A lobby and a dungeon client, and a finished run against an aborted one       |
 | [gateway-contract](gateway-contract/README.md) | The three ways a WebSocket gateway silently fails to reach an actor           |
 | [kvstore-client](kvstore-client/README.md)     | Announcements read, a player's record saved, and a stale write that loses     |
+| [push](push/README.md)                         | Device registration, targeted send and campaign replay                        |
 | [repository-cas](repository-cas/README.md)     | Two writers racing on one document, and the conditional write that keeps both |
 
 ```bash
