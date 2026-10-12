@@ -11,6 +11,7 @@ export interface FakeRedis {
   port: number;
   readonly connections: number;
   received: string[];
+  commands: Array<{ connection: number; command: string }>;
   /** The nth accepted socket (1-based), for pushing a frame at a test. */
   clientAt: (connection: number) => Socket | undefined;
   /** Destroys every accepted socket, like a server restart would. */
@@ -31,15 +32,23 @@ export function startFakeRedis(reply: Reply): Promise<FakeRedis> {
   return new Promise((resolve) => {
     const clients: Socket[] = [];
     const received: string[] = [];
+    const commands: Array<{ connection: number; command: string }> = [];
     const server: Server = createServer((client) => {
       clients.push(client);
       const connection = clients.length;
+      let buffer = "";
       client.on("data", (chunk) => {
-        for (const line of chunk.toString("utf-8").split("\r\n")) {
+        buffer += chunk.toString("utf-8");
+        for (;;) {
+          const at = buffer.indexOf("\r\n");
+          if (at < 0) break;
+          const line = buffer.slice(0, at);
+          buffer = buffer.slice(at + 2);
           if (line.length === 0) {
             continue;
           }
           received.push(line);
+          commands.push({ connection, command: line });
           const answer = reply(line, { connection, client });
           if (answer !== undefined) {
             client.write(answer);
@@ -54,6 +63,7 @@ export function startFakeRedis(reply: Reply): Promise<FakeRedis> {
         return clients.length;
       },
       received,
+      commands,
       clientAt: (connection) => clients[connection - 1],
       dropClients: () =>
         new Promise((done) => {

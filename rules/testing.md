@@ -159,7 +159,7 @@
   on the connection a test cares about.
 - Answer per connection number to make a recovery loop observable: refuse the
   `AUTH` on connection 1 and accept it on connection 2, then assert
-  `connections`, the tail of `received` (`AUTH` before `SUBSCRIBE`), and a
+  `connections`, the per-connection command trace (`AUTH` before `SUBSCRIBE`), and a
   message arriving on the new socket. "It reconnected" and "the new connection
   is usable" are different claims and both are the point.
 - A recovery loop needs a _stale outcome_ test as well as a happy one: let the
@@ -242,3 +242,7 @@
   Counting DELETE calls alone proves neither behavior.
 - Verify cancel's route and method even when the fake completes jobs immediately.
   An already-finished job correctly makes cancellation a no-op.
+
+- A TCP write completion is earlier than peer receipt. Delay peer reads in
+  recovery tests, wait for the expected command to be recorded, then assert the
+  entire connection's order. Buffer CRLF commands across chunks in TCP doubles.

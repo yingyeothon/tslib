@@ -37,6 +37,12 @@ describe("subscriber recovery", () => {
     // authenticates and the subscription set is replayed onto it.
     fake = await startFakeRedis((command, { connection, client }) => {
       if (command.startsWith("AUTH")) {
+        if (connection === 2) {
+          // A write callback precedes peer receipt. Delay reading SUBSCRIBE
+          // deterministically so restored notification alone is insufficient.
+          client.pause();
+          setTimeout(() => client.resume(), 25);
+        }
         return connection === 1 ? "-ERR invalid password\r\n" : "+OK\r\n";
       }
       if (command.startsWith("SUBSCRIBE")) {
@@ -77,10 +83,18 @@ describe("subscriber recovery", () => {
     expect(reconnects[0]).toEqual({ channels: ["room:1"], restored: true });
     expect(fake.connections).toBe(2);
     // Connection 2 authenticated before it subscribed.
-    expect(fake.received.slice(-2)).toEqual([
-      `AUTH ${password}`,
-      "SUBSCRIBE room:1",
-    ]);
+    await vi.waitFor(
+      () =>
+        expect(
+          fake!.commands
+            .filter((c) => c.connection === 2)
+            .map((c) => c.command),
+        ).toContain("SUBSCRIBE room:1"),
+      { timeout: 5000, interval: 5 },
+    );
+    expect(
+      fake.commands.filter((c) => c.connection === 2).map((c) => c.command),
+    ).toEqual([`AUTH ${password}`, "SUBSCRIBE room:1"]);
 
     // And the new socket really carries the stream.
     fake.clientAt(2)?.write(published("room:1", "hello"));
