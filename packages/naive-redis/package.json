@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/naive-redis",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Minimal Redis client built on naive-socket: strings, lists, sets, and a simple caching layer.",
   "keywords": [
     "yyt",

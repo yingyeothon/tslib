@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/game-kit",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "Purpose-shaped game modules: session, content, save, room and turns.",
   "keywords": [
     "yyt",
