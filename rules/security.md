@@ -167,3 +167,12 @@ real defects that shipped in the legacy code.
 
 - Run a security-focused adversarial review on any change that touches protocol
   serialization, authentication/authorization, or logging of request data.
+
+## Callback-controlled serialization
+
+- Sanitize encoder exceptions and JSON serialization exceptions separately from
+  transport failures. A valid text message can have a `toJSON` or getter that
+  throws an exception quoting secrets; catching the encoder call alone misses
+  the later `JSON.stringify`. Log only operation and target counts on that path.
+- Cover both a throwing `toJSON` and a circular message, with a positive-control
+  log assertion and explicit checks that payload and exception text are absent.

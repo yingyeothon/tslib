@@ -30,6 +30,7 @@ import {
   reply,
   resolveTransport,
   type GatewayCommand,
+  type RedisPubSubTransportOptions,
   type Transport,
 } from "../src/index.js";
 
@@ -323,7 +324,10 @@ describe("createRedisPubSubTransport", () => {
     return subscriber;
   }
 
-  function newTransport(gameId: string): Transport {
+  function newTransport(
+    gameId: string,
+    options: Pick<RedisPubSubTransportOptions, "encodeMessage" | "logger"> = {},
+  ): Transport {
     const connection = createRedisConnection(redisOptions());
     cleanups.push(() => connection.socket.disconnect());
     return createRedisPubSubTransport({
@@ -331,6 +335,7 @@ describe("createRedisPubSubTransport", () => {
       channelPrefix: "game:out:",
       gameId,
       logger,
+      ...options,
     });
   }
 
@@ -352,6 +357,111 @@ describe("createRedisPubSubTransport", () => {
       { op: "send", connectionId: "connection-1", message },
       { op: "drop", connectionId: "connection-1" },
     ]);
+  });
+
+  it("encodes single and batch messages without overriding routing", async () => {
+    const received: GatewayCommand[] = [];
+    const subscriber = newSubscriber(received);
+    await subscriber.subscribe("game:out:binary-test");
+    const inputs: unknown[] = [];
+    const payload = { type: "snapshot", bytes: [0, 255, 10] };
+    const transport = newTransport("binary-test", {
+      encodeMessage: (message) => {
+        inputs.push(message);
+        return message === payload
+          ? {
+              message: "AP8K",
+              binary: true,
+              op: "drop",
+              connectionId: "wrong",
+              connectionIds: ["wrong"],
+            }
+          : { message, binary: false };
+      },
+    });
+    await expect(transport.send("c1", payload)).resolves.toBe(true);
+    await expect(transport.sendMany!(["c1", "c2"], payload)).resolves.toBe(
+      true,
+    );
+    await expect(transport.send("c3", { text: "hello" })).resolves.toBe(true);
+    await expect(transport.drop("c1")).resolves.toBe(true);
+    await vi.waitFor(() => expect(received).toHaveLength(4));
+    expect(received).toEqual([
+      { op: "send", connectionId: "c1", message: "AP8K", binary: true },
+      {
+        op: "send",
+        connectionIds: ["c1", "c2"],
+        message: "AP8K",
+        binary: true,
+      },
+      {
+        op: "send",
+        connectionId: "c3",
+        message: { text: "hello" },
+        binary: false,
+      },
+      { op: "drop", connectionId: "c1" },
+    ]);
+    expect(inputs).toHaveLength(3);
+    expect(inputs[0]).toBe(payload);
+    expect(inputs[1]).toBe(payload);
+  });
+
+  it("does not publish or leak encoder failures and still drops connections", async () => {
+    const received: GatewayCommand[] = [];
+    const subscriber = newSubscriber(received);
+    await subscriber.subscribe("game:out:binary-failure");
+    const capture = capturingLogger();
+    const transport = newTransport("binary-failure", {
+      logger: capture.logger,
+      encodeMessage: () => {
+        throw new Error("SECRET-ENCODER-9f2");
+      },
+    });
+    await expect(
+      transport.send("CONN-SECRET", { secret: "SECRET-PAYLOAD" }),
+    ).resolves.toBe(false);
+    await expect(transport.sendMany!(["c1", "c2"], "secret")).resolves.toBe(
+      false,
+    );
+    await expect(transport.drop("c1")).resolves.toBe(true);
+    await vi.waitFor(() => expect(received).toHaveLength(1));
+    expect(received).toEqual([{ op: "drop", connectionId: "c1" }]);
+    expect(capture.text()).toContain("cannot encode a gateway message");
+    expect(capture.text()).toContain('"targets":2');
+    for (const secret of [
+      "SECRET-ENCODER-9f2",
+      "SECRET-PAYLOAD",
+      "CONN-SECRET",
+    ]) {
+      expect(capture.text()).not.toContain(secret);
+    }
+  });
+
+  it("does not leak serialization failures from encoded messages", async () => {
+    const capture = capturingLogger();
+    const transport = newTransport("serialize-failure", {
+      logger: capture.logger,
+      encodeMessage: (message) => ({ message }),
+    });
+    await expect(
+      transport.send("c1", {
+        toJSON() {
+          throw new Error("SECRET-SERIALIZER-9f2");
+        },
+      }),
+    ).resolves.toBe(false);
+    const circular: { secret: string; self?: unknown } = {
+      secret: "SECRET-CYCLE",
+    };
+    circular.self = circular;
+    await expect(transport.sendMany!(["c1", "c2"], circular)).resolves.toBe(
+      false,
+    );
+    expect(capture.text()).toContain("cannot serialize a gateway command");
+    expect(capture.text()).toContain('"targets":2');
+    expect(capture.text()).not.toContain("SECRET-SERIALIZER-9f2");
+    expect(capture.text()).not.toContain("SECRET-CYCLE");
   });
 
   it("survives a payload carrying the RESP delimiter", async () => {

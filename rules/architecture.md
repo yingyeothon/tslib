@@ -364,3 +364,9 @@ interfaces (`ActorSystemLogger`), and ad-hoc `*Env` objects that read
 - Preserve KV range conflicts as `code: conflict`, `reason: out_of_range`.
   `details.value` is a stored number (`currentValue`), while `details.current`
   is a version (`currentVersion`); never merge those meanings.
+
+## Optional gateway encoding
+
+- Copy only encoding fields from a Redis transport encoder result; never spread
+  it over gateway routing fields. TypeScript excess-property checks do not
+  constrain runtime callback return values.

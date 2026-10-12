@@ -61,6 +61,7 @@ export {
 export {
   createRedisPubSubTransport,
   type GatewayCommand,
+  type GatewayEncodedMessage,
   type RedisPubSubTransportOptions,
 } from "./network/createRedisPubSubTransport.js";
 export { dropConnection } from "./network/dropConnection.js";

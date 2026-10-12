@@ -16,14 +16,20 @@ export type GatewayCommand =
       connectionId: string;
       connectionIds?: never;
       message: unknown;
+      binary?: boolean;
     }
   | {
       op: "send";
       connectionIds: string[];
       connectionId?: never;
       message: unknown;
+      binary?: boolean;
     }
   | { op: "drop"; connectionId: string; connectionIds?: never };
+
+/** Binary messages are standard base64 strings; text messages stay JSON values. */
+export type GatewayEncodedMessage =
+  { message: unknown; binary?: false } | { message: string; binary: true };
 
 export interface RedisPubSubTransportOptions {
   /** Connection used to `PUBLISH`; not the gateway's subscriber one. */
@@ -32,6 +38,8 @@ export interface RedisPubSubTransportOptions {
   channelPrefix: string;
   /** Identifies the game whose gateway channel receives the commands. */
   gameId: string;
+  /** Encodes each send (once per sendMany batch). Defaults to the original JSON value. */
+  encodeMessage?: (message: unknown) => GatewayEncodedMessage;
   logger?: Logger;
 }
 
@@ -59,18 +67,26 @@ export function createRedisPubSubTransport({
   connection,
   channelPrefix,
   gameId,
+  encodeMessage = (message) => ({ message }),
   logger = nullLogger,
 }: RedisPubSubTransportOptions): Transport {
   const channel = channelPrefix + gameId;
 
   async function publish(command: GatewayCommand): Promise<boolean> {
     const targets = command.connectionIds?.length ?? 1;
+    let serialized: string;
     try {
-      const receivers = await redisPublish(
-        connection,
-        channel,
-        JSON.stringify(command),
-      );
+      serialized = JSON.stringify(command);
+    } catch {
+      // toJSON and getters may throw errors containing the payload.
+      logger.error("cannot serialize a gateway command", {
+        op: command.op,
+        targets,
+      });
+      return false;
+    }
+    try {
+      const receivers = await redisPublish(connection, channel, serialized);
       if (receivers === 0) {
         logger.warn("no gateway is listening", {
           channel,
@@ -90,11 +106,32 @@ export function createRedisPubSubTransport({
     }
   }
 
+  async function send(
+    target: { connectionId: string } | { connectionIds: string[] },
+    message: unknown,
+  ): Promise<boolean> {
+    let encoded: GatewayEncodedMessage;
+    try {
+      encoded = encodeMessage(message);
+      // Copy only encoding fields: a spread could override op or routing at runtime.
+      return await publish({
+        op: "send",
+        ...target,
+        message: encoded.message,
+        ...(encoded.binary === undefined ? {} : { binary: encoded.binary }),
+      });
+    } catch {
+      // Encoder exceptions may quote a payload or credential.
+      logger.error("cannot encode a gateway message", {
+        targets: "connectionIds" in target ? target.connectionIds.length : 1,
+      });
+      return false;
+    }
+  }
+
   return {
-    send: (connectionId, message) =>
-      publish({ op: "send", connectionId, message }),
-    sendMany: (connectionIds, message) =>
-      publish({ op: "send", connectionIds, message }),
+    send: (connectionId, message) => send({ connectionId }, message),
+    sendMany: (connectionIds, message) => send({ connectionIds }, message),
     drop: (connectionId) => publish({ op: "drop", connectionId }),
   };
 }

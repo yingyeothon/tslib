@@ -141,7 +141,7 @@ Networking
 - `NetworkOptions` (type) — `{ transport?, client?, context?, logger?, sendTimeoutMillis? }`; an explicit `transport` wins, otherwise the API Gateway transport is built from `client` or `context`
 - `resolveTransport(functionName, options)` — the resolution above, exposed for custom network helpers
 - `createApiGatewayTransport(options)` / `ApiGatewayTransportOptions` (type) / `isGoneException` — the default transport: JSON over `PostToConnection`, `DeleteConnection` to drop, and `sendTimeoutMillis` to abort a delivery so one unresponsive connection cannot stall a game tick
-- `createRedisPubSubTransport(options)` / `RedisPubSubTransportOptions` (type) / `GatewayCommand` (type) — publishes `{ op: "send" | "drop", ... }` on `{channelPrefix}{gameId}` for deployments that terminate WebSockets in their own gateway process. Subscribe with `createRedisSubscriber` from `@yingyeothon/naive-redis`. It implements `sendMany`, so one broadcast is one `PUBLISH` carrying `connectionIds` and the gateway does the fan-out — see the contract below. Its boolean means "a gateway was subscribed", not "the client received it", so do not pair it with `gamebase-all-together`'s `dropUndeliveredConnections` — a gateway restart would evict the whole party
+- `createRedisPubSubTransport(options)` / `RedisPubSubTransportOptions` (type, with optional `encodeMessage`) / `GatewayCommand` and `GatewayEncodedMessage` (types) — publishes `{ op: "send" | "drop", ... }` on `{channelPrefix}{gameId}` for deployments that terminate WebSockets in their own gateway process. Subscribe with `createRedisSubscriber` from `@yingyeothon/naive-redis`. It implements `sendMany`, so one broadcast is one `PUBLISH` carrying `connectionIds` and the gateway does the fan-out — see the contract below. Its boolean means "a gateway was subscribed", not "the client received it", so do not pair it with `gamebase-all-together`'s `dropUndeliveredConnections` — a gateway restart would evict the whole party
 
 Infrastructure
 
@@ -224,6 +224,19 @@ the gateway does the fan-out it is already positioned to do — at 8 players
 and a fixed tick that is the difference between one publish per tick and
 eight. `op` alone does not tell them apart: branch on whether
 `connectionIds` is present.
+
+`encodeMessage(message)` optionally returns a `GatewayEncodedMessage`: either
+`{ message, binary?: false }` for text/JSON or `{ message: base64, binary: true }`.
+It runs once per send or batch; without it, messages retain their original JSON
+values. Only `message` and `binary` are copied, so it cannot override routing.
+A synchronous encoder failure returns `false` and logs only the target count;
+`drop` never invokes it.
+
+For the q gateway, `binary: true` requires a standard base64 JSON string (for
+example `Buffer.from(bytes).toString("base64")`); the gateway decodes it into
+an outbound WebSocket binary frame. The transport does not encode it again.
+Inbound frames remain text-only, and the lobby has no whole-frame binary mode.
+The boolean still means a gateway was subscribed, not confirmed client delivery.
 
 `drop` and the end-of-game frames are published once and pub/sub has no
 redelivery, which is why `gamebase-all-together`'s `endRepeatCount` exists.
@@ -358,6 +371,8 @@ Once a connection is established no authorizer can revoke it. Dropping a
 player mid-game is the game loop's job, through `Transport.drop`.
 
 ## Behavior changes
+
+- Redis pub/sub send commands accept `binary`; optional `encodeMessage` chooses text or base64 binary per message, including `sendMany`. Encoding failures return `false` without logging the exception or payload. The default remains text/JSON.
 
 - **A start event that cannot be cleared no longer fails the invocation.**
   `startActorLoop` logs `"cannot clear the actor start event"` and returns: the
