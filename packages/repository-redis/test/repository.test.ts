@@ -45,12 +45,14 @@ fixture("set-with-expire", async (repo) => {
   const maybeNull = await repo.get<Session>(key);
   expect(maybeNull).toBeUndefined();
 
-  const ttl = 50;
+  // Wide enough that a loaded machine (the whole coverage run in parallel)
+  // still reads the key back before it expires; 50 ms flaked there.
+  const ttl = 500;
   await repo.setWithExpire(key, value, ttl);
   const maybeSession = await repo.get<Session>(key);
   expect(maybeSession).toEqual(value);
 
-  await sleep(ttl + 1);
+  await sleep(ttl + 50);
   const maybeExpired = await repo.get<Session>(key);
   expect(maybeExpired).toBeUndefined();
 });
