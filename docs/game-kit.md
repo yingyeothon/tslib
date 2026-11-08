@@ -137,6 +137,16 @@ registration and server sending.
 All new asynchronous modules isolate session generations and cancel observers,
 polls or retries on sign-out/dispose. Missing optional config fails on module use.
 
+## Debug tracing beside the kit
+
+The kit takes a `logger` like every package here, so a debug build can send what
+the kit already logs to tracer without touching the kit:
+`createFilteredLogger({ severity: "info", writer: createTracerLogWriter(tracer) })`
+from `@yingyeothon/tracer-client`. Add `tracer.trace(...)` at the game's own
+milestones (room joined, turn played) and `tracer.report(...)` where the game
+notices a desync. [Debug tracing](tracer.md) owns the wiring and the browser's
+limits.
+
 ## Run the scenarios locally
 
 [The game-kit example](../examples/game-kit/README.md) demonstrates time, merge,

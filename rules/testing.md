@@ -246,3 +246,19 @@
 - A TCP write completion is earlier than peer receipt. Delay peer reads in
   recovery tests, wait for the expected command to be recorded, then assert the
   entire connection's order. Buffer CRLF commands across chunks in TCP doubles.
+
+## Wire goldens shared with the service
+
+- `tracer-client/test/golden/report.envelope` is byte-identical to the service's
+  `tracer/testdata/envelopes/yyt-ts/report.envelope`. The envelope carries the
+  package version, which the Release workflow stamps before it runs the tests,
+  so the test compares bytes only while the versions match and otherwise
+  compares structurally with the version normalised. Regenerate with
+  `UPDATE_GOLDEN=1` and copy the file there unchanged.
+- Fixed ids in a golden must not collide with another library's golden: the
+  service's Go tests ingest every fixture into one resource, and an equal
+  `event_id` silently deduplicates (the first yyt-ts capture used yyt-dart's id
+  sequence and lost its event). The tracer golden's ids start at `0x40`.
+- Node's `CompressionStream` does not settle under `vi.useFakeTimers()` waits
+  that only advance timers; tests on the timer paths send plain bodies
+  (`compress: false`) and the gzip path is tested with real timers.

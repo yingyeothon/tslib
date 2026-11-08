@@ -15,6 +15,7 @@ TypeScript build-up libraries for [Yingyeothon](https://github.com/yingyeothon) 
 | [Key-value store](docs/kvstore.md)                                                          | announcements and per-player records over the channel JWT       |
 | [Asset bundles](docs/assets.md)                                                             | shipped files from the CDN, decrypted and verified per segment  |
 | [Storage](docs/storage.md) / [Authentication](docs/auth.md) / [Logging](docs/logging.md)    | repositories and CAS, `$connect` authorizers, what never to log |
+| [Debug tracing](docs/tracer.md)                                                             | breadcrumbs, logs and reports from a debug build to tracer      |
 | [Redis and sockets](docs/redis-and-sockets.md) / [Building blocks](docs/building-blocks.md) | the transport floor, and the three small leaves                 |
 | [Operations](docs/operations.md) / [Troubleshooting](docs/troubleshooting.md)               | limits, TTLs, concurrency, and symptom to cause                 |
 
@@ -52,6 +53,7 @@ one of them runs with no AWS credentials, no Docker and no deployed gateway.
 | [@yingyeothon/push-client](packages/push-client)                       | Android FCM token registration                                  |
 | [@yingyeothon/push-server](packages/push-server)                       | Server push sends, campaigns and broadcast                      |
 | [@yingyeothon/game-kit](packages/game-kit)                             | Session, storage, rooms, leaderboards, social and match modules |
+| [@yingyeothon/tracer-client](packages/tracer-client)                   | Debug breadcrumbs, logs and reports for the yyt tracer          |
 
 ## Dependency graph
 
@@ -90,6 +92,7 @@ graph LR
   gamebase-client --> codec
   gamebase-client --> logger
   kvstore-client --> logger
+  tracer-client --> logger
   asset-client --> logger
   auth-client --> logger
   push-client --> logger

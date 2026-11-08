@@ -376,3 +376,34 @@ interfaces (`ActorSystemLogger`), and ad-hoc `*Env` objects that read
 - Keep view diagnostics observational: isolate synchronous callback exceptions
   and continue applying valid peers in the same frame. Pass a fresh descriptor
   so callback mutation cannot change the failure metadata.
+
+## Debug tracing client (`tracer-client`)
+
+- `breadcrumb(category, message, options?)`, `trace(category, message,
+options?)` and `log(level, message, attributes?)` keep two positionals, an accepted exemption like `put(key,
+value, options?)`: they are the cross-library spec's call shape and a game
+  loop's hot path.
+- The SDK version on the wire comes from `import packageJson from
+"../package.json" with { type: "json" }`, so the Release workflow's stamp is
+  what ships. tsup inlines the whole manifest (about 1 KB); a hand-written
+  constant would drift from the stamped version.
+- A browser transport must fit what the server answers. tracer sends no CORS
+  headers (preflight `405`), so the only deliverable browser request is a
+  CORS-simple one: key in the query, `text/plain`, no `Content-Encoding`,
+  `mode: "no-cors"` — and `no-cors` throws a `TypeError` before any request
+  unless `redirect: "follow"`. Its answer is opaque: count it as unconfirmed,
+  never as a failure to retry (a retry loop on every success) and never as a
+  confirmed send. Found only by driving Chrome; the fake fetch accepted
+  `redirect: "manual"` happily.
+- A client that promises "never throws" has to guard its whole surface, the
+  factory included: options read through getters or proxies, a `null`
+  options argument, a broken `randomBytes`, a `Response` without
+  `arrayBuffer`. Review found `trace()` reading `opts.level` outside the
+  guard; tests feed a throwing `Proxy` to every entry point now.
+- An answer that arrives after `close()` must change nothing: a late `401`
+  used to turn `closed` into `stopped`. Check the state after every await in
+  the send path, not only before it.
+- An unloading page needs every small envelope started at once
+  (`flush({ unloading: true })`, `keepalive`, 64 KiB in total): the send loop
+  sends one at a time, and the one in flight may be a large report the browser
+  cancels on unload.

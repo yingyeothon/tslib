@@ -428,6 +428,12 @@ importers:
 
   packages/s3-cache-bridge-client: {}
 
+  packages/tracer-client:
+    dependencies:
+      "@yingyeothon/logger":
+        specifier: workspace:^
+        version: link:../logger
+
 packages:
   "@ampproject/remapping@2.3.0":
     resolution:

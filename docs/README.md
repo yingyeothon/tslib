@@ -1,6 +1,6 @@
 # tslib documentation
 
-The twenty-seven packages in this repository provide yyt platform clients and
+The twenty-eight packages in this repository provide yyt platform clients and
 server building blocks. This folder is the guide; the package READMEs are the per-package
 reference, and the `service` repository owns the wire protocol and the channels.
 
@@ -28,6 +28,7 @@ reference, and the `service` repository owns the wire protocol and the channels.
 | Verify a token on `$connect`                     | [Authentication](auth.md)                 |
 | Deploy it and stay inside the limits             | [Operations](operations.md)               |
 | Log without leaking a token, a payload or a name | [Logging](logging.md)                     |
+| Send debug breadcrumbs, logs and reports         | [Debug tracing](tracer.md)                |
 | Talk to Redis from a Lambda that freezes         | [Redis and sockets](redis-and-sockets.md) |
 | Encode a frame, broker an event, cache a blob    | [Building blocks](building-blocks.md)     |
 | Work out why nothing is happening                | [Troubleshooting](troubleshooting.md)     |
@@ -56,6 +57,7 @@ flowchart LR
   PU --> push-server
   GK["game-kit.md"] --> game-kit
   GK --> platform-client
+  TR["tracer.md"] --> tracer-client
   LG["logging.md"] --> logger
   LG --> logger-slack
   LG --> logger-s3

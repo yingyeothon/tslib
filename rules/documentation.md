@@ -45,6 +45,8 @@ asserts this list covers `packages/` exactly once each:
 - `game-kit.md` — purpose modules and platform time (`game-kit`, `platform-client`)
 - `operations.md` — env injection, key prefixes and the ACL, every TTL,
   concurrency, sizing a run
+- `tracer.md` — debug breadcrumbs, logs and reports from a web game or a
+  server, and what a browser cannot see of the answers (`tracer-client`)
 - `logging.md` — composition, call style, and what must never be logged
   (`logger`, `logger-slack`, `logger-s3`)
 - `redis-and-sockets.md` — the transport floor (`naive-socket`, `naive-redis`)

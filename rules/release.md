@@ -78,6 +78,9 @@ the place to find out.
   version ships without provenance. `asset-client@2.3.0` is that
   bootstrap build (byte-identical to the release commit's, but no
   provenance); its next release carries it.
+- `tracer-client` (added 2026-11-08) is a name new to npm: it needs the
+  bootstrap publish and its Trusted Publisher before the next Release run, or
+  that run publishes every other package and fails on it.
 - Compare a stable release above its same-core bootstrap prerelease. Keep the
   offline CLI regressions in `scripts/test/` in both test and coverage commands
   so the release-version gate cannot reject the documented bootstrap flow.

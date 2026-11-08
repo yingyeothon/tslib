@@ -1,0 +1,51 @@
+{
+  "name": "@yingyeothon/tracer-client",
+  "version": "2.5.0",
+  "description": "Client for the yyt tracer debug collector: breadcrumbs, buffered logs, reports with screenshots and feedback, in browsers and on Node.",
+  "keywords": [
+    "yyt",
+    "yingyeothon",
+    "tracer"
+  ],
+  "license": "MIT",
+  "author": "yingyeothon",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "tsup --config ../../tsup.config.base.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@yingyeothon/logger": "workspace:^"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yingyeothon/tslib.git",
+    "directory": "packages/tracer-client"
+  },
+  "homepage": "https://github.com/yingyeothon/tslib/tree/main/packages/tracer-client#readme"
+}

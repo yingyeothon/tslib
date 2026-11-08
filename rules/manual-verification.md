@@ -114,3 +114,29 @@ them instead of standing up cloud infrastructure to observe a code path:
   Scratch auth/lobby/match/push channels, boards and inboxes were removed, and
   the synthetic member demoted. Topic adapters were supplied by the probe;
   this does not establish real device receipt or provider OAuth consent.
+
+## tracer-client against a local tracer and `trace-dev`
+
+- Build tracer from the service checkout (`go build -o /tmp/tracer-local
+./cmd/tracer`, Go at `/usr/local/go/bin`) and run it from the environment:
+  `TRACER_LISTEN=127.0.0.1:8095 TRACER_DATA_DIR=<dir>
+TRACER_LOCAL_CONFIG=<tracer.json> TRACER_DISK_MAX_PCT=99 tracer serve`
+  (service `rules/manual-verification.md`, tracer). With `TRACER_DUMP_DIR` it
+  only dumps (answers `200 {}`, stores nothing): capture there, then restart
+  without it to read back with `yyt tracer … --local http://127.0.0.1:8095`
+  and `YYT_TRACER_LOCAL_TOKEN`.
+- Capture the golden: the golden test's inputs from a scratch script against
+  the built `dist`, then `python3 -I capture/scrub.py <dump-base>
+yyt-ts/report.envelope` in the service's `tracer/testdata/envelopes/`; the
+  result must `cmp` equal to `test/golden/report.envelope`, and grep the
+  outputs for the local key's value and `127.0.0.1` before leaving them.
+- Browser: serve a page from `http://localhost` that loads `dist/index.js`
+  with an import map for `@yingyeothon/logger`, drive it with Playwright from
+  the npx cache and `/usr/bin/google-chrome`. Playwright's `requestfinished`
+  sees the real `200` while the client counts `envelopesUnconfirmed`.
+- `trace-dev`: `TRACER_DSN="$(yyt tracer dsn <res> --profile dev --team …
+--project …)"` on the command line only, then `yyt tracer events|logs <res>
+--since 10m`. Verified 2026-11-08: Node ESM (logger sink, report, linked
+  feedback), CJS (report, `close`, a wrong key → `stopped`), Chrome (error
+  hook breadcrumb, canvas screenshot, feedback); dev answers the preflight
+  `405` as the local binary does.
