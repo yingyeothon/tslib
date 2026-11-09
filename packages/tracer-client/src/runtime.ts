@@ -86,14 +86,6 @@ export function secureRandomBytes(length: number): Uint8Array {
   return out;
 }
 
-/** A browser window or worker: the `corsSafe` default. */
-export function isBrowser(): boolean {
-  return (
-    (typeof scope.document === "object" && scope.document !== null) ||
-    typeof scope.WorkerGlobalScope === "function"
-  );
-}
-
 /**
  * `setTimeout` that does not keep a Node process alive: a script exits
  * without waiting for the next log flush (call `close()` to send it).

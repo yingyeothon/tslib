@@ -161,10 +161,11 @@ export interface TracerClientOptions {
   /**
    * Send as a CORS "simple" request, which needs no preflight: the write key
    * in the query string, `Content-Type: text/plain`, no gzip, `mode:
-   * "no-cors"`. tracer answers no CORS headers, so a browser can deliver only
-   * this way, and cannot read the answer: every send counts as
-   * `envelopesUnconfirmed` and a `401`/`429`/`503` goes unnoticed. Defaults
-   * to `true` in a browser window or worker and `false` elsewhere.
+   * "no-cors"`. The answer is opaque: every send counts as
+   * `envelopesUnconfirmed` and a `401`/`429`/`503` goes unnoticed. Default
+   * `false`: tracer answers CORS on ingest (`tracer/v0.2.1`), so a browser
+   * sends a normal `cors` request (one cached preflight) and reads the
+   * answer. Set it only for a tracer older than v0.2.1.
    */
   corsSafe?: boolean;
   /** Event `platform`; default `javascript`. */

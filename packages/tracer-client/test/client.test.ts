@@ -163,14 +163,15 @@ describe("transport", () => {
     expect(fake.sent[0]!.init.keepalive).toBeUndefined();
   });
 
-  it("defaults corsSafe to a browser window", async () => {
+  it("sends cors from a browser window by default (tracer answers CORS)", async () => {
     vi.stubGlobal("document", {});
     try {
-      const fake = createFakeFetch([{ status: 0, type: "opaque" }]);
+      const fake = createFakeFetch([{ status: 200 }]);
       const c = createTracerClient({ dsn: fixtureDsn, fetch: fake.fetch });
       await c.report("r");
       await c.flush();
-      expect(fake.sent[0]!.init.mode).toBe("no-cors");
+      expect(fake.sent[0]!.init.mode).toBe("cors");
+      expect(c.stats.envelopesSent).toBe(1);
     } finally {
       vi.unstubAllGlobals();
     }

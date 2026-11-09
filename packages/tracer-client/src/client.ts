@@ -5,7 +5,6 @@ import {
   createAbort,
   gzip,
   gzipAvailable,
-  isBrowser,
   secureRandomBytes,
   startTimer,
   stopTimer,
@@ -160,7 +159,7 @@ function buildClient(options: TracerClientOptions): TracerClient {
     maxRetryAfterMillis,
     30_000,
   );
-  const corsSafe = options.corsSafe ?? isBrowser();
+  const corsSafe = options.corsSafe === true;
   let compress = options.compress !== false && !corsSafe && gzipAvailable();
   const platform = nonEmpty(options.platform) ?? "javascript";
   const release = nonEmpty(options.release);

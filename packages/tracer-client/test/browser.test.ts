@@ -318,14 +318,14 @@ describe("defensive edges", () => {
     ).not.toThrow();
   });
 
-  it("defaults corsSafe to true in a worker", async () => {
+  it("sends cors from a worker by default", async () => {
     vi.stubGlobal("WorkerGlobalScope", function WorkerGlobalScope() {});
     try {
-      const fake = createFakeFetch([], { status: 0, type: "opaque" });
+      const fake = createFakeFetch([], { status: 200 });
       const c = createTracerClient({ dsn: fixtureDsn, fetch: fake.fetch });
       await c.report("r");
       await c.flush();
-      expect(fake.sent[0]!.init.mode).toBe("no-cors");
+      expect(fake.sent[0]!.init.mode).toBe("cors");
     } finally {
       vi.unstubAllGlobals();
     }
