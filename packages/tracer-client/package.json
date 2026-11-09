@@ -1,6 +1,6 @@
 {
   "name": "@yingyeothon/tracer-client",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Client for the yyt tracer debug collector: breadcrumbs, buffered logs, reports with screenshots and feedback, in browsers and on Node.",
   "keywords": [
     "yyt",
